@@ -1,0 +1,28 @@
+(# extends 'base_table.tex' #)
+
+(# import 'macros.tex' as macros #)
+
+
+(# block header_table #)
+(! super() !)
+&
+(#for exp in hHeader #)
+(# if loop.last #)
+& \multicolumn{3}{|c|}{
+(# else #)
+& \multicolumn{3}{|c}{
+(# endif #)
+L,D = (! exp.L !),(! exp.D !) } (# if loop.last #) \\ (# endif #)
+    (# endfor #)
+(# endblock #)
+
+
+(# block line_first_cell #)
+\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+{\small K = (! headercell.K !) } \\
+{\small N = (! headercell.N !) } \\ {\small Local = (! headercell.init_local !) }}
+(# endblock #)
+
+
+
+

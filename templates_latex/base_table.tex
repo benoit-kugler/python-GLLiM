@@ -1,0 +1,54 @@
+(# import 'macros.tex' as macros #)
+
+(# block header #)
+(# endblock #)
+
+
+\setlength\tabcolsep{0.07cm}
+\begin{longtable}{ l c | (! (['c c c |'] *  (hHeader | length )) | join(' ') !) }
+    \cline{3 -  (!  (hHeader | length ) * 3 + 2 !) }
+
+    (# block header_table #)
+    (# endblock #)
+
+
+    \endfirsthead
+    \endhead
+    \endfoot
+    \endlastfoot
+
+    (#for headercell, line in zip(vHeader,MATRIX) #)
+    (# if line #)
+    \hline
+    (# for critere in CRITERES #)
+        (# if loop.first #)
+    \multirow{6}{*}{
+    (# block line_first_cell scoped #)
+    \makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+    { \small L,D = (! headercell.L !),(! headercell.D !) } \\
+    {\small K = (! headercell.K !) } \\
+    {\small N = (! headercell.N !) } \\ {\small Local = (! headercell.init_local !) }}
+    (# endblock #)
+    }
+
+        (# endif #)
+        & (! macros.LABEL_CRITERE(critere) !)
+    (# for m in line #)
+    & (! macros.MESURES(m,critere) !)
+        (# endfor #)
+    (# if loop.last #)
+        \\
+    (# else #)
+        \\*
+    (# endif #)
+    (# endfor #)
+(# endif #)
+(# endfor #)
+    \hline
+    \caption{\textbf{(! title !)}. (! description !)}
+    \label{tab:(! label !) }
+\end{longtable}
+
+
+(# block footer #)
+(# endblock #)
