@@ -166,7 +166,12 @@ class GLLiM():
 
     @property
     def current_ll(self):
-        return self.LLs_[self.current_iter - 1]  # After fit self.current_iter is one unit too high
+        return self.LLs_[-1]
+
+    @property
+    def loglikelihoods(self):
+        """Returns LL over the iterations"""
+        return self.LLs_
 
     @property
     def L(self):
@@ -765,9 +770,7 @@ class JGLLiM(GLLiM):
         if not (self.sigma_type == 'full' and self.gamma_type == 'full' and self.Lw == 0):
             raise WrongContextError("Joint Gaussian mixture can only be used with Lw = 0, "
                              "and full covariances matrix")
-    @property
-    def current_ll(self):
-        return self._current_ll
+
 
     @staticmethod
     def GMM_to_GLLiM(rho, m, V, L):
@@ -851,7 +854,7 @@ class JGLLiM(GLLiM):
         verbose = {None: -1, False: 0, True: 1}[self.verbose]
         Gmm = self._get_GMM(maxIter,jGMM_params["rho"],jGMM_params["m"],precisions,verbose)
         Gmm.fit(TY)
-        self._current_ll = Gmm.last_ll
+        self.LLs_ = Gmm.log_likelihoods[0]
 
         if self.verbose is not None:
             t = int(time.time() - start_time_EM)

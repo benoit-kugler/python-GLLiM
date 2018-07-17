@@ -4,6 +4,7 @@ import random
 
 import numpy as np
 import pyDOE
+import rpy2.robjects.packages
 import scipy.io
 from rpy2 import robjects
 
@@ -204,7 +205,7 @@ class abstractSimpleFunctionModel(abstractFunctionModel):
 
     DEFAULT_VALUES = np.array([0.5])
 
-    XLIMS = np.array([[-1,2]])
+    XLIMS = np.array([[0, 1]])
 
     PARAMETERS = np.array(["x"])
 
@@ -222,10 +223,10 @@ class WaveFunction(abstractSimpleFunctionModel):
     LABEL = r"$x \rightarrow \cos(10x) $"
 
     def F(self,X):
-        return np.cos(X*10)
+        return np.cos(X * 30)
 
     def dF(self,X):
-        return (-10 * np.sin(10*X))[:,:,None]
+        return (-30 * np.sin(30 * X))[:, :, None]
 
     def is_Y_valid(self,Y):
         return np.array([np.all((-1 <= y) * (y <= 1)) for y in Y])
@@ -279,6 +280,8 @@ class abstractHapkeModel(abstractFunctionModel):
     """Mean default values"""
 
     PREFERED_MODAL_PRED = 3
+
+    LABEL = "$F_{hapke}$"
 
     def __init__(self,partiel):
         super().__init__(partiel)

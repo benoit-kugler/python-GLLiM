@@ -6,7 +6,6 @@ import numpy as np
 from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM
-from Core.sGllim import saGLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
@@ -14,8 +13,9 @@ from tools.mesures import Mesures
 
 
 class Experience():
-
-    # context : context.abstractFunctionModel
+    context: context.abstractFunctionModel
+    archive: Archive
+    mesures: Mesures
 
     def __init__(self,context_class,partiel=None,verbose=True,**kwargs):
         self.only_added = False
@@ -83,15 +83,7 @@ class Experience():
 
 
     def get_infos(self,**kwargs):
-        """Retuns a matplolib compatible string which describes metadata."""
-        s = """
-        Data $\\rightarrow$ Training N={N} (+ {Nadd}) ; Testing Ntest={Ntest} ; Noise : {with_noise} ; 
-                Partial : {partiel} ;  Method : {method} ; Added training : {added}
-        Estimator $\\rightarrow$ Class : {gllim_class} ; Dependant second learning : {para}
-        Constraints $\\rightarrow$ $\Sigma$ : {sigma_type} ; $\Gamma$  : {gamma_type}
-        Mixture $\\rightarrow$ Components K={K} ; Latent variables $L_{{w}}$={Lw} ; Init with local cluster : {init_local}  
-        """
-        return s.format(**dict(self.meta_data,**kwargs))
+        return dict(**self.meta_data, **kwargs)
 
 
     def add_data_training(self,new_data=None,adding_method='threshold',only_added=False,Nadd=None):
@@ -212,26 +204,13 @@ class Experience():
 
     def reconstruct_F(self,gllim,X):
         clusters, rnk = gllim.predict_cluster(X, with_covariance=False)
-        clusters_height, _ = gllim.predict_cluster(X, with_covariance=True)
-
-        An = np.array([gllim.AkList[k] for k in clusters])
-        bn = np.array([gllim.bkList[k] for k in clusters])
-
-        An_height = np.array([gllim.AkList[k] for k in clusters_height])
-        bn_height = np.array([gllim.bkList[k] for k in clusters_height])
-
-        # Maximum probaility estimation
-        Y_est = np.matmul(An, X[:, :, None])[:, :, 0] + bn
-
-        # Maximum height estimation
-        Y_estheight = np.matmul(An_height, X[:, :, None])[:, :, 0] + bn_height
-
+        N, _ = X.shape
         # Mean estimation
-        Y_estmean = np.empty(Y_est.shape)
+        Y_estmean = np.empty((N, gllim.D))
         for n, xn in enumerate(X):
             Y_estmean[n] = np.sum(rnk[n][:, None] * (np.matmul(gllim.AkList, xn) + gllim.bkList), axis=0)
 
-        return Y_est,clusters,Y_estheight,clusters_height,Y_estmean
+        return Y_estmean, rnk
 
 
 class DoubleLearning(Experience):
@@ -437,12 +416,12 @@ def test_map():
     # print(exp.context.get_result(full=True)[mask,9])
 
 def main():
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
+    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1))
     exp.load_data(regenere_data=False,with_noise=50,N=100000,method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100,mode="l",track_theta=False,init_local=500,
-                           sigma_type="full",gamma_type="full",gllim_cls=saGLLiM)
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=500,
+                           sigma_type="full", gamma_type="full", gllim_cls=GLLiM)
 
 
     # exp.extend_training_parallel(gllim,Y=exp.context.get_observations(),X=None,threshold=None,nb_per_X=5000,clusters_per_X=20)
@@ -458,7 +437,7 @@ def main():
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True, colorplot=True)
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True,dim=1)
 
-
+    exp.mesures.plot_estimatedF()
     # exp.mesures.plot_modal_prediction(gllim,[0.02])
 
     # print(exp.mesures.run_mesures(gllim))

@@ -118,8 +118,9 @@ class Archive():
         self._save_data(dic,savepath)
         if track_theta:
             filename = self.get_path("model",with_track=True)
+            d = {"thetas": gllim.track, "LLs": gllim.loglikelihoods}
             with open(filename, 'w', encoding='utf8') as f:
-                json.dump(gllim.track, f, indent=2)
+                json.dump(d, f, indent=2)
             print("\tModel parameters history save in",filename)
 
     def load_gllim(self):
@@ -133,9 +134,9 @@ class Archive():
     def load_tracked_thetas(self):
         filename = self.get_path("model", with_track=True)
         with open(filename,encoding='utf8') as f:
-            thetas = json.load(f)
+            d = json.load(f)
         print("\tParameters history loaded from", filename)
-        return thetas
+        return d["thetas"], d["LLs"]
 
     def save_second_learned(self,gllims,Y,X):
         path = self.get_path("second_models")

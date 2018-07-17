@@ -1,14 +1,17 @@
 import PIL
+import matplotlib
 import numpy as np
 from cartopy import crs
+
+matplotlib.use("Qt5Agg")
+
 from matplotlib import cm, ticker, transforms, rc
 from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
 
 from tools.axes_seq import AxesSequence, SubplotsSequence, vispyAnimation
 
-FIGURE_TITLE_BOX = dict(boxstyle="round", facecolor='#D8D8D8',
-                                          ec="0.5", pad=0.5, alpha=1)
+
 
 
 
@@ -22,6 +25,144 @@ def _get_rows_columns(N,coeff_row = 5, coeff_column=5):
     nb_column = np.ceil(N / nb_row)
     figsize= (nb_column * coeff_column,nb_row * coeff_row)
     return nb_row, nb_column, figsize
+
+
+def overlap_colors(rnk):
+    """Mixes base colours according to cluster importance (given by rnk).
+    rnk shape : (N,K)"""
+    _, K = rnk.shape
+    base_colours = cm.rainbow(np.arange(K) / K)
+    rn = rnk.sum(axis=1)
+    c = rnk.dot(base_colours) / rn[:, None]
+    c[:, 3] = (rn <= 1) * rn + (rn > 1) * 1
+    return c
+
+
+class abstractDrawerMPL():
+    FIGURE_TITLE_BOX = dict(boxstyle="round", facecolor='#D8D8D8',
+                            ec="0.5", pad=0.5, alpha=1)
+
+    Y_TITLE_BOX = 1.4
+
+    def __init__(self, *args, title="", savepath=None, context=None, draw_context=False, write_context=False):
+        self.create_figure(*args)
+        print("Drawing...")
+        self.main_draw(*args)
+
+        self.set_title(title, context, draw_context)
+
+        if write_context:
+            self.write_context(context, savepath)
+
+        if savepath:
+            self.save(savepath)
+
+    def create_figure(self, *args):
+        self.fig = pyplot.figure()
+
+    def main_draw(self, *args):
+        pass
+
+    def set_title(self, title, context, draw_context):
+        context = self._format_context(context) if context is not None else ""
+        if draw_context:
+            title = title + "\n" + context
+        else:
+            self.Y_TITLE_BOX = 0.95
+        self.fig.suptitle(title, bbox=self.FIGURE_TITLE_BOX, y=self.Y_TITLE_BOX)
+
+    @staticmethod
+    def _format_context(context):
+        """Retuns a matplolib compatible string which describes metadata."""
+        context["with_noise"] = "-" if context["with_noise"] is None else context["with_noise"]
+        context["added"] = "-" if context["added"] is None else context["added"]
+        context["para"] = context["para"] or "No"
+        s = """
+        Data $\\rightarrow N_{{train}}={N}$ (+ {Nadd}) ; $N_{{test}}={Ntest}$ ; Noise : {with_noise} ; 
+                Partial : {partiel} ;  Method : {method} ; Added training : {added}. 
+        Estimator $\\rightarrow$ Class : {gllim_class} ; Second learning : {para}.
+        Constraints $\\rightarrow$ $\Sigma$ : {sigma_type} ; $\Gamma$  : {gamma_type}. 
+        Mixture $\\rightarrow$ $K={K}$ ; $L_{{w}}$={Lw} ; Init with local cluster : {init_local}  
+        """
+        return s.format(**context)
+
+    @classmethod
+    def write_context(cls, context, savepath):
+        context = cls._format_context(context)
+        with open(savepath[:-4] + ".tex", "w") as f:
+            f.write(context)
+
+    def save(self, savepath):
+        self.fig.savefig(savepath, bbox_inches='tight', pad_inches=0.2)
+        print("Saved in", savepath)
+
+
+class simple_plot(abstractDrawerMPL):
+
+    def main_draw(self, values, labels, xlabels, ylog):
+        rc("text", usetex=True)
+        xlabels = xlabels or list(range(len(values[0])))
+        axe = self.fig.gca()
+        for v, lab, m in zip(values, labels, [".", "+", "+", "+", "+", "+", "o", "o", "o", ",", ",", ",", "."]):
+            axe.scatter(xlabels, v, marker=m, label=lab)
+        if ylog:
+            axe.set_yscale("log")
+        axe.set_ylim(np.array(values).min(), np.array(values).max())
+        axe.tick_params(axis="x", labelsize=7)
+        axe.legend()
+
+    def save(self, savepath):
+        super().save(savepath)
+        rc("text", usetex=False)
+
+
+class plusieursKN(simple_plot):
+
+    @staticmethod
+    def _format_context(context):
+        return f"""Courbe 1: $K$ évolue linéairement et $N = {context['coeffNK']} K$. 
+               Courbe 2: $K$ évolue de la même manière mais $N = {context['coeffmaxN']}  K_{{max}}$"""
+
+
+class abstractGridDrawerMPL(abstractDrawerMPL):
+
+    def _get_nb_subplot(self, *args):
+        return 1
+
+    def create_figure(self, *args):
+        self.nb_row, self.nb_col, figsize = _get_rows_columns(self._get_nb_subplot(*args))
+        self.fig = pyplot.figure(figsize=figsize)
+
+
+class show_estimated_F(abstractGridDrawerMPL):
+
+    def _get_nb_subplot(self, X, Y, Y_components, data_trueF, rnk, varnames, xlims):
+        return len(Y_components)
+
+    def main_draw(self, X, Y, Y_components, data_trueF, rnk, varnames, xlims):
+        colors = "b" if rnk is None else overlap_colors(rnk)
+
+        varx, vary = varnames
+        xlim, ylim = xlims
+
+        x, y, zs_true = data_trueF
+        n = 1
+        for g in Y_components:
+            axe = self.fig.add_subplot(self.nb_row, self.nb_col, n, projection="3d")
+            axe.set_title("Component {}".format(g))
+            n += 1
+            axe.scatter(*X.T, Y[:, g], c=colors, marker=".", s=1, alpha=0.6)
+            z = zs_true[g]
+            axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
+            axe.set_xlim(*xlim)
+            axe.set_ylim(*ylim)
+            axe.set_xlabel(r'${}$'.format(varx))
+            axe.set_ylabel(r'${}$'.format(vary))
+
+
+
+
+
 
 
 
@@ -71,23 +212,7 @@ def schema_1D(points_true_F,ck,ckS,Ak,bk,contexte,xlims=(0,1),xtrue=None,ytest=N
         print("Saved in ", savepath)
         pyplot.close(fig)
 
-def plot_1D(values,labels,xlabels=None,title="Evolution",savepath=None):
-    rc("text", usetex=True)
-    xlabels = xlabels or list(range(len(values[0])))
-    fig = pyplot.figure()
-    axe= fig.gca()
-    for v,lab, m  in zip(values,labels,[".","+","+","+","+","+","o","o","o",",",",",",","."]):
-        axe.scatter(xlabels,v,marker=m,label=lab)
-    axe.set_yscale("log")
-    axe.set_ylim(np.array(values).min(),np.array(values).max())
-    axe.tick_params(axis="x",labelsize=7)
-    axe.legend()
-    fig.suptitle(title)
-    if savepath:
-        fig.savefig(savepath)
-        print("Saved in ",savepath)
-    pyplot.show()
-    rc("text",usetex=False)
+
 
 
 class abstractAnimation():
@@ -175,6 +300,7 @@ def _show_cluster2D(axe : pyplot.Axes,points,rnk):
         l.append(p)
     return l
 
+
 class EvolutionCluster2D(vispyAnimation):
     INTERVAL = 0.05
     AXE_TITLE = "Clusters evolution"
@@ -188,14 +314,6 @@ class EvolutionCluster2D(vispyAnimation):
         imax, _, self.K = self.rnks.shape
         super().__init__(imax)
 
-    def _colours(self,rnk):
-        """Returns colours from rnk overlapping and base colour."""
-        base_colours = cm.rainbow(np.arange(self.K)/self.K)
-        rn  = rnk.sum(axis=1)
-        c = rnk.dot(base_colours) / rn[:,None]
-        c[:,3] = (rn <= 1) * rn + (rn > 1) * 1
-        # c[:,3] = 1
-        return c
 
     def init_axe(self):
         super().init_axe()
@@ -213,7 +331,7 @@ class EvolutionCluster2D(vispyAnimation):
     def _draw(self):
         self.fig.title = "Iteration {}".format(self.current_frame)
         rnk = self.rnks[self.current_frame]
-        c = self._colours(rnk)
+        c = overlap_colors(rnk)
         self.line._markers.set_data(pos=self.points, face_color=c, edge_color=c)
         dens = self.density[self.current_frame]
         c2 = cm.coolwarm(dens / dens.max())
@@ -417,11 +535,6 @@ def _axe_histogramme(axe,values,alphas,labels,xlabel):
     stats = ["{0} $\\blacktriangleright$ Mean : {1:.2E} ; Median : {2:.2E}".format(label,mean,median)
              for mean,median,label in zip(means,medians,labels)]
 
-    s = "\n".join(stats)
-
-    f.text(0.5, -0.07*m, s, horizontalalignment='center',
-             fontsize=10, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
-                                    ec="0.5", pad=0.5, alpha=1), fontweight='bold')
 
 def histogramme(values : iter,contexte,title="Histogramm",savepath=None,alphas=None,labels=None,xlabel=""):
     error_max = max(sum(values,[]))
@@ -522,49 +635,7 @@ def show_clusters(gllim_instance,X,contexte,superpose=False,path=None,varnames=(
         return axes
 
 
-def show_estimated_F(X,Y,Y_components,data_trueF,contexte,clusters = None,savepath=None,
-                     varnames=("x1",'x2'),xlims=((0,1),(0,1)),title=""):
-    """If clusters is given, color accordingly"""
-    points_by_clusters = {}
-    if clusters is None:
-        clusters = [0] * len(X) #same cluster
-    for x,y,k in zip(X,Y,clusters):
-        p = points_by_clusters.get(k,([],[],[]))
-        p[0].append(x[0])
-        p[1].append(x[1])
-        p[2].append(y)
-        points_by_clusters[k] = p
 
-    varx ,vary = varnames
-    xlim, ylim = xlims
-
-    colors = cm.rainbow(np.linspace(0,1,len(points_by_clusters)))
-
-
-    x , y , zs_true = data_trueF
-    n = 1
-    nb_row , nb_column , figsize = _get_rows_columns(len(Y_components))
-    f = pyplot.figure(figsize=figsize)
-    for g in Y_components:
-        axe = f.add_subplot(nb_row,nb_column,n, projection="3d")
-        axe.set_title("Component {}".format(g))
-        n += 1
-        for (k, c), color in zip(points_by_clusters.items(), colors):
-            zs = [y[g] for y in c[2]]
-            axe.scatter(c[0], c[1], zs=zs, label=str(k), color=color, marker=".", s=1,alpha=0.6)
-        z = zs_true[g]
-        axe.plot_surface(x,y,z,cmap=cm.coolwarm,alpha=0.7,label="True F")
-        axe.set_xlim(*xlim)
-        axe.set_ylim(*ylim)
-        axe.set_xlabel(r'${}$'.format(varx))
-        axe.set_ylabel(r'${}$'.format(vary))
-
-    title = title + "\n" + contexte
-    f.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.15)
-    f.subplots_adjust(wspace=0.2,hspace=0.4)
-    if savepath:
-        f.savefig(savepath, bbox_inches='tight',pad_inches=0.2)
-        print("Saved in",savepath)
 
 
 

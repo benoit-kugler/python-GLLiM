@@ -6,13 +6,11 @@
 # precisions_chol : Matrice triangulaire correspondant à la decomp de Cholesky de la matrice de precisions
 # weights : Pi_k : coefficient de chaque zone
 import json
-import os
 import time
 
 import numpy as np
 import scipy.io
 
-from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import chol_loggausspdf
@@ -21,7 +19,7 @@ from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from tools import graphiques
-from tools.context import WaveFunction, HapkeGonio1468, abstractExpFunction, VoieS, HapkeContext
+from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext
 from tools.experience import DoubleLearning
 
 np.set_printoptions(precision=20,suppress=False)
@@ -95,47 +93,7 @@ def _compare_Fsym():
     print(np.abs(Ysym - Y).max())
     assert np.allclose(Ysym,Y)
 
-def plusieurs_K_N(relaunch=True,imax=20,Kfixed=False,Nfixed=False):
-    filename = "zerocov_error_estimation_Kfixed:{}_Nfixed:{}".format(Kfixed, Nfixed)
-    K_progression = lambda i: 2 + (Kfixed and imax or i) * 3
-    N_progression = lambda i: 20 + (Nfixed and imax or i ) * 30
 
-    exp = DoubleLearning(abstractExpFunction)
-    if relaunch:
-        c = abstractExpFunction(None)
-        Xtest = c.get_X_sampling(10000)
-        l = []
-        X,Y = c.get_data_training(N_progression(imax -1))
-        for i in range(imax):
-            t = time.time()
-            K = K_progression(i)
-            N = N_progression(i)
-            Xtrain = X[0:N,:]
-            Ytrain = Y[0:N,:]
-            def ck_init_function():
-                return c.get_X_uniform(K)
-            print("\nFit {i}/{imax} for K={K}, N={N}".format(i=i+1,imax=imax,K=K,N=Xtrain.shape[0]))
-            gllim = training.init_local_GMM(Xtrain, Ytrain, K, ck_init_function, K ** 2, verbose=None)
-            gllim.inversion()
-            print("Fit done in {:.2f} sec.".format(time.time() -t))
-            l.append(exp.mesures.error_estimation(gllim, Xtest))
-        l = np.array(l)
-        scipy.io.savemat(filename + ".mat",{"l":l})
-    else:
-        l = scipy.io.loadmat(filename + ".mat")["l"]
-
-    xlabels = ["{}\n{}".format(K_progression(i),N_progression(i)) for i in range(imax)]
-    labels = exp.mesures.LABELS_STUDY_ERROR
-    l = l[:,0:6]
-    labels = labels[0:6]
-    title = "Evolution de l'erreur en fonction de K et N"
-    if Kfixed:
-        title += " - K fixed"
-    if Nfixed:
-        title += " - N fixed"
-    graphiques.plot_1D(list(zip(*l)), labels,
-                       xlabels=xlabels, savepath=os.path.join("../divers", filename + ".png"),
-                       title=title)
 
 
 def simple_function():
@@ -222,7 +180,7 @@ def evolu_cluster():
     gllim = exp.load_model(300, mode="l", track_theta=True, init_local=500,
                            gamma_type=""
                                       "full", gllim_cls=dGLLiM)
-    thetas = exp.archive.load_tracked_thetas()
+    thetas, LLs = exp.archive.load_tracked_thetas()
     # exp.mesures.evolution1D(thetas)
     exp.mesures.evolution_clusters2D(thetas)
 #

@@ -6,7 +6,7 @@ import numpy as np
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import dominant_components
 from tools.graphiques import compare_retrouveY, compare_Flearned, meanx_prediction, modalx_prediction, CkAnimation, \
-    map_values, plot_1D, EvolutionCluster2D
+    map_values, simple_plot, EvolutionCluster2D
 from tools.graphiques import show_clusters, show_estimated_F, plot_density2D, plot_density1D, schema_1D, Evolution1D, \
     correlations2D, correlations1D, density_sequences1D
 from tools.regularization import best_K, global_regularization, step_by_step, global_regularization_exclusion
@@ -58,14 +58,13 @@ class Mesures():
             axes_seq = show_clusters(gllim, exp.Xtrain, exp.get_infos(), varnames=(varx, vary), xlims=(xlim, ylim))
             axes_seq.fig.show()
 
-
-    def plot_estimatedF(self,gllim,components):
+    def plot_estimatedF(self, gllim, components, savepath=None, title=None, **kwargs):
         exp = self.experience
         assert len(exp.partiel) == 2
         varx ,vary  = exp.variables_names
         xlim , ylim = exp.variables_lims
 
-        Yw,clusters_w , Yh, clusters_h , Ym = exp.reconstruct_F(gllim,exp.Xtrain)
+        Yest, rnk = exp.reconstruct_F(gllim, exp.Xtrain)
 
         N = 100
         bh , H = exp.context.Fsample(N)
@@ -74,18 +73,18 @@ class Mesures():
 
         data_trueF = (x , y , H)
 
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="estimatedF:weight")
+        title = title or self.get_title("Estimated F - Method : mean")
+        show_estimated_F(exp.Xtrain, Yest, components, data_trueF, rnk, (varx, vary), (xlim, ylim), title=title,
+                         savepath=savepath, context=exp.get_infos(), **kwargs)
 
-        show_estimated_F(exp.Xtrain, Yw, components, data_trueF, exp.get_infos(), clusters= clusters_w,
-                         varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : weights" ),
-                         savepath=exp.archive.get_path("figures",filecategorie="estimatedF:weight"))
-
-        show_estimated_F(exp.Xtrain, Yh, components, data_trueF, exp.get_infos(), clusters= clusters_h,
-                         varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : heights"),
-                         savepath=exp.archive.get_path("figures",filecategorie="estimatedF:height"))
-
-        show_estimated_F(exp.Xtrain, Ym, components, data_trueF, exp.get_infos(),
-                         varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : mean" ),
-                         savepath=exp.archive.get_path("figures",filecategorie="estimatedF:mean"))
+        # show_estimated_F(exp.Xtrain, Yh, components, data_trueF, exp.get_infos(), clusters= clusters_h,
+        #                  varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : heights"),
+        #                  savepath=exp.archive.get_path("figures",filecategorie="estimatedF:height"))
+        #
+        # show_estimated_F(exp.Xtrain, Ym, components, data_trueF, exp.get_infos(),
+        #                  varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : mean" ),
+        #                  savepath=exp.archive.get_path("figures",filecategorie="estimatedF:mean"))
 
     def plot_density_X(self, gllim : GLLiM, colorplot=True, with_modal=True,**kwargs):
         """Plot the general density of X (2D), for the given marginals (index in X)"""
@@ -225,18 +224,17 @@ class Mesures():
         X = exp.context.get_X_sampling(N)
         Y_vrai = exp.context.F(X)
 
-        Y_estweight , _ ,Y_estheight , _ , Y_estmean = exp.reconstruct_F(gllim,X)
+        Y_estmean, _ = exp.reconstruct_F(gllim, X)
 
-        error_weight = self._relative_error(Y_estweight, Y_vrai)
-        error_height = self._relative_error(Y_estheight, Y_vrai)
+
         error_mean = self._relative_error(Y_estmean,Y_vrai)
 
         if clean:
             mask_mean = exp.context.is_Y_valid(Y_estmean)
             em_clean = self._relative_error(Y_estmean[mask_mean],Y_vrai[mask_mean])
             nb_valid = mask_mean.sum() / len(mask_mean)
-            return error_weight, error_height, error_mean,  em_clean , nb_valid
-        return error_weight, error_height, error_mean
+            return error_mean, em_clean, nb_valid
+        return error_mean
 
 
     def _compute_FXs(self,Xs,ref_function):
@@ -397,7 +395,7 @@ class Mesures():
         else:
             method = exp.context.PREFERED_MODAL_PRED
 
-        _ , _ ,errorsF , errorsF_clean , validF = self._nrmse_compare_F(gllim,clean=True)
+        errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim, clean=True)
         errorsY , _ ,validY, errorsY_best = self._nrmse_retrouve_Y(gllim,method,best=True)
         errorsMe , _ , _ ,errorsMe_clean , validMe , meanretrouveY = self._nrmse_mean_prediction(gllim,clean=True)
         errorsMo , _ , _ , validMo = self._nrmse_modal_prediction(gllim,method)
@@ -506,7 +504,7 @@ class Mesures():
     def show_ck_progression(self,marginals):
         """Load theta progression and build animation"""
         exp = self.experience
-        thetas = exp.archive.load_tracked_thetas()
+        thetas, LLs = exp.archive.load_tracked_thetas()
         cks = np.array([d["c"] for d in thetas])
         varnames = exp.variables_names
         varlims = exp.variables_lims
@@ -645,14 +643,14 @@ class Mesures():
         maj_er2 = maj_e2.max(axis=1).mean()
 
         s = gllim.norm2_SigmaSGammaInv.max()
-        u = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.SigmakList[:,0,0]).max()
+        u = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
         sig = gllim.SigmakList.max()
         max_pi = gllim.pikList.max()
         print("{:.2f} s for average error estimation over {} samples".format(time.time() - ti,N))
         return ecart_sum,er_cluster,er1,er2 ,maj_er2, delta.max(), s, sig, max_pi,u , gllim.GammakList.max(), alpha.min()
 
     def evolution_approx(self,x):
-        thetas = self.experience.archive.load_tracked_thetas()
+        thetas, LLs = self.experience.archive.load_tracked_thetas()
         l = []
         for theta in thetas:
             gllim = self.experience.gllim_cls(self.experience.K,Lw = self.experience.Lw,sigma_type=self.experience.sigma_type,
@@ -662,7 +660,7 @@ class Mesures():
             gllim.inversion()
             l.append(self.error_estimation(gllim,x[None,:]))
         labels = self.LABELS_STUDY_ERROR
-        plot_1D(list(zip(*l)),labels)
+        simple_plot(list(zip(*l)), labels)
 
 
     def plot_correlations2D(self, gllim : GLLiM, Y, labels_value, method="mean",
