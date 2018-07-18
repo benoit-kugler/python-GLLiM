@@ -8,7 +8,8 @@ from PIL import Image
 from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM
-from tools import context, graphiques
+from plotting import graphiques
+from tools import context
 from tools.archive import Archive
 from tools.context import WaveFunction, InjectiveFunction, HapkeContext
 from tools.experience import DoubleLearning
@@ -18,7 +19,7 @@ LATEX_IMAGES_PATH = "../latex/images/plots"
 names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png"]
 PATHS = [os.path.join(LATEX_IMAGES_PATH, i) for i in names]
 
-RETRAIN = False
+RETRAIN = True
 
 
 def _merge_image_byside(paths, savepath):
@@ -65,7 +66,7 @@ def plot_estimeF():
 
     # merging both
     # _merge_image_byside([p1,p2],PATHS[0])
-    # graphiques.show_estimated_F.write_context(exp.get_infos(),PATHS[0])
+    # graphiques.estimated_F.write_context(exp.get_infos(),PATHS[0])
 
 
 def plot_evo_LL():
@@ -161,7 +162,7 @@ def plusieurs_K_N(imax):
                            write_context=True)
 
 
-# plot_estimeF()
-# plot_evo_LL()
-RETRAIN = False
-plusieurs_K_N(3)
+def main():
+    plot_estimeF()
+    plot_evo_LL()
+    plusieurs_K_N(50)

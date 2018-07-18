@@ -5,10 +5,6 @@ import numpy as np
 
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import dominant_components
-from tools.graphiques import compare_retrouveY, compare_Flearned, meanx_prediction, modalx_prediction, CkAnimation, \
-    map_values, simple_plot, EvolutionCluster2D
-from tools.graphiques import show_clusters, show_estimated_F, plot_density2D, plot_density1D, schema_1D, Evolution1D, \
-    correlations2D, correlations1D, density_sequences1D
 from tools.regularization import best_K, global_regularization, step_by_step, global_regularization_exclusion
 
 
@@ -40,98 +36,6 @@ class Mesures():
         """If X.shape = N,L returns L,N array"""
         return np.abs( (X - trueX) / trueX ).T
 
-    def get_title(self,title):
-        """Add contexte class name"""
-        return self.experience.context.__class__.__name__  + " - " + title
-
-    def plot_clusters(self,gllim,details_clusters=False):
-        exp = self.experience
-        assert len(exp.partiel) == 2
-        varx ,vary  = exp.variables_names
-        xlim , ylim = exp.variables_lims
-
-
-        show_clusters(gllim, exp.Xtrain, exp.get_infos(), superpose=True,
-                      path=exp.archive.get_path("figures",filecategorie="clusters"))
-
-        if details_clusters:
-            axes_seq = show_clusters(gllim, exp.Xtrain, exp.get_infos(), varnames=(varx, vary), xlims=(xlim, ylim))
-            axes_seq.fig.show()
-
-    def plot_estimatedF(self, gllim, components, savepath=None, title=None, **kwargs):
-        exp = self.experience
-        assert len(exp.partiel) == 2
-        varx ,vary  = exp.variables_names
-        xlim , ylim = exp.variables_lims
-
-        Yest, rnk = exp.reconstruct_F(gllim, exp.Xtrain)
-
-        N = 100
-        bh , H = exp.context.Fsample(N)
-        x = bh[:,0].reshape((N,N))
-        y = bh[:,1].reshape((N,N))
-
-        data_trueF = (x , y , H)
-
-        savepath = savepath or exp.archive.get_path("figures", filecategorie="estimatedF:weight")
-        title = title or self.get_title("Estimated F - Method : mean")
-        show_estimated_F(exp.Xtrain, Yest, components, data_trueF, rnk, (varx, vary), (xlim, ylim), title=title,
-                         savepath=savepath, context=exp.get_infos(), **kwargs)
-
-        # show_estimated_F(exp.Xtrain, Yh, components, data_trueF, exp.get_infos(), clusters= clusters_h,
-        #                  varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : heights"),
-        #                  savepath=exp.archive.get_path("figures",filecategorie="estimatedF:height"))
-        #
-        # show_estimated_F(exp.Xtrain, Ym, components, data_trueF, exp.get_infos(),
-        #                  varnames=(varx,vary), xlims = (xlim,ylim), title=self.get_title("Estimated F - Method : mean" ),
-        #                  savepath=exp.archive.get_path("figures",filecategorie="estimatedF:mean"))
-
-    def plot_density_X(self, gllim : GLLiM, colorplot=True, with_modal=True,**kwargs):
-        """Plot the general density of X (2D), for the given marginals (index in X)"""
-        exp = self.experience
-        nb_var = exp.partiel and len(exp.partiel) or 6
-        fs , xlims, ylims, modal_preds,varnames, titles = [],[],[],[],[],[]
-        threshold = 0.03
-        #TODO : Cas d'e densité à une varaible
-        # if type(marginals) is int:
-        #     component = self.partiel and self.partiel[marginals] or marginals
-        #     marginals = (marginals,)
-        #     filename = self.filepath_figure("density-{}".format(component)) + ".png"
-        #     title = "Marginal density of ${}$".format(self.CONTEXT_CLASS.X_VARIABLES_NAMES[component])
-        #     x_max = self.CONTEXT_CLASS.X_VARIABLES_MAX[component]
-
-        for i in range(nb_var):
-            for j in range(i + 1, nb_var):
-                componentx = exp.partiel and exp.partiel[i] or i
-                componenty = exp.partiel and exp.partiel[j] or j
-                varx , vary = exp.context.PARAMETERS[[componentx,componenty]]
-                title = "Prior density of ${},{}$".format(varx, vary)
-                xlim , ylim  = exp.context.XLIMS[[componentx , componenty]]
-
-                def density(x_points,i=i,j=j):
-                    return gllim.X_density(x_points, marginals=(i,j)), ""
-
-                modal_pred = ()
-                if with_modal:
-                    h, w, modal_pred, _ = zip(*(dominant_components(gllim.pikList,
-                                                                     gllim.ckList, gllim.GammakList)[0:30]))
-                    modal_pred = np.array(modal_pred)[:, (i,j)]
-                    modal_pred = list(zip(modal_pred,h,w))
-
-                fs.append(density)
-                xlims.append(xlim)
-                ylims.append(ylim)
-                modal_preds.append(modal_pred)
-                varnames.append((varx,vary))
-                titles.append(title)
-
-
-        filename = exp.archive.get_path("figures",filecategorie="densityX-{}".format(colorplot and "color" or "contour"))
-        main_title = "Marginal prior densities of X"
-
-        plot_density2D(fs, exp.get_infos(), xlims=xlims, ylims=ylims, main_title=main_title,
-                       titles=titles,modal_preds=modal_preds, colorplot=colorplot,
-                       filename=filename, varnames=varnames, **kwargs)
 
     def _collect_infos_density(self,density_full,title,X0_obs,i,j=None,modal_pred_full=None):
         exp = self.experience
@@ -162,79 +66,22 @@ class Mesures():
             trueX = X0_obs[[*marginals]]
         return density,xlim,ylim,modal_pred,trueX,varx,vary,title
 
-    def plot_conditionnal_density(self, gllim : GLLiM, Y0_obs, X0_obs, dim = 2,
-                                  sub_densities=0, with_modal=False, colorplot=True,
-                                  modal_threshold=0.01):
-        """marginals is the index in X.
-        Y0_obs is a matrix with one row, X0_obs is an array"""
-        exp = self.experience
-        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
-        fs , xlims, ylims, modal_preds,trueXs,varnames, titles = [],[],[],[],[],[],[]
-
-        def density_full(x_points,marginals):
-            return gllim.forward_density(Y0_obs, x_points, marginals=marginals, sub_densities=sub_densities)
-
-        modal_pred_full = None
-        if with_modal:
-            m, h , w  = gllim.modal_prediction(Y0_obs, threshold=modal_threshold)
-            modal_pred_full = m[0], h[0], w[0]
-
-        for i in range(nb_var):
-            if dim == 2:
-                for j in range(i + 1, nb_var):
-                    density, xlim, ylim, modal_pred, trueX, varx, vary, title = self._collect_infos_density(
-                        density_full,"Density of ${},{}$",X0_obs,i,j=j,modal_pred_full=modal_pred_full)
-
-                    fs.append(density)
-                    xlims.append(xlim)
-                    ylims.append(ylim)
-                    modal_preds.append(modal_pred)
-                    trueXs.append(trueX)
-                    varnames.append((varx,vary))
-                    titles.append(title)
-            else:
-                density, xlim, ylim, modal_pred, trueX, varx, vary, title = self._collect_infos_density(
-                    density_full, "Density of ${}$", X0_obs, i, j=None, modal_pred_full=modal_pred_full)
-
-                fs.append(density)
-                xlims.append(xlim)
-                modal_preds.append(modal_pred)
-                trueXs.append(trueX)
-                varnames.append((varx,))
-                titles.append(title)
-
-        main_title = "Marginal conditional densities (Modal selection : threshold {})".format(modal_threshold)
-
-        s = (X0_obs is None) and  "X unknown" or "".join(" ${0}$ : {1:.5f} ".format(vn, v) for vn, v in zip(exp.variables_names, X0_obs))
-
-        filename = exp.archive.get_path("figures",filecategorie="conditionnal_density-D{}-{}".format(dim,colorplot and "color" or "contour"))
-        if dim == 1:
-            plot_density1D(fs, exp.get_infos(), xlims=xlims,  main_title=main_title, titles=titles,
-                       modal_preds=modal_preds, trueXs=trueXs,
-                       var_description=s, filename=filename, varnames=varnames)
-        else:
-            plot_density2D(fs, exp.get_infos(), xlims=xlims, ylims=ylims, main_title=main_title, titles=titles,
-                       modal_preds=modal_preds, trueXs=trueXs, colorplot=colorplot,
-                       var_description=s, filename=filename, varnames=varnames)
-
-
-    def _nrmse_compare_F(self, gllim, N = 100000,clean=False):
+    def _nrmse_compare_F(self, gllim):
         """if clean is given, remove theoritically absurd values and returns additional nrmse"""
         exp = self.experience
-        X = exp.context.get_X_sampling(N)
+        X = exp.context.get_X_sampling(exp.Ntest)
         Y_vrai = exp.context.F(X)
 
         Y_estmean, _ = exp.reconstruct_F(gllim, X)
 
+        mask_mean = exp.context.is_Y_valid(Y_estmean)
 
-        error_mean = self._relative_error(Y_estmean,Y_vrai)
+        error_mean = self._relative_error(Y_estmean, Y_vrai)
+        em_clean = self._relative_error(Y_estmean[mask_mean], Y_vrai[mask_mean])
 
-        if clean:
-            mask_mean = exp.context.is_Y_valid(Y_estmean)
-            em_clean = self._relative_error(Y_estmean[mask_mean],Y_vrai[mask_mean])
-            nb_valid = mask_mean.sum() / len(mask_mean)
-            return error_mean, em_clean, nb_valid
-        return error_mean
+        nb_valid = mask_mean.sum() / len(mask_mean)
+        return error_mean, em_clean, nb_valid
+
 
 
     def _compute_FXs(self,Xs,ref_function):
@@ -249,67 +96,56 @@ class Mesures():
             Ys.append(Yall[debut:fin])
         return Ys
 
-    def _nrmse_retrouve_Y(self, gllim, method, ref_function=None, best=False):
-        exp = self.experience
-        ref_function = ref_function or exp.context.F
-        if type(method) is int:
-            Xs, Y, _ , nb_valid = exp.clean_modal_prediction(gllim, nb_component=method)
-            label = "Components : {}".format(method)
-        elif type(method) is float:
-            Xs, Y, _ , nb_valid = exp.clean_modal_prediction(gllim, threshold=method)
-            label = "Weight threshold : {}".format(method)
-        else:
-            raise TypeError("Int or float required for method")
-
-        Ys = self._compute_FXs(Xs,ref_function)
-        l = [self._relative_error(ysn, yn[None, :]) for ysn, yn in zip(Ys, Y)]
-        errors = [e for subl in l for e in subl]
-        if best:
-            errors_best = [np.min(subl) for subl in l]
-            return errors, label, nb_valid, errors_best
-        return errors, label , nb_valid
-
-    def _nrmse_mean_prediction(self, gllim,clean=False):
+    def _nrmse_mean_prediction(self, gllim):
         exp = self.experience
         X_predicted = gllim.predict_high_low(exp.Ytest)
         retrouveY = exp.context.F(X_predicted)
+        mask = [np.isfinite(y).all() for y in retrouveY]
+        nrmseY = self._relative_error(retrouveY[mask], exp.Ytest[mask])
         if not exp.Lw == 0:
             X_predicted = X_predicted[:, 0:-exp.Lw]
+
+        mask = exp.context.is_X_valid(X_predicted)
+        Xclean = X_predicted[mask]
+
         # Normalisation
         X_test = exp.context.normalize_X(exp.Xtest)
-        if clean:
-            mask = exp.context.is_X_valid(X_predicted)
-            Xclean = X_predicted[mask] / exp.variables_range
-            nrmseclean = self._relative_error(Xclean,X_test[mask])
-            nb_valid = mask.sum() / len(mask)
+        Xclean = exp.context.normalize_X(Xclean)
         X_predicted = exp.context.normalize_X(X_predicted)
+
+        nb_valid = mask.sum() / len(mask)
+
         nrmse = self._relative_error(X_predicted, X_test)
+        nrmseclean = self._relative_error(Xclean, X_test[mask])
 
         nrmse_by_components = self._relative_error_by_components(X_predicted, X_test)
         i = np.argmax(nrmse)  # worst prediction
 
-        nrmseY = self._relative_error(retrouveY,exp.Ytest)
-        if clean:
-            return nrmse, nrmse_by_components, exp.Xtest[i], nrmseclean , nb_valid , nrmseY
-        return nrmse, nrmse_by_components, exp.Xtest[i] , nrmseY
+        return nrmse, nrmse_by_components, exp.Xtest[i], nrmseclean, nb_valid, nrmseY
 
-    def _nrmse_modal_prediction(self, gllim, method):
+    def _nrmse_modal_prediction(self, gllim, method, ref_function=None):
         exp = self.experience
+
+        ref_function = ref_function or exp.context.F
+
         if type(method) is int:
-            X, Y, Xtest , nb_valid = exp.clean_modal_prediction(gllim, nb_component=method)
+            Xs, Y, Xtest, nb_valid = exp.clean_modal_prediction(gllim, nb_component=method)
             label = "Components : {}".format(method)
         elif type(method) is float:
-            X, Y, Xtest , nb_valid = exp.clean_modal_prediction(gllim, threshold=method)
+            Xs, Y, Xtest, nb_valid = exp.clean_modal_prediction(gllim, threshold=method)
             label = "Weight threshold : {}".format(method)
         else:
             raise TypeError("Int or float required for method")
 
+        Ys = self._compute_FXs(Xs, ref_function)
+        l = [self._relative_error(ysn, yn[None, :]) for ysn, yn in zip(Ys, Y)]
+        errorsY = [e for subl in l for e in subl]
+        errorsY_best = [np.min(subl) for subl in l]
+
         bestX = np.empty(Xtest.shape)
-        errs = []
-        for n, (xs, xtrue) in enumerate(zip(X, Xtest)):
+        for n, (xs, xtrue) in enumerate(zip(Xs, Xtest)):
             diff = (xs - xtrue)
             er = np.square(diff / exp.variables_range).sum(axis=1)
-            errs.append((np.min(er), n))
             i = np.argmin(er)
             bestX[n] = xs[i]
         # renormlisation
@@ -317,72 +153,7 @@ class Mesures():
         bestX  =exp.context.normalize_X(bestX)
         nrmse = self._relative_error(bestX, Xtest)
         worst_index =  np.argmax(nrmse) if len(nrmse) > 0 else 0 # worst prediction
-        return nrmse, label, Xtest[worst_index] , nb_valid
-
-
-    def compareF(self,gllim, N = 100000):
-        exp = self.experience
-        error, error_height, error_mean = self._nrmse_compare_F(gllim, N=N)
-
-        compare_Flearned(error, error_height, error_mean, exp.get_infos(Ntest=N), cut_tail = 2,
-                         savepath=exp.archive.get_path("figures",filecategorie="compareF"))
-
-    def plot_retrouveY(self, G : GLLiM, methods, ref_function=None):
-        exp = self.experience
-        values = []
-        labels = []
-        for m in methods:
-            errors, label , _  = self._nrmse_retrouve_Y(G,m,ref_function=ref_function)
-            values.append(errors)
-            labels.append(label)
-
-        compare_retrouveY(values, exp.get_infos(), methods=labels, cut_tail =2,
-                          savepath=exp.archive.get_path("figures",
-                                                         filecategorie="retrouveY{}".format(methods)))
-
-
-    def plot_mean_prediction(self, G):
-        exp = self.experience
-        nrmse, nrmse_by_components, worst_X , _ = self._nrmse_mean_prediction(G)
-
-        filename = exp.archive.get_path("figures",filecategorie="meanPrediction")
-
-        meanx_prediction(nrmse, exp.get_infos(),add_errors=nrmse_by_components,
-                         add_labels=exp.variables_names,savepath=filename, cut_tail=5)
-        return worst_X
-
-
-    def plot_modal_prediction(self, G : GLLiM, methods):
-        """Find the best prediction among nb_component given and plot NRMSE
-        methods is list of int or float,
-        int being interpreted as a number of components and float as a weight threshold"""
-        exp = self.experience
-        errors = []
-        labels = []
-        worst_X = None
-        for m in methods:
-            nrmse, label, worst_X , _ = self._nrmse_modal_prediction(G,m)
-            errors.append(nrmse)
-            labels.append(label)
-
-
-        filename = exp.archive.get_path("figures",filecategorie="modalPrediction_meth:{}".format(methods))
-        modalx_prediction(errors, labels, exp.get_infos(), savepath=filename, cut_tail=5)
-        return worst_X
-
-
-    def plot_mesures(self, gllim):
-        """Renormalize test data to avoid border issue, and runs severals tests"""
-        exp = self.experience
-        methods = [1,2,0.05,0.01]
-
-        exp.centre_data_test()
-
-        self.plot_retrouveY(gllim,methods)
-        self.compareF(gllim)
-        self.plot_modal_prediction(gllim, methods)
-        self.plot_mean_prediction(gllim)
-
+        return nrmse, label, Xtest[worst_index], nb_valid, errorsY, errorsY_best
 
     def run_mesures(self, gllim):
         """Runs severals tests. It's advised to center data before. Returns results (mean, median, std)"""
@@ -395,10 +166,9 @@ class Mesures():
         else:
             method = exp.context.PREFERED_MODAL_PRED
 
-        errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim, clean=True)
-        errorsY , _ ,validY, errorsY_best = self._nrmse_retrouve_Y(gllim,method,best=True)
-        errorsMe , _ , _ ,errorsMe_clean , validMe , meanretrouveY = self._nrmse_mean_prediction(gllim,clean=True)
-        errorsMo , _ , _ , validMo = self._nrmse_modal_prediction(gllim,method)
+        errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim)
+        errorsMe, _, _, errorsMe_clean, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
+        errorsMo, _, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllim, method)
 
         return dict(compareF=sumup(errorsF),meanPred=sumup(errorsMe),
                     modalPred=sumup(errorsMo),retrouveY=sumup(errorsY),
@@ -406,8 +176,6 @@ class Mesures():
                     retrouveYbest = sumup(errorsY_best), validPreds = (validMe,validMo),
                     retrouveYmean = sumup(meanretrouveY)
                     )
-
-
 
     def plot_modal_prediction_parallel(self, gllims : [GLLiM], Y, Xtest, methods):
         """Same as plot_modal_prediction, but with one gllim instance per Y"""
@@ -846,3 +614,201 @@ class Mesures():
                    savepath=self.experience.archive.get_path("figures", filecategorie="map-{}".format(varname)))
 
 
+class VisualisationMesures(Mesures):
+
+    def __init__(self, experience):
+        super().__init__(experience)
+        import plotting.graphiques as G
+        self.G = G
+
+    def get_title(self, title):
+        """Add contexte class name"""
+        return self.experience.context.__class__.__name__ + " - " + title
+
+    def plot_clusters(self, gllim, details_clusters=False, indexes=(0, 1)):
+        """If details_clusters plots a sequence of K clusters. Else shows the superposition.
+        Uses indexes of X"""
+        exp = self.experience
+        varnames = exp.variables_names[indexes]
+        varlims = exp.variables_lims[indexes]
+        _, rnk = gllim.predict_cluster(exp.Xtrain)
+        X = exp.Xtrain[indexes]
+
+        if details_clusters:
+            self.G.clusters_one_by_one(X, rnk, gllim.ckList, varnames, varlims, context=exp.get_infos(),
+                                       draw_context=True,
+                                       savepath=exp.archive.get_path("figures", filecategorie="clusters"))
+        else:
+            self.G.clusters(X, rnk, gllim.ckList, varnames, varlims, context=exp.get_infos(), draw_context=True,
+                            savepath=exp.archive.get_path("figures", filecategorie="clusters"))
+
+    def plot_estimatedF(self, gllim, components, savepath=None, title=None, **kwargs):
+        exp = self.experience
+        assert len(exp.partiel) == 2
+
+        Yest, rnk = exp.reconstruct_F(gllim, exp.Xtrain)
+
+        N = 100
+        bh, H = exp.context.Fsample(N)
+        x = bh[:, 0].reshape((N, N))
+        y = bh[:, 1].reshape((N, N))
+
+        data_trueF = (x, y, H)
+
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="estimatedF:weight")
+        title = title or self.get_title("Estimated F - Method : mean")
+        self.G.estimated_F(exp.Xtrain, Yest, components, data_trueF, rnk, exp.variables_names, exp.variables_lims,
+                           title=title,
+                           savepath=savepath, context=exp.get_infos(), **kwargs)
+
+    def _collect_plot_density2D(self, density_full, base_title, trueX, modal_pred_full, filename, **kwargs):
+        exp = self.experience
+        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
+        graph_datas = []
+
+        for i in range(nb_var):
+            for j in range(i + 1, nb_var):
+                density, xlim, ylim, modal_pred, trueXij, varx, vary, title = \
+                    self._collect_infos_density(density_full, base_title, trueX, i, j=j,
+                                                modal_pred_full=modal_pred_full)
+                graph_datas.append((density, xlim, ylim, modal_pred, trueXij, (varx, vary), title))
+        fs, xlims, ylims, modal_preds, trueXs, varnames, titles = zip(*graph_datas)
+
+        varlims = zip(xlims, ylims)
+        colorplot = kwargs.pop("colorplot", False)
+        var_description = kwargs.pop("var_description", "")
+        title = kwargs.pop("main_title", "")
+        self.G.plot_density2D(fs, varlims, varnames, titles, modal_preds, trueXs, colorplot,
+                              var_description, context=exp.get_infos(), title=title, savepath=filename, **kwargs)
+
+    def _collect_plot_density1D(self, density_full, base_title, trueX, modal_pred_full, filename, **kwargs):
+        exp = self.experience
+        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
+        graph_datas = []
+
+        for i in range(nb_var):
+            density, xlim, ylim, modal_pred, trueXi, varx, vary, title = \
+                self._collect_infos_density(density_full, base_title, trueX, i, j=None, modal_pred_full=modal_pred_full)
+            graph_datas.append((density, xlim, ylim, modal_pred, trueXi, (varx, vary), title))
+        fs, xlims, ylims, modal_preds, trueXs, varnames, titles = zip(*graph_datas)
+
+        self.G.plot_density1D(fs, exp.get_infos(), xlims=xlims,
+                              titles=titles, modal_preds=modal_preds, trueXs=trueXs,
+                              filename=filename, varnames=varnames, **kwargs)
+
+    def plot_density_X(self, gllim: GLLiM, colorplot=True, with_modal=True):
+        """Plot the general density of X (2D), for the given marginals (index in X)"""
+        exp = self.experience
+
+        def density_full(x_points, marginals):
+            return gllim.X_density(x_points, marginals=marginals), None
+
+        base_title = "Prior density of ${},{}$"
+        modal_pred_full = None
+        if with_modal:
+            h, w, c, _ = zip(*(dominant_components(gllim.pikList,
+                                                   gllim.ckList, gllim.GammakList)[0:30]))
+            modal_pred_full = np.array(c), np.array(w), np.array(h)
+
+        filename = exp.archive.get_path("figures",
+                                        filecategorie="densityX-{}".format(colorplot and "color" or "contour"))
+        main_title = "Marginal prior densities of X"
+
+        self._collect_plot_density2D(density_full, base_title, None, modal_pred_full, filename,
+                                     main_title=main_title, colorplot=colorplot)
+
+    def plot_conditionnal_density(self, gllim: GLLiM, Y0_obs, X0_obs, dim=2,
+                                  sub_densities=0, with_modal=False, colorplot=True,
+                                  modal_threshold=0.01):
+        """marginals is the index in X.
+        Y0_obs is a matrix with one row, X0_obs is an array"""
+        exp = self.experience
+
+        def density_full(x_points, marginals):
+            return gllim.forward_density(Y0_obs, x_points, marginals=marginals, sub_densities=sub_densities)
+
+        modal_pred_full = None
+        if with_modal:
+            m, h, w = gllim.modal_prediction(Y0_obs, threshold=modal_threshold)
+            modal_pred_full = m[0], h[0], w[0]
+
+        filename = exp.archive.get_path("figures", filecategorie="conditionnal_density-D{}-{}".format(dim,
+                                                                                                      colorplot and "color" or "contour"))
+
+        main_title = "Marginal conditional densities (Modal selection : threshold {})".format(modal_threshold)
+
+        s = (X0_obs is None) and "X unknown" or "".join(
+            " ${0}$ : {1:.5f} ".format(vn, v) for vn, v in zip(exp.variables_names, X0_obs))
+
+        if dim == 2:
+            base_title = "Density of ${},{}$"
+            self._collect_plot_density2D(density_full, base_title, X0_obs, modal_pred_full, filename,
+                                         main_title=main_title, colorplot=colorplot, var_description=s,
+                                         draw_context=True)
+
+        elif dim == 1:
+            base_title = "Density of ${}$"
+            self._collect_plot_density1D(density_full, base_title, X0_obs, modal_pred_full, filename,
+                                         main_title=main_title, var_description=s)
+        else:
+            raise ValueError("Unknown dimension. Must be one 1 or 2")
+
+    def plot_compareF(self, gllim):
+        exp = self.experience
+        nrmse, nrmse_clean, nb_valid = self._nrmse_compare_F(gllim)
+
+        self.G.hist_Flearned([nrmse], 2, None, context=exp.get_infos(), draw_context=True,
+                             savepath=exp.archive.get_path("figures", filecategorie="compareF"))
+
+    def plot_mean_prediction(self, G):
+        exp = self.experience
+        nrmse, nrmse_by_components, _, nrmseclean, nb_valid, nrmseY = self._nrmse_mean_prediction(G)
+
+        errors = np.array([nrmse] + nrmse_by_components)
+        labels = ["Vector error"] + list(exp.variables_names)
+
+        self.G.hist_meanPrediction(errors, 5, labels, context=exp.get_infos(), draw_context=True,
+                                   savepath=exp.archive.get_path("figures", filecategorie="meanPrediction"))
+
+        self.G.hist_retrouveYmean([nrmseY], 5, None, context=exp.get_infos(), draw_context=True,
+                                  savepath=exp.archive.get_path("figures", filecategorie="retrouveYmean"))
+
+    def plot_modal_prediction(self, G: GLLiM, methods, ref_function=None):
+        """Find the best prediction among nb_component given and plot NRMSE for x prediction and y compatibility
+        methods is list of int or float,
+        int being interpreted as a number of components and float as a weight threshold"""
+        exp = self.experience
+        values_X = []
+        values_Y = []
+        values_Yb = []
+        labels = []
+        for m in methods:
+            errorsMo, label, _, _, errorsY, errorsY_best = self._nrmse_modal_prediction(G, m, ref_function=ref_function)
+            values_X.append(errorsMo)
+            values_Y.append(errorsY)
+            values_Yb.append(errorsY_best)
+            labels.append(label)
+
+        self.G.hist_modalPrediction(values_X, 2, labels, context=exp.get_infos(), draw_context=True,
+                                    savepath=exp.archive.get_path("figures",
+                                                                  filecategorie="modalPrediction_meth:{}".format(
+                                                                      methods)))
+
+        self.G.hist_retrouveY(values_Y, 2, labels, context=exp.get_infos(), draw_context=True,
+                              savepath=exp.archive.get_path("figures",
+                                                            filecategorie="retrouveY{}".format(methods)))
+
+        self.G.hist_retrouveYbest(values_Yb, 2, labels, context=exp.get_infos(), draw_context=True,
+                                  savepath=exp.archive.get_path("figures",
+                                                                filecategorie="retrouveYbest{}".format(methods)))
+
+    def plot_mesures(self, gllim):
+        """Renormalize test data to avoid border issue, and runs severals tests"""
+        exp = self.experience
+        methods = [1, 2, 0.05, 0.01]
+
+        exp.centre_data_test()
+
+        self.plot_compareF(gllim)
+        self.plot_mean_prediction(gllim)
+        self.plot_modal_prediction(gllim, methods)

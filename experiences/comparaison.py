@@ -32,10 +32,6 @@ ALGOS_exps = [
      "init_local": 500, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
-     "init_local": 500, "sigma_type": "full", "gamma_type": "full"},
-    {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
     {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
     {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
@@ -58,7 +54,7 @@ ALGOS_exps = [
 
 
 GENERATION_exps = [
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 80, "N": 5000,
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 50, "N": 500,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
@@ -86,16 +82,35 @@ MODAL_exps = [
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
 ]
 
+LOGISTIQUE_exps = [
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+     "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
+    {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+     "init_local": 200, "sigma_type": "full", "gamma_type": "full"}
+]
+
+NOISES_exps = [
+    {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 50000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 1000,
+     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+]
 
 
 ALGOS = ["nNG","nNdG","nNjG","NG","NdG","NjG"]
 GENERATION = ["random","latin","sobol"]
-DIMENSION = ["gllim"]
+DIMENSION = LOGISTIQUE = MODAL = ["gllim"]
+NOISES = ["no", "10", "50"]
 
 M_E_T = {"ALGOS":(ALGOS,ALGOS_exps,"algos.tex"),
          "GENERATION":(GENERATION,GENERATION_exps,"generation.tex"),
          "DIMENSION": (DIMENSION, DIMENSION_exps, "dimension.tex"),
-         "MODAL": (["gllim"], MODAL_exps, "modal.tex")}
+         "MODAL": (MODAL, MODAL_exps, "modal.tex"),
+         "LOGISTIQUE": (LOGISTIQUE, LOGISTIQUE_exps, "logistique.tex"),
+         "NOISES": (NOISES, NOISES_exps, "noises.tex"),
+         }
 """Methodes, experience , template for possible categories"""
 
 
@@ -103,6 +118,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     """If Xtest and Ytest are given, use instead of exp data.
     Useful to fix data across severals exp"""
     print("  Starting {} ...".format(gllim_cls.__name__))
+    ti = time.time()
     try:
         exp.load_data(regenere_data=redata, with_noise=noise, N=exp_params["N"], method=method)
         gllim1 = exp.load_model(exp_params["K"], mode=retrain and "r" or "l", init_local=exp_params["init_local"],
@@ -119,14 +135,14 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     except AssertionError as e:
         print("\nTraining failed ! {}".format(e))
         return None
-
+    print("  Model fitted or loaded in {:.3f} s".format(time.time() - ti))
     ti = time.time()
     if Xtest is not None:
         exp.Xtest, exp.Ytest = Xtest, Ytest
     else:
         exp.centre_data_test()
     m = exp.mesures.run_mesures(gllim1)  # warning change Xtest,Ytest
-    print("  Mesures done in {:.3f} s".format(time.time() - ti))
+    print("  Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
     return m
 
 class abstractMeasures():
@@ -212,6 +228,25 @@ class ModalMeasure(abstractMeasures):
 
     def _dic_mesures(self, i, exp, exp_params, t):
         dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)}
+        return dic
+
+
+class LogistiqueMeasure(abstractMeasures):
+    CATEGORIE = "LOGISTIQUE"
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        return dic
+
+
+class NoisesMeasure(abstractMeasures):
+    CATEGORIE = "NOISES"
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {}
+        dic["no"] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)
+        dic["10"] = _load_train_gllim(i, GLLiM, exp, exp_params, 10, "sobol", t, t)
+        dic["50"] = _load_train_gllim(i, GLLiM, exp, exp_params, 50, "sobol", t, t)
         return dic
 
 
@@ -381,13 +416,13 @@ class ModalLatexWriter(abstractLatexWriter):
 def main():
     print("Launching tests...\n")
     # AlgosMeasure.run(True,True)
-    # GenerationMeasure.run(True,True)
+    GenerationMeasure.run([True, False, False], True)
     # DimensionMeasure.run(True,True)
     # ModalMeasure.run(True,True)
     # AlgosLatexWriter.render()
-    # GenerationLatexWriter.render()
+    GenerationLatexWriter.render()
     # DimensionLatexWriter.render()
-    ModalLatexWriter.render()
+    # ModalLatexWriter.render()
 
 if __name__ == '__main__':
     main()

@@ -2,6 +2,7 @@ import PIL
 import matplotlib
 import numpy as np
 from cartopy import crs
+from matplotlib.figure import Figure
 
 matplotlib.use("Qt5Agg")
 
@@ -9,8 +10,7 @@ from matplotlib import cm, ticker, transforms, rc
 from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
 
-from tools.axes_seq import AxesSequence, SubplotsSequence, vispyAnimation
-
+from plotting.axes_seq import AxesSequence, SubplotsSequence, vispyAnimation
 
 
 
@@ -27,7 +27,7 @@ def _get_rows_columns(N,coeff_row = 5, coeff_column=5):
     return nb_row, nb_column, figsize
 
 
-def overlap_colors(rnk):
+def overlap_colors(rnk, with_base=False):
     """Mixes base colours according to cluster importance (given by rnk).
     rnk shape : (N,K)"""
     _, K = rnk.shape
@@ -35,6 +35,8 @@ def overlap_colors(rnk):
     rn = rnk.sum(axis=1)
     c = rnk.dot(base_colours) / rn[:, None]
     c[:, 3] = (rn <= 1) * rn + (rn > 1) * 1
+    if with_base:
+        return c, base_colours
     return c
 
 
@@ -42,14 +44,17 @@ class abstractDrawerMPL():
     FIGURE_TITLE_BOX = dict(boxstyle="round", facecolor='#D8D8D8',
                             ec="0.5", pad=0.5, alpha=1)
 
-    Y_TITLE_BOX = 1.4
+    Y_TITLE_BOX_WITH_CONTEXT = 1.2
+    Y_TITLE_BOX_WITHOUT_CONTEXT = 1.05
+    fig: Figure
 
     def __init__(self, *args, title="", savepath=None, context=None, draw_context=False, write_context=False):
         self.create_figure(*args)
         print("Drawing...")
-        self.main_draw(*args)
 
         self.set_title(title, context, draw_context)
+        self.main_draw(*args)
+
 
         if write_context:
             self.write_context(context, savepath)
@@ -67,9 +72,8 @@ class abstractDrawerMPL():
         context = self._format_context(context) if context is not None else ""
         if draw_context:
             title = title + "\n" + context
-        else:
-            self.Y_TITLE_BOX = 0.95
-        self.fig.suptitle(title, bbox=self.FIGURE_TITLE_BOX, y=self.Y_TITLE_BOX)
+        y = self.Y_TITLE_BOX_WITH_CONTEXT if draw_context else self.Y_TITLE_BOX_WITHOUT_CONTEXT
+        self.fig.suptitle(title, bbox=self.FIGURE_TITLE_BOX, y=y)
 
     @staticmethod
     def _format_context(context):
@@ -82,8 +86,7 @@ class abstractDrawerMPL():
                 Partial : {partiel} ;  Method : {method} ; Added training : {added}. 
         Estimator $\\rightarrow$ Class : {gllim_class} ; Second learning : {para}.
         Constraints $\\rightarrow$ $\Sigma$ : {sigma_type} ; $\Gamma$  : {gamma_type}. 
-        Mixture $\\rightarrow$ $K={K}$ ; $L_{{w}}$={Lw} ; Init with local cluster : {init_local}  
-        """
+        Mixture $\\rightarrow$ $K={K}$ ; $L_{{w}}$={Lw} ; Init with local cluster : {init_local}"""
         return s.format(**context)
 
     @classmethod
@@ -95,6 +98,22 @@ class abstractDrawerMPL():
     def save(self, savepath):
         self.fig.savefig(savepath, bbox_inches='tight', pad_inches=0.2)
         print("Saved in", savepath)
+        pyplot.close(self.fig)
+
+
+class clusters(abstractDrawerMPL):
+
+    def main_draw(self, X, rnk, ck, varnames, xlims):
+        colors, base_colors = overlap_colors(rnk, with_base=True)
+        varx, vary = varnames
+        xlim, ylim = xlims
+        axe = self.fig.gca()
+        axe.scatter(*X.T, c=colors, alpha=0.5, marker=".")
+        axe.scatter(*ck.T, s=50, c=base_colors, marker="o")
+        axe.set_xlim(*xlim)
+        axe.set_ylim(*ylim)
+        axe.set_xlabel(r'${}$'.format(varx))
+        axe.set_ylabel(r'${}$'.format(vary))
 
 
 class simple_plot(abstractDrawerMPL):
@@ -124,33 +143,52 @@ class plusieursKN(simple_plot):
                Courbe 2: $K$ évolue de la même manière mais $N = {context['coeffmaxN']}  K_{{max}}$"""
 
 
+### --------------- Plot de plusieurs subplots sur une grille ----------------- ###
+
 class abstractGridDrawerMPL(abstractDrawerMPL):
+    """Plots severals graphs on the same figure, with shared context."""
+
+    SIZE_ROW = 5
+    SIZE_COLUMN = 5
+
+    AXES_3D = False
 
     def _get_nb_subplot(self, *args):
         return 1
 
     def create_figure(self, *args):
-        self.nb_row, self.nb_col, figsize = _get_rows_columns(self._get_nb_subplot(*args))
+        self.nb_row, self.nb_column, figsize = _get_rows_columns(self._get_nb_subplot(*args),
+                                                                 coeff_row=self.SIZE_ROW, coeff_column=self.SIZE_COLUMN)
         self.fig = pyplot.figure(figsize=figsize)
 
+    def save(self, savepath):
+        self.fig.tight_layout(rect=[0.2, 0, 1, 1])
+        super().save(savepath)
 
-class show_estimated_F(abstractGridDrawerMPL):
+    def get_axes(self):
+        n = 1
+        projection = "3d" if self.AXES_3D else None
+        while True:
+            axe = self.fig.add_subplot(self.nb_row, self.nb_column, n, projection=projection)
+            n += 1
+            yield axe
 
-    def _get_nb_subplot(self, X, Y, Y_components, data_trueF, rnk, varnames, xlims):
+
+class estimated_F(abstractGridDrawerMPL):
+    AXES_3D = True
+
+    def _get_nb_subplot(self, X, Y, Y_components, data_trueF, rnk, varnames, varlims):
         return len(Y_components)
 
-    def main_draw(self, X, Y, Y_components, data_trueF, rnk, varnames, xlims):
+    def main_draw(self, X, Y, Y_components, data_trueF, rnk, varnames, varlims):
         colors = "b" if rnk is None else overlap_colors(rnk)
 
         varx, vary = varnames
-        xlim, ylim = xlims
+        xlim, ylim = varlims
 
         x, y, zs_true = data_trueF
-        n = 1
-        for g in Y_components:
-            axe = self.fig.add_subplot(self.nb_row, self.nb_col, n, projection="3d")
+        for g, axe in zip(Y_components, self.get_axes()):
             axe.set_title("Component {}".format(g))
-            n += 1
             axe.scatter(*X.T, Y[:, g], c=colors, marker=".", s=1, alpha=0.6)
             z = zs_true[g]
             axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
@@ -160,11 +198,235 @@ class show_estimated_F(abstractGridDrawerMPL):
             axe.set_ylabel(r'${}$'.format(vary))
 
 
+class plot_density2D(abstractGridDrawerMPL):
+    RESOLUTION = 200
+    SIZE_COLUMN = 5
+    SIZE_ROW = 3
+
+    def _get_nb_subplot(self, fs, varlims, varnames, titles, modal_preds, trueXs, colorplot,
+                        var_description):
+        return len(fs)
+
+    def main_draw(self, fs, varlims, varnames, titles, modal_preds, trueXs, colorplot,
+                  var_description):
+
+        for f, (xlim, ylim), modal_pred, truex, varname, title, axe in zip(fs, varlims,
+                                                                           modal_preds, trueXs, varnames, titles,
+                                                                           self.get_axes()):
+            x, y = np.meshgrid(np.linspace(*xlim, self.RESOLUTION, dtype=float),
+                               np.linspace(*ylim, self.RESOLUTION, dtype=float))
+            variable = np.array([x.flatten(), y.flatten()]).T
+            print("Comuting of density...")
+            z, _ = f(variable)
+            print("Done.")
+            z = z.reshape((self.RESOLUTION, self.RESOLUTION))
+            _axe_density2D(self.fig, axe, x, y, z, colorplot, xlim, ylim, varname,
+                           modal_pred, truex, title)
+
+        if len(fs) > 0:
+            handles, labels = axe.get_legend_handles_labels()
+            self.fig.legend(handles, labels, loc="center left")
+
+        self.fig.text(0.5, -0.1, var_description, horizontalalignment='center',
+                      fontsize=12, bbox=self.FIGURE_TITLE_BOX, fontweight='bold')
 
 
+### ----------- Sequence interactive ------------- ###
+
+class abstractSequence(abstractDrawerMPL):
+    """Switchable sequence of plots"""
+
+    def create_figure(self, *args):
+        self.axes = AxesSequence()
+        self.fig = self.axes.fig()
 
 
+class clusters_one_by_one(abstractSequence):
 
+    def main_draw(self, X, rnk, ck, varnames, varlims):
+        varx, vary = varnames
+        xlim, ylim = varlims
+        _, K = rnk.shape
+        colors = cm.rainbow(np.arange(K) / K)
+        for k, base_c, axe, cc in zip(range(K), colors, self.axes, ck):
+            c = [(*base_c[0:3], p) for p in rnk[:, k]]
+            axe.scatter(*X.T, label=str(k), c=c)
+            axe.scatter(*cc, s=50, color=base_c, marker="+", label=f"c_{ {k} }")
+            axe.legend()
+            axe.set_xlim(*xlim)
+            axe.set_ylim(*ylim)
+            axe.set_xlabel(r'${}$'.format(varx))
+            axe.set_ylabel(r'${}$'.format(vary))
+
+        self.axes.show_first()
+        self.fig.show()
+
+
+### ------------ Histograms --------------- ###
+
+class abstractHistogram(abstractDrawerMPL):
+    TITLE = "Histogram"
+    XLABEL = "x"
+    LABELS = None
+
+    def set_title(self, title, context, draw_context):
+        super().set_title(self.TITLE, context, draw_context)
+
+    def main_draw(self, values, cut_tail, labels):
+        xlabel = self.XLABEL
+        if cut_tail:
+            xlabel += " - Cut tail : {}%".format(cut_tail)
+            values = [sorted(error)[:-len(error) * cut_tail // 100] for error in values]
+
+        error_max = max(sum(values, []))
+        bins = np.linspace(0, error_max, 1000)
+        axe = self.fig.gca()
+        m = len(values)
+        alphas = [0.5 + i / (2 * m) for i in range(m)]
+        labels = labels or self.LABELS
+        for serie, alpha, label in zip(values, alphas, labels):
+            axe.hist(serie, bins, alpha=alpha, label=label)
+        axe.legend()
+        axe.set_ylabel("Test points number")
+        axe.set_xlabel(xlabel)
+
+        means = [np.mean(s) for s in values]
+        medians = [np.median(s) for s in values]
+
+        stats = ["{0} $\\rightarrow$ Mean : {1:.2E} ; Median : {2:.2E}".format(label, mean, median)
+                 for mean, median, label in zip(means, medians, labels)]
+        s = "\n".join(stats)
+
+        self.fig.text(0.5, -0.07 * m, s, horizontalalignment='center',
+                      fontsize=10, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
+                                             ec="0.5", pad=0.5, alpha=1), fontweight='bold')
+
+
+class hist_Flearned(abstractHistogram):
+    TITLE = "Comparaison beetween $F$ and it's estimation"
+    XLABEL = _latex_relative_error("F_{est}(x)", "F(x)")
+    LABELS = ["Mean estimation"]
+
+
+class hist_retrouveYmean(abstractHistogram):
+    TITLE = """Comparaison beetween $Y_{obs}$ and $F(x_{pred})$ 
+         for mean prediction"""
+    XLABEL = _latex_relative_error("F(x_{pred})", "Y")
+    LABELS = ["Cohérence (prédiction par la moyenne)"]
+
+
+class hist_retrouveY(abstractHistogram):
+    TITLE = """Comparaison beetween $Y_{obs}$ and $F(x_{pred})$ 
+         (several $x_{pred}$ are found for each $y$)"""
+    XLABEL = _latex_relative_error("F(x_{pred})", "Y")
+
+
+class hist_retrouveYbest(abstractHistogram):
+    TITLE = """Comparaison beetween $Y_{obs}$ and $F(x_{pred})$ 
+         (best $x_{pred}$ for each $y$)"""
+    XLABEL = _latex_relative_error("F(x_{pred})", "Y")
+
+
+class hist_modalPrediction(abstractHistogram):
+    TITLE = "Comparaison beetween X and the best modal prediction"
+    XLABEL = _latex_relative_error("X_{best}", "X")
+
+
+class hist_meanPrediction(abstractHistogram):
+    TITLE = "Comparaison beetween X and it's mean prediction"
+    XLABEL = _latex_relative_error("X_{est}", "X")
+
+
+# def compare_Flearned(error_weight,error_height,error_mean,contexte,cut_tail = None,savepath=None):
+#     title = "Comparaison beetween $F$ and it's estimation"
+#     xlabel = _latex_relative_error("F_{est}(x)","F(x)")
+#     if cut_tail:
+#         xlabel +=  " - Cut tail : {}%".format(cut_tail)
+#         error_weight = sorted(error_weight)[:-len(error_weight) * cut_tail // 100]
+#         error_height = sorted(error_height)[:-len(error_height) * cut_tail // 100]
+#         error_mean = sorted(error_mean)[:-len(error_mean) * cut_tail // 100]
+#     values = (error_weight,error_height,error_mean)
+#     alphas = (0.5,0.4,0.3)
+#     labels = ("Max weight","Max height","Mean")
+#     histogramme(values,contexte,title=title,savepath=savepath,
+#                 labels=labels,xlabel=xlabel,alphas=alphas)
+#
+# def compare_retrouveY(values,contexte,methods,cut_tail = None,savepath=None):
+#     title = """Comparaison beetween $Y_{obs}$ and $F(x_{pred})$
+#         (several $x_{pred}$ are found for each $y$)"""
+#     xlabel = _latex_relative_error("F(x_{pred})","Y")
+#     if cut_tail:
+#         xlabel += " - Cut tail : {}%".format(cut_tail)
+#         values = [sorted(error)[:-len(error) * cut_tail // 100] for error in values]
+#     histogramme(values, contexte, title=title,savepath=savepath,labels=methods,xlabel=xlabel)
+#
+#
+# def modalx_prediction(values,methods,contexte,savepath=None,cut_tail = None):
+#     xlabel =
+#     N = len(values)
+#     alphas = [0.5 + i/ (2* N) for i in range(N)]
+#     if cut_tail:
+#         xlabel += " - Cut tail : {}%".format(cut_tail)
+#         values = [ sorted(error)[:-len(error) * cut_tail // 100] for error in values]
+#     histogramme(values,contexte,title=title,savepath=savepath,
+#                 alphas=alphas,labels=methods,xlabel=xlabel)
+#
+# def meanx_prediction(error,contexte,add_errors=None,add_labels=None,savepath=None,cut_tail=None):
+#     title = "Comparaison beetween X and it's mean prediction"
+#     xlabel = _latex_relative_error("X_{est}", "X")
+#     if cut_tail:
+#         xlabel += " - Cut tail : {}%".format(cut_tail)
+#         error = sorted(error)[:-len(error) * cut_tail // 100]
+#     values = [error]
+#     labels = ["Vector error"]
+#     if add_errors is not None:
+#         if cut_tail:
+#             add = (sorted(err)[:-len(err) * cut_tail // 100] for err in add_errors)
+#         else:
+#             add = (err for err in add_errors)
+#         values.extend(add)
+#         labels.extend(["$"+l+"$" for l in add_labels])
+#     histogramme(values,contexte,title=title,savepath=savepath,labels=labels,xlabel=xlabel)
+#
+#
+
+
+def histogramme(values: iter, contexte, title="Histogramm", savepath=None, alphas=None, labels=None, xlabel=""):
+    error_max = max(sum(values, []))
+    bins = np.linspace(0, error_max, 1000)
+    f = pyplot.figure()
+    axe = f.gca()
+    m = len(values)
+    if alphas is None:
+        alphas = [0.5] * m
+    if labels is None:
+        labels = [str(i) for i in range(m)]
+    for serie, alpha, label in zip(values, alphas, labels):
+        axe.hist(serie, bins, alpha=alpha, label=label)
+    axe.legend()
+    axe.set_ylabel("Test points number")
+    axe.set_xlabel(xlabel)
+    title = title + "\n" + contexte
+    f.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.3)
+
+    means = [np.mean(s) for s in values]
+    medians = [np.median(s) for s in values]
+
+    stats = ["{0} $\\rightarrow$ Mean : {1:.2E} ; Median : {2:.2E}".format(label, mean, median)
+             for mean, median, label in zip(means, medians, labels)]
+    s = "\n".join(stats)
+
+    f.text(0.5, -0.07 * m, s, horizontalalignment='center',
+           fontsize=10, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
+                                  ec="0.5", pad=0.5, alpha=1), fontweight='bold')
+
+    if savepath:
+        f.savefig(savepath, bbox_inches='tight')
+        print("Saved in", savepath)
+        pyplot.close(f)
+
+
+##### ----------------- TODO A refactor en classe  --------------- #################
 
 def schema_1D(points_true_F,ck,ckS,Ak,bk,contexte,xlims=(0,1),xtrue=None,ytest=None,modal_preds=(),
               clusters=None,main_title="Schema",savepath=None):
@@ -287,18 +549,6 @@ class Evolution1D(abstractAnimation):
         return artists
 
 
-
-def _show_cluster2D(axe : pyplot.Axes,points,rnk):
-    """Color points with opacity acording to probability rnk"""
-    N, K = rnk.shape
-    colors = cm.rainbow(np.arange(K) / K)
-    l = []
-    for k in range(K):  #cluster by cluster
-        base_c = colors[k]
-        p = axe.scatter(points[:,0],points[:,1],s=5,
-                        c= [ [*base_c[0:3] , r ] for r in rnk[:,k] ])
-        l.append(p)
-    return l
 
 
 class EvolutionCluster2D(vispyAnimation):
@@ -424,151 +674,10 @@ def _axe_density2D(fig,axe,x,y,z,colorplot,xlims,ylims,
 
     axe.set_title(title)
 
-def plot_density2D(fs,contexte,xlims=((0,1),),ylims=((0,1),),resolution=200,main_title="Density 2D",titles=("",),
-                   modal_preds=((),),trueXs=None, colorplot=False,
-                   var_description = "",filename=None,varnames=(("x","y"),)):
-    trueXs = trueXs or [None] * len(fs)
-    nb_row, nb_column, figsize = _get_rows_columns(len(fs),coeff_column=5,coeff_row=4)
-    fig = pyplot.figure(figsize=figsize)
-    n = 1
-    for f , xlim, ylim, modal_pred, truex, varname, title in zip(fs,xlims,ylims,
-                                                          modal_preds,trueXs,varnames, titles):
-        x, y = np.meshgrid(np.linspace(*xlim, resolution,dtype=float),
-                           np.linspace(*ylim, resolution,dtype=float))
-        variable = np.array([x.flatten(), y.flatten()]).T
-        print("Comuting of density", n, "...")
-        z , _ = f(variable)
-        print("Done.")
-        z = z.reshape((resolution,resolution))
-        axe = fig.add_subplot(nb_row,nb_column,n)
-        _axe_density2D(fig,axe,x,y,z,colorplot,xlim,ylim,varname,
-                       modal_pred,truex,title)
-        n += 1
-
-    if fs:
-        handles, labels = axe.get_legend_handles_labels()
-        fig.legend(handles,labels,bbox_to_anchor=(0.18,1))
-
-    fig.text(0.5, -0.03, var_description, horizontalalignment='center',
-             fontsize=12, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
-                                    ec="0.5", pad=0.5, alpha=1), fontweight='bold')
-
-    title = main_title + "\n" + contexte
-    fig.suptitle(title, bbox=FIGURE_TITLE_BOX,y = 1.18)
-    fig.tight_layout(rect=[0.2,0,1,1])
-    if filename:
-        fig.savefig(filename, bbox_inches='tight')
-        print("Saved in ", filename)
-        pyplot.close(fig)
 
 
 
-def compare_Flearned(error_weight,error_height,error_mean,contexte,cut_tail = None,savepath=None):
-    title = "Comparaison beetween $F$ and it's estimation"
-    xlabel = _latex_relative_error("F_{est}(x)","F(x)")
-    if cut_tail:
-        xlabel +=  " - Cut tail : {}%".format(cut_tail)
-        error_weight = sorted(error_weight)[:-len(error_weight) * cut_tail // 100]
-        error_height = sorted(error_height)[:-len(error_height) * cut_tail // 100]
-        error_mean = sorted(error_mean)[:-len(error_mean) * cut_tail // 100]
-    values = (error_weight,error_height,error_mean)
-    alphas = (0.5,0.4,0.3)
-    labels = ("Max weight","Max height","Mean")
-    histogramme(values,contexte,title=title,savepath=savepath,
-                labels=labels,xlabel=xlabel,alphas=alphas)
 
-def compare_retrouveY(values,contexte,methods,cut_tail = None,savepath=None):
-    title = """Comparaison beetween $Y_{obs}$ and $F(x_{pred})$ 
-        (several $x_{pred}$ are found for each $y$)"""
-    xlabel = _latex_relative_error("F(x_{pred})","Y")
-    if cut_tail:
-        xlabel += " - Cut tail : {}%".format(cut_tail)
-        values = [sorted(error)[:-len(error) * cut_tail // 100] for error in values]
-    histogramme(values, contexte, title=title,savepath=savepath,labels=methods,xlabel=xlabel)
-
-
-def modalx_prediction(values,methods,contexte,savepath=None,cut_tail = None):
-    xlabel = _latex_relative_error("X_{best}", "X")
-    title = "Comparaison beetween X and the best modal prediction"
-    N = len(values)
-    alphas = [0.5 + i/ (2* N) for i in range(N)]
-    if cut_tail:
-        xlabel += " - Cut tail : {}%".format(cut_tail)
-        values = [ sorted(error)[:-len(error) * cut_tail // 100] for error in values]
-    histogramme(values,contexte,title=title,savepath=savepath,
-                alphas=alphas,labels=methods,xlabel=xlabel)
-
-def meanx_prediction(error,contexte,add_errors=None,add_labels=None,savepath=None,cut_tail=None):
-    title = "Comparaison beetween X and it's mean prediction"
-    xlabel = _latex_relative_error("X_{est}", "X")
-    if cut_tail:
-        xlabel += " - Cut tail : {}%".format(cut_tail)
-        error = sorted(error)[:-len(error) * cut_tail // 100]
-    values = [error]
-    labels = ["Vector error"]
-    if add_errors is not None:
-        if cut_tail:
-            add = (sorted(err)[:-len(err) * cut_tail // 100] for err in add_errors)
-        else:
-            add = (err for err in add_errors)
-        values.extend(add)
-        labels.extend(["$"+l+"$" for l in add_labels])
-    histogramme(values,contexte,title=title,savepath=savepath,labels=labels,xlabel=xlabel)
-
-def _axe_histogramme(axe,values,alphas,labels,xlabel):
-    error_max = max(sum(values,[]))
-    bins = np.linspace(0, error_max, 1000)
-    m = len(values)
-    if alphas is None:
-        alphas = [0.5] * m
-    if labels is None:
-        labels = [str(i) for i in range(m)]
-    for serie,alpha,label in zip(values,alphas,labels):
-        axe.hist(serie, bins, alpha=alpha, label=label)
-    axe.legend()
-    axe.set_ylabel("Test points number")
-    axe.set_xlabel(xlabel)
-
-    means = [np.mean(s) for s in values]
-    medians = [np.median(s) for s in values]
-
-    stats = ["{0} $\\blacktriangleright$ Mean : {1:.2E} ; Median : {2:.2E}".format(label,mean,median)
-             for mean,median,label in zip(means,medians,labels)]
-
-
-def histogramme(values : iter,contexte,title="Histogramm",savepath=None,alphas=None,labels=None,xlabel=""):
-    error_max = max(sum(values,[]))
-    bins = np.linspace(0, error_max, 1000)
-    f = pyplot.figure()
-    axe = f.gca()
-    m = len(values)
-    if alphas is None:
-        alphas = [0.5] * m
-    if labels is None:
-        labels = [str(i) for i in range(m)]
-    for serie,alpha,label in zip(values,alphas,labels):
-        axe.hist(serie, bins, alpha=alpha, label=label)
-    axe.legend()
-    axe.set_ylabel("Test points number")
-    axe.set_xlabel(xlabel)
-    title = title +  "\n" + contexte
-    f.suptitle(title, bbox=FIGURE_TITLE_BOX,y = 1.3)
-
-    means = [np.mean(s) for s in values]
-    medians = [np.median(s) for s in values]
-
-    stats = ["{0} $\\rightarrow$ Mean : {1:.2E} ; Median : {2:.2E}".format(label,mean,median)
-             for mean,median,label in zip(means,medians,labels)]
-    s = "\n".join(stats)
-
-    f.text(0.5, -0.07*m, s, horizontalalignment='center',
-             fontsize=10, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
-                                    ec="0.5", pad=0.5, alpha=1), fontweight='bold')
-
-    if savepath:
-        f.savefig(savepath, bbox_inches='tight')
-        print("Saved in",savepath)
-        pyplot.close(f)
 
 
 
@@ -589,50 +698,7 @@ def trace_retrouveY(Xs,diffs):
         axe.scatter(xs,ys,zs)
     pyplot.show()
 
-def show_clusters(gllim_instance,X,contexte,superpose=False,path=None,varnames=("x1",'x2'),xlims=((0,1),(0,1))):
-    """Works only with 2 variable X
-    If superpose is False, doesn't save fig since it's interactive
-    """
-    path = path or "../FIGURES/clusters.png"
-    clusters , _ = gllim_instance.predict_cluster(X)
-    points_by_clusters = {}
-    for x,k in zip(X,clusters):
-        p = points_by_clusters.get(k,([],[]))
-        p[0].append(x[0])
-        p[1].append(x[1])
-        points_by_clusters[k] = p
-    colors = cm.rainbow(np.linspace(0,1,len(points_by_clusters)))
-    varx ,vary = varnames
-    xlim, ylim = xlims
-    if superpose:
-        f= pyplot.figure()
-        axe = f.gca()
-        for (k,c),color in zip(points_by_clusters.items(),colors):
-            axe.scatter(c[0],c[1],label=str(k),color=color,alpha=0.5,marker=".")
-            ck = gllim_instance.ckList[k]
-            axe.scatter(ck[0],ck[1],s=50,color=color, marker="o")
-        axe.set_xlabel(r'${}$'.format(varx))
-        axe.set_ylabel(r'${}$'.format(vary))
-        axe.legend(bbox_to_anchor=(-0.1,1) ,ncol=3)
-        title = "Clusters \n" + contexte
-        f.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.3)
-        f.savefig(path,bbox_inches='tight')
-        print("Saved in",path)
-    else:
-        axes = AxesSequence()
 
-
-        for (k,c),color,axe in zip(points_by_clusters.items(),colors,axes):
-            axe.scatter(c[0],c[1],label=str(k),color=color)
-            ck = gllim_instance.ckList[k]
-            axe.scatter(ck[0], ck[1], s=50, color=color, marker="+",label="ck")
-            axe.legend()
-            axe.set_xlim(*xlim)
-            axe.set_ylim(*ylim)
-            axe.set_xlabel(r'${}$'.format(varx))
-            axe.set_ylabel(r'${}$'.format(vary))
-        axes.show_first()
-        return axes
 
 
 

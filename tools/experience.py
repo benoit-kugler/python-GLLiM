@@ -9,15 +9,18 @@ from Core.gllim import GLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
-from tools.mesures import Mesures
+from tools.mesures import Mesures, VisualisationMesures
 
+Ntest = 50000
 
 class Experience():
     context: context.abstractFunctionModel
     archive: Archive
-    mesures: Mesures
+    mesures: VisualisationMesures
 
-    def __init__(self,context_class,partiel=None,verbose=True,**kwargs):
+    def __init__(self, context_class, partiel=None, verbose=True, with_plot=False, **kwargs):
+        """If with_plot is False, methods with use matplotlib or vispy can't be used.
+        Used to speed up (no costly import)"""
         self.only_added = False
         self.adding_method = None
         self.para_learning = False
@@ -27,7 +30,10 @@ class Experience():
         self.context = context_class(partiel,**kwargs)
 
         self.archive = Archive(self)
-        self.mesures = Mesures(self)
+        if with_plot:
+            self.mesures = VisualisationMesures(self)
+        else:
+            self.mesures = Mesures(self)
 
 
     def load_data(self,regenere_data=False,with_noise=None,N=1000,method="sobol"):
@@ -35,7 +41,6 @@ class Experience():
         self.with_noise = with_noise
         self.method = method
         self.N = N
-        Ntest = 50000
         Ndata = N + Ntest
 
         if regenere_data:
@@ -416,28 +421,30 @@ def test_map():
     # print(exp.context.get_result(full=True)[mask,9])
 
 def main():
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1))
+    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+
     exp.load_data(regenere_data=False,with_noise=50,N=100000,method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
     gllim = exp.load_model(100, mode="l", track_theta=False, init_local=500,
-                           sigma_type="full", gamma_type="full", gllim_cls=GLLiM)
+                           sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
 
 
     # exp.extend_training_parallel(gllim,Y=exp.context.get_observations(),X=None,threshold=None,nb_per_X=5000,clusters_per_X=20)
     # Y ,X , gllims = exp.load_second_learning(64,None,5000,20,withX=False)
-
+    exp.mesures.plot_mesures(gllim)
     # show_projections(exp.Xtrain)
     # exp.mesures.plot_mesures(gllim)
     # X0= exp.mesures.plot_mean_prediction(gllim)
-    # X0 = exp.Xtest[87]
-    # Y0 = exp.context.F(X0[None, :])
+    X0 = exp.Xtest[87]
+    Y0 = exp.context.F(X0[None, :])
     # exp.mesures.plot_density_X(gllim, with_modal=False,resolution=400,colorplot=True)
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True, colorplot=False)
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True, colorplot=True)
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True,dim=1)
 
-    exp.mesures.plot_estimatedF()
+    exp.mesures.plot_density_X(gllim)
+    exp.mesures.plot_conditionnal_density(gllim, Y0, X0)
     # exp.mesures.plot_modal_prediction(gllim,[0.02])
 
     # print(exp.mesures.run_mesures(gllim))
@@ -545,8 +552,8 @@ def RTLS():
 
 
 if __name__ == '__main__':
-    RTLS()
-    # main()
+    # RTLS()
+    main()
     # monolearning()
     # test_map()
     # double_learning()

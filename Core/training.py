@@ -15,7 +15,7 @@ NB_ITER_RNK = 10
 NB_INSTANCES_RNK = 6
 
 """Number of iterations to fit """
-NB_MAX_ITER = 200
+NB_MAX_ITER = 100
 
 """Number of iterations for second learning"""
 NB_MAX_ITER_SECOND = 20

@@ -34,6 +34,7 @@ class Archive():
 
     def __init__(self,experience):
         self.experience = experience
+        self.verbose = experience.verbose
         name_context = experience.context.__class__.__name__
         self.directory = os.path.join(self.BASE_PATH,name_context)
 
@@ -90,7 +91,8 @@ class Archive():
         d = scipy.io.loadmat(path)
         X, Y = d["X"], d["Y"]
         m = self.experience.only_added and "Additionnal data" or "Data"
-        print("\t{} loaded from {}".format(m,path))
+        if self.verbose:
+            print("\t{} loaded from {}".format(m, path))
         return X,Y
 
 
@@ -98,13 +100,15 @@ class Archive():
         path = self.get_path("data") + ".mat"
         scipy.io.savemat(path,{"X":X,"Y":Y})
         m = self.experience.only_added and "Additionnal data" or "Data"
-        print("\t{} saved in {}".format(m,path))
+        if self.verbose:
+            print("\t{} saved in {}".format(m, path))
 
 
     def _save_data(self,data,savepath):
         with open(savepath,'w',encoding='utf8') as f:
             json.dump(data,f,indent=2)
-        print("\tModel parameters saved in ", savepath)
+        if self.verbose:
+            print("\tModel parameters saved in ", savepath)
 
     def save_gllim(self,gllim,track_theta,training_time=None):
         """Saves current gllim parameters, in json format, to avoid model fitting computations.
@@ -121,21 +125,24 @@ class Archive():
             d = {"thetas": gllim.track, "LLs": gllim.loglikelihoods}
             with open(filename, 'w', encoding='utf8') as f:
                 json.dump(d, f, indent=2)
-            print("\tModel parameters history save in",filename)
+            if self.verbose:
+                print("\tModel parameters history save in", filename)
 
     def load_gllim(self):
         """Load parameters of the model and returns it as dict"""
         filename = self.get_path("model")
         with open(filename,encoding='utf8') as f:
             d = json.load(f)
-        print("\tModel parameters loaded from ", filename)
+        if self.verbose:
+            print("\tModel parameters loaded from ", filename)
         return d
 
     def load_tracked_thetas(self):
         filename = self.get_path("model", with_track=True)
         with open(filename,encoding='utf8') as f:
             d = json.load(f)
-        print("\tParameters history loaded from", filename)
+        if self.verbose:
+            print("\tParameters history loaded from", filename)
         return d["thetas"], d["LLs"]
 
     def save_second_learned(self,gllims,Y,X):
@@ -149,7 +156,8 @@ class Archive():
             assert len(X) == len(Y)
             d["Xadd"] = X
         scipy.io.savemat(path + "add", d)
-        print("\tParameters and additional data saved in ", path)
+        if self.verbose:
+            print("\tParameters and additional data saved in ", path)
 
     def load_second_learned(self,withX):
         path = self.get_path("second_models")
@@ -166,31 +174,13 @@ class Archive():
         X = None
         if withX:
             X = d["Xadd"]
-        print("\tModel parameters and additional data loaded from ", path)
+        if self.verbose:
+            print("\tModel parameters and additional data loaded from ", path)
         return Y, X, thetas
 
 
     def save_resultat(self,dic):
         path  = os.path.join(self.directory,self._suffixe())
         scipy.io.savemat(path,dic)
-        print("Results saved in",path)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        if self.verbose:
+            print("Results saved in", path)

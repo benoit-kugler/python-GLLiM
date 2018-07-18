@@ -18,7 +18,7 @@ from Core.sGllim import saGLLiM
 from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
-from tools import graphiques
+from plotting import graphiques
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext
 from tools.experience import DoubleLearning
 

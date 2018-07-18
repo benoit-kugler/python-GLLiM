@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015/Debian) (preloaded format=pdflatex 2018.7.17)  17 JUL 2018 16:45
+This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015/Debian) (preloaded format=pdflatex 2018.7.17)  18 JUL 2018 09:35
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -534,7 +534,7 @@ Underfull \vbox (badness 10000) detected at line 312
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}] (./DIMENSION.aux) ) 
 Here is how much of TeX's memory you used:
  2965 strings out of 494924
- 38565 string characters out of 6179708
+ 38564 string characters out of 6179708
  122278 words of memory out of 5000000
  6232 multiletter control sequences out of 15000+600000
  4855 words of font info for 18 fonts, out of 8000000 for 9000
@@ -549,7 +549,7 @@ nts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/typ
 e1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi
 c/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfon
 ts/cm/cmsy10.pfb>
-Output written on DIMENSION.pdf (1 page, 80798 bytes).
+Output written on DIMENSION.pdf (1 page, 81941 bytes).
 PDF statistics:
  40 PDF objects out of 1000 (max. 8388607)
  28 compressed objects within 1 object stream

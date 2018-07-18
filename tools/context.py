@@ -8,10 +8,10 @@ import rpy2.robjects.packages
 import scipy.io
 from rpy2 import robjects
 
-from hapke import hapke_sym
 from hapke.hapke_vect_opt import Hapke_vect
 
 randtoolbox = robjects.packages.importr('randtoolbox')
+
 
 def test_random(u):
     tol = 10**-16
@@ -343,11 +343,13 @@ class abstractHapkeModel(abstractFunctionModel):
     def compute_dF(self):
         """Compute dF through symbolic calculus, and save the result.
         Long to execute, do not repeat unless geometries have changed."""
+        from hapke import hapke_sym
         hapke_sym.save_dF(self, savepath=self.path_dF)
         print("dF function saved in",self.path_dF)
 
     def _load_dF(self):
         try:
+            from hapke import hapke_sym
             dF = hapke_sym.load_dF(self.path_dF)
         except FileNotFoundError:
             print("Warning ! No dF found. Use compute_dF once to set it up, "
