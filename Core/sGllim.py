@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.mixture.gaussian_mixture import _estimate_gaussian_parameters
 
-from Core.gllim import GLLiM, get_full_covariances, JGLLiM
+from Core.gllim import GLLiM, get_full_covariances, jGLLiM
 
 
 class sGLLiM(GLLiM):
@@ -75,7 +75,7 @@ class sGLLiM(GLLiM):
         if self.sigma_type == "iso":
             V = get_full_covariances(V,'spherical',self.K,self.D + self.L)
 
-        dic = JGLLiM.GMM_to_GLLiM(pi,m,V,self.L)
+        dic = jGLLiM.GMM_to_GLLiM(pi, m, V, self.L)
         pi, c, Gamma, A, b, Sigma = dic["pi"], dic["c"], dic["Gamma"], dic["A"], dic["b"], dic["Sigma"]
 
         if self.sigma_type == 'iso':

@@ -12,7 +12,7 @@ import numpy as np
 import scipy.io
 
 from Core.dgllim import dGLLiM
-from Core.gllim import GLLiM
+from Core.gllim import GLLiM, jGLLiM
 from Core.log_gauss_densities import chol_loggausspdf
 from Core.sGllim import saGLLiM
 from hapke import hapke_sym
@@ -21,6 +21,7 @@ from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from plotting import graphiques
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext
 from tools.experience import DoubleLearning
+from tools.interface_R import is_egal
 
 np.set_printoptions(precision=20,suppress=False)
 
@@ -183,7 +184,35 @@ def evolu_cluster():
     thetas, LLs = exp.archive.load_tracked_thetas()
     # exp.mesures.evolution1D(thetas)
     exp.mesures.evolution_clusters2D(thetas)
-#
+
+
+def setup_jGLLiM_GLLiM():
+    X = np.random.multivariate_normal(np.zeros(5) + 0.2, np.eye(5), 100000)
+    Y = np.random.multivariate_normal(np.zeros(6) + 10, np.eye(6), 100000)
+
+    gllim = GLLiM(100, 0, sigma_type="full", gamma_type="full", verbose=None)
+    gllim.init_fit(X, Y, None)
+
+    jgllim = jGLLiM(100, 0, sigma_type="full", gamma_type="full", verbose=None)
+    jgllim.init_fit(X, Y, None)
+
+    return gllim, jgllim, X, Y
+
+
+def equivalence_jGLLiM_GLLIM():
+    X = np.random.multivariate_normal(np.zeros(5) + 0.2, np.eye(5), 2000)
+    Y = np.random.multivariate_normal(np.zeros(6) + 10, np.eye(6), 2000)
+
+    gllim = GLLiM(10, 0, sigma_type="full", gamma_type="full", verbose=True)
+    gllim.fit(X, Y, None, maxIter=100)
+
+    jgllim = jGLLiM(10, 0, sigma_type="full", gamma_type="full", verbose=True)
+    jgllim.fit(X, Y, None, maxIter=99)
+
+    theta = (gllim.pikList, gllim.ckList, gllim.GammakList, gllim.AkList, gllim.bkList, gllim.full_SigmakList)
+    jtheta = (jgllim.pikList, jgllim.ckList, jgllim.GammakList, jgllim.AkList, jgllim.bkList, jgllim.full_SigmakList)
+
+    is_egal(theta, jtheta)
 
 
 
@@ -191,7 +220,8 @@ if __name__ == '__main__':
     # cA()
     # graphiques.plot_Y(Y)qw
     # simple_function()
-    evolu_cluster()
+    # evolu_cluster()
+    equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
     # test_map()

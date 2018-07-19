@@ -279,31 +279,6 @@ class Mesures():
         a = CkAnimation(cks[:, :, marginals],varnames=varnames[[*marginals]],varlims=varlims[[*marginals]])
 
 
-    def illustration(self,gllim,xtrue,ytest,with_clustering=False):
-        """Show summary schema in case of 1D function"""
-        assert gllim.D == 1 and gllim.L == 1
-        N = 10000
-        xlim = self.experience.context.XLIMS[0]
-        x = np.linspace(*xlim,N)
-        y = self.experience.context.F(x[:,None])
-        modals ,_ , weights = gllim.modal_prediction(ytest,components=10)
-        X = modals[0]
-        modals = list(zip(X, weights[0]))
-
-        clusters = None
-        if with_clustering:
-            weights = np.array(weights[0])
-            _ , clusters  = best_K(X,weights)
-            print(clusters)
-
-        fck = self.experience.context.F(gllim.ckList)
-
-
-        schema_1D((x,y),gllim.ckList,gllim.ckListS,gllim.AkList,gllim.bkList,self.experience.get_infos(),
-                  xlims=xlim, xtrue=xtrue[0],ytest=ytest[0,0],modal_preds=modals,clusters=clusters,
-                  savepath=self.experience.archive.get_path("figures",filecategorie="schema"))
-
-
     def evolution1D(self,thetas):
         exp = self.experience
         assert exp.context.D == 1 and exp.context.L == 1
@@ -812,3 +787,20 @@ class VisualisationMesures(Mesures):
         self.plot_compareF(gllim)
         self.plot_mean_prediction(gllim)
         self.plot_modal_prediction(gllim, methods)
+
+    def illustration(self, gllim, xtrue, ytest, savepath=None):
+        """Show summary schema in case of 1D function"""
+        assert gllim.D == 1 and gllim.L == 1
+        N = 10000
+        xlim = self.experience.context.XLIMS[0]
+        x = np.linspace(*xlim, N)
+        y = self.experience.context.F(x[:, None])
+        modals, _, weights = gllim.modal_prediction(ytest, components=10, sort_by="weight")
+        X = modals[0]
+        modals = list(zip(X, weights[0]))
+        savepath = savepath or self.experience.archive.get_path("figures", filecategorie="schema")
+        context = dict(**self.experience.get_infos(), max_Gamma=gllim.GammakList.max())
+        self.G.schema_1D((x, y), gllim.ckList, gllim.ckListS, gllim.AkList, gllim.bkList, xlim, xtrue[0], ytest[0, 0],
+                         modals,
+                         context=context, write_context=True, draw_context=False,
+                         title="", savepath=savepath)

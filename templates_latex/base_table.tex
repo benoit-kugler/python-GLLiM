@@ -6,13 +6,15 @@
 
 \setlength\tabcolsep{0.07cm}
 \begin{longtable}{ l c | (! (['c c c |'] *  (hHeader | length )) | join(' ') !) }
+    \endfirsthead
+
     \cline{3 -  (!  (hHeader | length ) * 3 + 2 !) }
 
     (# block header_table #)
     (# endblock #)
 
 
-    \endfirsthead
+
     \endhead
     \endfoot
     \endlastfoot
@@ -21,7 +23,7 @@
     (# if line #)
     \hline
     (# for critere in CRITERES #)
-        (# if loop.first #)
+    (# if loop.first #)
     \multirow{6}{*}{
     (# block line_first_cell scoped #)
     \makecell{ \textbf{ (! headercell.context.LABEL !) } \\
@@ -31,15 +33,15 @@
     (# endblock #)
     }
 
-        (# endif #)
-        & (! macros.LABEL_CRITERE(critere) !)
+    (# endif #)
+    & (! macros.LABEL_CRITERE(critere) !)
     (# for m in line #)
     & (! macros.MESURES(m,critere) !)
-        (# endfor #)
+    (# endfor #)
     (# if loop.last #)
-        \\
+    \\
     (# else #)
-        \\*
+    \\*
     (# endif #)
     (# endfor #)
 (# endif #)

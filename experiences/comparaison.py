@@ -8,9 +8,10 @@ import warnings
 from datetime import timedelta
 
 import jinja2
+import numpy as np
 
 from Core.dgllim import dGLLiM
-from Core.gllim import GLLiM, JGLLiM, WrongContextError
+from Core.gllim import GLLiM, jGLLiM, WrongContextError
 from experiences import logistic
 from hapke import relation_C
 from tools import context
@@ -90,28 +91,21 @@ LOGISTIQUE_exps = [
 ]
 
 NOISES_exps = [
-    {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 50000,
+    {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 5000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 1000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 5000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
 ]
 
+LOCAL_exps = [
+    {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 5000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
+]
 
-ALGOS = ["nNG","nNdG","nNjG","NG","NdG","NjG"]
-GENERATION = ["random","latin","sobol"]
-DIMENSION = LOGISTIQUE = MODAL = ["gllim"]
-NOISES = ["no", "10", "50"]
-
-M_E_T = {"ALGOS":(ALGOS,ALGOS_exps,"algos.tex"),
-         "GENERATION":(GENERATION,GENERATION_exps,"generation.tex"),
-         "DIMENSION": (DIMENSION, DIMENSION_exps, "dimension.tex"),
-         "MODAL": (MODAL, MODAL_exps, "modal.tex"),
-         "LOGISTIQUE": (LOGISTIQUE, LOGISTIQUE_exps, "logistique.tex"),
-         "NOISES": (NOISES, NOISES_exps, "noises.tex"),
-         }
-"""Methodes, experience , template for possible categories"""
 
 
 def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain, Xtest=None, Ytest=None):
@@ -124,13 +118,17 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
         gllim1 = exp.load_model(exp_params["K"], mode=retrain and "r" or "l", init_local=exp_params["init_local"],
                                 sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
                                 gllim_cls=gllim_cls)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         print("\nNo model or data found for experience {}, version {} - noise : {}".format(i + 1, gllim_cls.__name__,
                                                                                            noise))
+        print(e)
         return None
     except WrongContextError as e:
         print("\n{} method is not appropriate for the parameters ! "
               "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
+        return None
+    except np.linalg.LinAlgError as e:
+        print("\nTraining failed ! {}".format(e))
         return None
     except AssertionError as e:
         print("\nTraining failed ! {}".format(e))
@@ -148,7 +146,8 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
 class abstractMeasures():
     """Runs mesures on new trained or loaded gllims"""
 
-    CATEGORIE = None
+    METHODES = []
+    experiences = []
 
     @classmethod
     def run(cls,train=None,run_mesure=None):
@@ -156,7 +155,7 @@ class abstractMeasures():
         o.mesure(train,run_mesure)
 
     def __init__(self):
-        self.experiences = M_E_T[self.CATEGORIE][1]
+        self.CATEGORIE = self.__class__.__name__
 
     def _get_train_measure_choice(self, train, run_mesure):
         imax = len(self.experiences)
@@ -176,6 +175,8 @@ class abstractMeasures():
                 exp = DoubleLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
+                if dic is not None:
+                    assert set(self.METHODES) <= set(dic.keys()), f"Missing measures for {self.CATEGORIE}"
             else:
                 print("\nLoaded mesures {}/{}".format(i + 1, imax))
                 dic = old_mesures[i]
@@ -186,68 +187,6 @@ class abstractMeasures():
 
     def _dic_mesures(self,i,exp,exp_params,t):
         return {}
-
-class AlgosMeasure(abstractMeasures):
-
-    CATEGORIE = "ALGOS"
-
-    def _dic_mesures(self,i,exp,exp_params,t):
-        dic = {}
-        dic['nNG'] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)  # no noise GLLiM
-        Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic["nNdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, None, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # no noise dGLLiM
-        dic["nNjG"] = _load_train_gllim(i, JGLLiM, exp, exp_params, None, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # no noise joint GLLiM
-        dic["NG"] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t,Xtest=Xtest,Ytest=Ytest)  # noisy GLLiM
-        dic["NdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # noisy dGLLiM
-        dic["NjG"] = _load_train_gllim(i, JGLLiM, exp, exp_params, NOISE, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # noisy joint GLLiM
-        return dic
-
-class GenerationMeasure(abstractMeasures):
-
-    CATEGORIE = "GENERATION"
-
-    def _dic_mesures(self,i,exp,exp_params,t):
-        dic = {}
-        dic['sobol'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # sobol
-        Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic['latin'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "latin", t, t,Xtest=Xtest,Ytest=Ytest)  # latin
-        dic['random'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "random", t, t,Xtest=Xtest,Ytest=Ytest)  # random
-        return dic
-
-class DimensionMeasure(abstractMeasures):
-
-    CATEGORIE = "DIMENSION"
-
-    def _dic_mesures(self, i, exp: DoubleLearning, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i,GLLiM,exp,exp_params,None,"sobol",t,t)}
-        return dic
-
-
-class ModalMeasure(abstractMeasures):
-    CATEGORIE = "MODAL"
-
-    def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)}
-        return dic
-
-
-class LogistiqueMeasure(abstractMeasures):
-    CATEGORIE = "LOGISTIQUE"
-
-    def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)}
-        return dic
-
-
-class NoisesMeasure(abstractMeasures):
-    CATEGORIE = "NOISES"
-
-    def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {}
-        dic["no"] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)
-        dic["10"] = _load_train_gllim(i, GLLiM, exp, exp_params, 10, "sobol", t, t)
-        dic["50"] = _load_train_gllim(i, GLLiM, exp, exp_params, 50, "sobol", t, t)
-        return dic
 
 
 class abstractLatexWriter():
@@ -275,12 +214,11 @@ class abstractLatexWriter():
 
     CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean", "retrouveY", "retrouveYbest"]
 
-
     LATEX_EXPORT_PATH = "../latex/tables"
     """Saving directory for bare latex table"""
 
-    categorie = ""
-    """Also serve as Latex table reference"""
+    MEASURE_class = None
+    """Measure class which gives experiences and methods"""
 
     TITLE = ""
     """Latex table title """
@@ -288,6 +226,8 @@ class abstractLatexWriter():
     DESCRIPTION = ""
     """Latex table caption"""
 
+    template = ""
+    "latex template file"
 
     @classmethod
     def render(cls, **kwargs):
@@ -296,17 +236,11 @@ class abstractLatexWriter():
         w.render_pdf(**kwargs)
 
     def __init__(self):
-        """
-
-        :param categorie: Choose which type of table you want to build, one of
-                - algos : compare GlliM, dGlliM, jGlliM
-        """
-        mesures = Archive.load_mesures(self.categorie)
-
-        self.methodes, self.experiences, self.template = M_E_T[self.categorie]
+        self.CATEGORIE = self.MEASURE_class.__name__
+        mesures = Archive.load_mesures(self.CATEGORIE)
+        self.methodes, self.experiences = self.MEASURE_class.METHODES, self.MEASURE_class.experiences
         self.matrix = self._mesures_to_matrix(mesures)
         self.matrix = self._find_best()
-
 
     def _find_best(self):
         """Find best value for each CRITERE, line per line"""
@@ -350,22 +284,22 @@ class abstractLatexWriter():
         CRITERES = self.CRITERES + ["validPreds"]
         baretable = template.render(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
                                     hHeader=self._horizontal_header(), vHeader=self._vertical_header(),
-                                    label=self.categorie, CRITERES=CRITERES)
+                                    label=self.CATEGORIE, CRITERES=CRITERES)
         standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
-        return baretable, standalone_template.render(TABLE = baretable)
+        return baretable, standalone_template.render(TABLE=baretable)
 
     def render_pdf(self, show_latex=False, verbose=False):
-        barelatex , latex = self.render_latex()
+        barelatex, latex = self.render_latex()
         if show_latex:
             print(latex)
 
-        filename = self.categorie+'.tex'
-        path = os.path.join(self.LATEX_EXPORT_PATH,filename)
-        with open(path,"w",encoding="utf8") as f:
+        filename = self.CATEGORIE + '.tex'
+        path = os.path.join(self.LATEX_EXPORT_PATH, filename)
+        with open(path, "w", encoding="utf8") as f:
             f.write(barelatex)
         cwd = os.path.abspath(os.getcwd())
         os.chdir(self.LATEX_BUILD_DIR)
-        with open(filename,"w",encoding="utf8") as f:
+        with open(filename, "w", encoding="utf8") as f:
             f.write(latex)
         command = ["pdflatex", filename] if verbose else ["pdflatex", "-interaction", "batchmode", filename]
         subprocess.run(command, check=True)
@@ -373,21 +307,111 @@ class abstractLatexWriter():
         os.chdir(cwd)
 
 
+
+class AlgosMeasure(abstractMeasures):
+    METHODES = ["nNG", "nNdG", "nNjG", "NG", "NdG", "NjG"]
+    experiences = ALGOS_exps
+
+    def _dic_mesures(self,i,exp,exp_params,t):
+        dic = {}
+        dic['nNG'] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)  # no noise GLLiM
+        Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
+        dic["nNdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, None, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # no noise dGLLiM
+        dic["nNjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", False, t, Xtest=Xtest,
+                                        Ytest=Ytest)  # no noise joint GLLiM
+        dic["NG"] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t,Xtest=Xtest,Ytest=Ytest)  # noisy GLLiM
+        dic["NdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # noisy dGLLiM
+        dic["NjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
+                                       Ytest=Ytest)  # noisy joint GLLiM
+        return dic
+
+class GenerationMeasure(abstractMeasures):
+    METHODES = ["random", "latin", "sobol"]
+    experiences = GENERATION_exps
+
+    def _dic_mesures(self,i,exp,exp_params,t):
+        dic = {}
+        dic['sobol'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # sobol
+        Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
+        dic['latin'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "latin", t, t,Xtest=Xtest,Ytest=Ytest)  # latin
+        dic['random'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "random", t, t,Xtest=Xtest,Ytest=Ytest)  # random
+        return dic
+
+class DimensionMeasure(abstractMeasures):
+    METHODES = ["gllim"]
+    experiences = DIMENSION_exps
+
+    def _dic_mesures(self, i, exp: DoubleLearning, exp_params, t):
+        dic = {"gllim": _load_train_gllim(i,GLLiM,exp,exp_params,None,"sobol",t,t)}
+        return dic
+
+
+class ModalMeasure(abstractMeasures):
+    METHODES = ["gllim"]
+    experiences = MODAL_exps
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)}
+        return dic
+
+
+class LogistiqueMeasure(abstractMeasures):
+    METHODES = ["gllim"]
+    experiences = LOGISTIQUE_exps
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        return dic
+
+
+class NoisesMeasure(abstractMeasures):
+    METHODES = ["no", "50", "10"]
+    experiences = NOISES_exps
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {}
+        dic["no"] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)
+        dic["10"] = _load_train_gllim(i, GLLiM, exp, exp_params, 10, "sobol", t, t)
+        dic["50"] = _load_train_gllim(i, GLLiM, exp, exp_params, 50, "sobol", t, t)
+        return dic
+
+
+class LocalMeasure(abstractMeasures):
+    METHODES = ["no", "10", "100", "1000"]
+    experiences = LOCAL_exps
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {}
+        dic["no"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=None), NOISE, "sobol", t, t)
+        Xtest, Ytest = exp.Xtest, exp.Ytest
+        dic["10"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=10), NOISE, "sobol", False, t,
+                                      Xtest=Xtest, Ytest=Ytest)
+        dic["100"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=100), NOISE, "sobol", False, t,
+                                       Xtest=Xtest, Ytest=Ytest)
+        dic["1000"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=1000), NOISE, "sobol", False, t,
+                                        Xtest=Xtest, Ytest=Ytest)
+        return dic
+
+
+
 class AlgosLatexWriter(abstractLatexWriter):
-    categorie = "ALGOS"
+    MEASURE_class = AlgosMeasure
+    template = "algos.tex"
     TITLE = "Algorithmes"
     DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire bruité ou non."
 
 
 class GenerationLatexWriter(abstractLatexWriter):
-    categorie = "GENERATION"
+    MEASURE_class = GenerationMeasure
+    template = "generation.tex"
     TITLE = "Méthode de génération"
     DESCRIPTION = "Le dictionnaire d'aprentissage est généré avec différentes méthodes de génération " \
                   "de nombres aléatoires."
 
 
 class DimensionLatexWriter(abstractLatexWriter):
-    categorie = "DIMENSION"
+    MEASURE_class = DimensionMeasure
+    template = "dimension.tex"
     TITLE = "Influence de la dimension"
     DESCRIPTION = "La même fonction générique est apprise et inversée pour différentes dimensions."
 
@@ -402,11 +426,41 @@ class DimensionLatexWriter(abstractLatexWriter):
 
 
 class ModalLatexWriter(abstractLatexWriter):
-    categorie = "MODAL"
+    MEASURE_class = ModalMeasure
+    template = "modal.tex"
     TITLE = "Mode de prévision"
     DESCRIPTION = "Comparaison des résultats de la prévision par la moyenne (Me,Yme) " \
                   "par rapport à la prévision par le mode (Mo,Ymo,Yb)"
 
+
+class LogistiqueLatexWriter(abstractLatexWriter):
+    MEASURE_class = LogistiqueMeasure
+    template = "logistique.tex"
+    TITLE = "Transformation logistique"
+    DESCRIPTION = "Influence de la transformation logistique"
+
+    def _mesures_to_matrix(self, mesures):
+        return [[mes["gllim"] for mes in mesures]]
+
+    def _horizontal_header(self):
+        return super()._vertical_header()
+
+    def _vertical_header(self):
+        return [self.experiences[0]]
+
+
+class NoisesLatexWriter(abstractLatexWriter):
+    MEASURE_class = NoisesMeasure
+    template = "noises.tex"
+    TITLE = "Bruitage des données"
+    DESCRIPTION = "Comparaison des différentes intensités de bruit sur les observations."
+
+
+class LocalLatexWriter(abstractLatexWriter):
+    MEASURE_class = LocalMeasure
+    template = "local.tex"
+    TITLE = "Initialisation locale"
+    DESCRIPTION = "Comparaison pour différentes valeurs de la précision initiale."
 
 # run_self.mesures(train=[False] *  13 + [True] * 2 ,
 #             run_mesure=[False] * 13 + [True] * 2 )
@@ -415,14 +469,18 @@ class ModalLatexWriter(abstractLatexWriter):
 
 def main():
     print("Launching tests...\n")
-    # AlgosMeasure.run(True,True)
-    GenerationMeasure.run([True, False, False], True)
-    # DimensionMeasure.run(True,True)
-    # ModalMeasure.run(True,True)
-    # AlgosLatexWriter.render()
+    AlgosMeasure.run(True, True)
+    GenerationMeasure.run(True, True)
+    DimensionMeasure.run(True, True)
+    ModalMeasure.run(True, True)
+    NoisesMeasure.run(True, True)
+    LocalMeasure.run(True, True)
+    AlgosLatexWriter.render()
     GenerationLatexWriter.render()
-    # DimensionLatexWriter.render()
-    # ModalLatexWriter.render()
+    DimensionLatexWriter.render()
+    ModalLatexWriter.render()
+    NoisesLatexWriter.render()
+    LocalLatexWriter.render()
 
 if __name__ == '__main__':
     main()

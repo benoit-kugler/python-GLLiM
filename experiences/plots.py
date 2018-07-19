@@ -16,7 +16,7 @@ from tools.experience import DoubleLearning
 
 LATEX_IMAGES_PATH = "../latex/images/plots"
 
-names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png"]
+names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png", "init_cos1.png", "init_cos2.png"]
 PATHS = [os.path.join(LATEX_IMAGES_PATH, i) for i in names]
 
 RETRAIN = True
@@ -39,7 +39,7 @@ def _merge_image_byside(paths, savepath):
 
 
 def plot_estimeF():
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1))
+    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1), with_plot=True, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
@@ -52,7 +52,7 @@ def plot_estimeF():
                                 write_context=True)
     #
     #
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(2, 3))
+    exp = DoubleLearning(context.LabContextOlivine, partiel=(2, 3), with_plot=True, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
@@ -71,7 +71,7 @@ def plot_estimeF():
 
 def plot_evo_LL():
     values, labels = [], []
-    exp = DoubleLearning(WaveFunction, partiel=None)
+    exp = DoubleLearning(WaveFunction, partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -81,7 +81,7 @@ def plot_evo_LL():
     values.append(LLs)
     labels.append(exp.context.LABEL)
 
-    exp = DoubleLearning(InjectiveFunction(4), partiel=None)
+    exp = DoubleLearning(InjectiveFunction(4), partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=800)
     gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -91,7 +91,7 @@ def plot_evo_LL():
     values.append(LLs)
     labels.append(exp.context.LABEL)
 
-    exp = DoubleLearning(HapkeContext, partiel=None)
+    exp = DoubleLearning(HapkeContext, partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000)
     gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -119,7 +119,7 @@ def _train_K_N(exp, N_progression, K_progression):
         # def ck_init_function():
         #     return c.get_X_uniform(K)
         print("\nFit {i}/{imax} for K={K}, N={N}".format(i=i + 1, imax=imax, K=K, N=Xtrain.shape[0]))
-        gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None, )
+        gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None)
         gllim.inversion()
 
         l.append(exp.mesures.error_estimation(gllim, Xtest))
@@ -162,7 +162,31 @@ def plusieurs_K_N(imax):
                            write_context=True)
 
 
+def init_cos():
+    exp = DoubleLearning(WaveFunction, partiel=None, verbose=None, with_plot=True)
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
+
+    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=None,
+                           gamma_type="full", gllim_cls=GLLiM)
+
+    # assert np.allclose(gllim.AkList, np.array([exp.context.dF(c) for c in gllim.ckList]))
+
+    x = np.array([0.55])
+    y = exp.context.F(x[None, :])
+    exp.mesures.illustration(gllim, x, y, savepath=PATHS[4])
+
+    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
+                           gamma_type="full", gllim_cls=GLLiM)
+
+    exp.mesures.illustration(gllim, x, y, savepath=PATHS[5])
+
 def main():
-    plot_estimeF()
-    plot_evo_LL()
-    plusieurs_K_N(50)
+    # plot_estimeF()
+    # plot_evo_LL()
+    # plusieurs_K_N(50)
+    init_cos()
+
+
+RETRAIN = False
+if __name__ == '__main__':
+    main()

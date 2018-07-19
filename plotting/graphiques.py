@@ -9,9 +9,9 @@ matplotlib.use("Qt5Agg")
 from matplotlib import cm, ticker, transforms, rc
 from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
+from mpl_toolkits.mplot3d import Axes3D
 
 from plotting.axes_seq import AxesSequence, SubplotsSequence, vispyAnimation
-
 
 
 
@@ -141,6 +141,45 @@ class plusieursKN(simple_plot):
     def _format_context(context):
         return f"""Courbe 1: $K$ évolue linéairement et $N = {context['coeffNK']} K$. 
                Courbe 2: $K$ évolue de la même manière mais $N = {context['coeffmaxN']}  K_{{max}}$"""
+
+
+class schema_1D(abstractDrawerMPL):
+    Y_TITLE_BOX_WITH_CONTEXT = 1.1
+
+    @staticmethod
+    def _format_context(context):
+        p = context["init_local"]
+        if p is None:
+            return f"Initialisation usuelle. Après apprentissage, $\max\limits_{{k}} \Gamma_{{k}}$ = {context['max_Gamma']:.1e}"
+        else:
+            return f"Initialisation avec précision = {p}. Après apprentissage, $\max\limits_{{k}} \Gamma_{{k}}$ = {context['max_Gamma']:.1e}"
+
+    def main_draw(self, points_true_F, ck, ckS, Ak, bk, xlims, xtrue, ytest, modal_preds):
+        axe = self.fig.add_subplot(2, 1, 1)
+        axe.set_xlim(*xlims)
+
+        axe.plot(*points_true_F, color="b", label="True F")
+        axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
+
+        x_box = np.linspace(0, (xlims[1] - xlims[0]) / 50, 100)
+        for k, a, b in zip(range(len(bk)), Ak[:, 0, 0], bk[:, 0]):
+            x = x_box + ck[k]
+            y = a * x + b
+            axe.plot(x, y, color="g", alpha=0.7)
+
+        if ytest is not None:
+            axe = self.fig.add_subplot(2, 1, 2)
+            axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
+            axe.plot(*points_true_F, color="b", label="True F")
+
+            axe.axhline(y=ytest)
+            for i, (xpred, w) in enumerate(modal_preds):
+                axe.axvline(xpred[0], color="y", linewidth=0.5, label="{0:.4f} - {1:.2f}".format(xpred[0], w))
+                axe.annotate(str(i), (xpred[0], 0))
+            if xtrue is not None:
+                axe.axvline(xtrue, linestyle="--", color="g", alpha=0.5, label="$x_{initial}$")
+        self.fig.legend(*axe.get_legend_handles_labels(), bbox_to_anchor=(1.01, 0.8))
+        self.fig.subplots_adjust(right=0.77)
 
 
 ### --------------- Plot de plusieurs subplots sur une grille ----------------- ###
@@ -337,142 +376,11 @@ class hist_meanPrediction(abstractHistogram):
     XLABEL = _latex_relative_error("X_{est}", "X")
 
 
-# def compare_Flearned(error_weight,error_height,error_mean,contexte,cut_tail = None,savepath=None):
-#     title = "Comparaison beetween $F$ and it's estimation"
-#     xlabel = _latex_relative_error("F_{est}(x)","F(x)")
-#     if cut_tail:
-#         xlabel +=  " - Cut tail : {}%".format(cut_tail)
-#         error_weight = sorted(error_weight)[:-len(error_weight) * cut_tail // 100]
-#         error_height = sorted(error_height)[:-len(error_height) * cut_tail // 100]
-#         error_mean = sorted(error_mean)[:-len(error_mean) * cut_tail // 100]
-#     values = (error_weight,error_height,error_mean)
-#     alphas = (0.5,0.4,0.3)
-#     labels = ("Max weight","Max height","Mean")
-#     histogramme(values,contexte,title=title,savepath=savepath,
-#                 labels=labels,xlabel=xlabel,alphas=alphas)
-#
-# def compare_retrouveY(values,contexte,methods,cut_tail = None,savepath=None):
-#     title = """Comparaison beetween $Y_{obs}$ and $F(x_{pred})$
-#         (several $x_{pred}$ are found for each $y$)"""
-#     xlabel = _latex_relative_error("F(x_{pred})","Y")
-#     if cut_tail:
-#         xlabel += " - Cut tail : {}%".format(cut_tail)
-#         values = [sorted(error)[:-len(error) * cut_tail // 100] for error in values]
-#     histogramme(values, contexte, title=title,savepath=savepath,labels=methods,xlabel=xlabel)
-#
-#
-# def modalx_prediction(values,methods,contexte,savepath=None,cut_tail = None):
-#     xlabel =
-#     N = len(values)
-#     alphas = [0.5 + i/ (2* N) for i in range(N)]
-#     if cut_tail:
-#         xlabel += " - Cut tail : {}%".format(cut_tail)
-#         values = [ sorted(error)[:-len(error) * cut_tail // 100] for error in values]
-#     histogramme(values,contexte,title=title,savepath=savepath,
-#                 alphas=alphas,labels=methods,xlabel=xlabel)
-#
-# def meanx_prediction(error,contexte,add_errors=None,add_labels=None,savepath=None,cut_tail=None):
-#     title = "Comparaison beetween X and it's mean prediction"
-#     xlabel = _latex_relative_error("X_{est}", "X")
-#     if cut_tail:
-#         xlabel += " - Cut tail : {}%".format(cut_tail)
-#         error = sorted(error)[:-len(error) * cut_tail // 100]
-#     values = [error]
-#     labels = ["Vector error"]
-#     if add_errors is not None:
-#         if cut_tail:
-#             add = (sorted(err)[:-len(err) * cut_tail // 100] for err in add_errors)
-#         else:
-#             add = (err for err in add_errors)
-#         values.extend(add)
-#         labels.extend(["$"+l+"$" for l in add_labels])
-#     histogramme(values,contexte,title=title,savepath=savepath,labels=labels,xlabel=xlabel)
-#
-#
-
-
-def histogramme(values: iter, contexte, title="Histogramm", savepath=None, alphas=None, labels=None, xlabel=""):
-    error_max = max(sum(values, []))
-    bins = np.linspace(0, error_max, 1000)
-    f = pyplot.figure()
-    axe = f.gca()
-    m = len(values)
-    if alphas is None:
-        alphas = [0.5] * m
-    if labels is None:
-        labels = [str(i) for i in range(m)]
-    for serie, alpha, label in zip(values, alphas, labels):
-        axe.hist(serie, bins, alpha=alpha, label=label)
-    axe.legend()
-    axe.set_ylabel("Test points number")
-    axe.set_xlabel(xlabel)
-    title = title + "\n" + contexte
-    f.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.3)
-
-    means = [np.mean(s) for s in values]
-    medians = [np.median(s) for s in values]
-
-    stats = ["{0} $\\rightarrow$ Mean : {1:.2E} ; Median : {2:.2E}".format(label, mean, median)
-             for mean, median, label in zip(means, medians, labels)]
-    s = "\n".join(stats)
-
-    f.text(0.5, -0.07 * m, s, horizontalalignment='center',
-           fontsize=10, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
-                                  ec="0.5", pad=0.5, alpha=1), fontweight='bold')
-
-    if savepath:
-        f.savefig(savepath, bbox_inches='tight')
-        print("Saved in", savepath)
-        pyplot.close(f)
 
 
 ##### ----------------- TODO A refactor en classe  --------------- #################
 
-def schema_1D(points_true_F,ck,ckS,Ak,bk,contexte,xlims=(0,1),xtrue=None,ytest=None,modal_preds=(),
-              clusters=None,main_title="Schema",savepath=None):
-    fig = pyplot.figure(figsize=(10,5))
-    axe = fig.add_subplot(2,1,1)
-    axe.set_xlim(*xlims)
-    xF,yF = points_true_F
 
-    axe.scatter(xF,yF,marker=".",color="b",label= "True F",s=0.3)
-
-    axe.scatter(ck,ckS,marker="+",color='r',label="$(c_{k}, c_{k}^{*})$")
-
-    x_box = np.linspace(0,(xlims[1] - xlims[0])/50,100)
-    for k , a, b in zip(range(len(bk)),Ak[:,0,0],bk[:,0]):
-        x = x_box + ck[k]
-        y = a * x  + b
-        axe.plot(x,y,color="g",alpha=0.7)
-
-    axe.legend(bbox_to_anchor=(-0.2,1))
-
-    if ytest is not None:
-        axe = fig.add_subplot(2,1,2)
-        axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
-        axe.scatter(xF, yF, marker=".", color="b", label="True F", s=0.3)
-
-        axe.axhline(y=ytest)
-        if clusters is not None:
-            colors = cm.coolwarm(np.arange(max(clusters) + 1) / (max(clusters)+1))
-            colors = [colors[c] for c in clusters]
-        else:
-            colors = ["y"] * len(modal_preds)
-        for i , (xpred,w) in enumerate(modal_preds):
-            axe.axvline(xpred[0],color=colors[i],linewidth=0.5,label="{0:.6f} - {1:.2f}".format(xpred[0],w))
-            axe.annotate(str(i),(xpred[0],0))
-        if xtrue is not None:
-            axe.scatter(xtrue,0,marker="+",color="g")
-
-        axe.legend(bbox_to_anchor=(-0.2,1))
-
-    title = main_title + "\n" + contexte
-    fig.suptitle(title, bbox=FIGURE_TITLE_BOX,y = 1.4)
-    fig.tight_layout(rect=[0,0,1,1])
-    if savepath:
-        fig.savefig(savepath, bbox_inches='tight')
-        print("Saved in ", savepath)
-        pyplot.close(fig)
 
 
 

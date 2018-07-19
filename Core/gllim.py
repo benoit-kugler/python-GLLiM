@@ -88,11 +88,12 @@ class MyGMM(GaussianMixture):
         return vec_log_prob.sum()
 
     def _print_verbose_msg_iter_end(self, n_iter, diff_ll):
-        super()._print_verbose_msg_iter_end(n_iter, diff_ll)
         if self.track:
             self.track_params.append((self.weights_, self.means_, self.full_covariances_))
-        if self.verbose >= 0:
-            print("Iteration {}".format(n_iter))
+        if self.verbose == 1:
+            print(f"Iteration {n_iter} \n Log-likelihood = {self.current_iter_ll[-1]} at iteration nb : {n_iter}")
+        elif self.verbose == 0:
+            print(f"Iteration {n_iter}")
 
     def _print_verbose_msg_init_end(self, ll):
         super()._print_verbose_msg_init_end(ll)
@@ -762,7 +763,7 @@ class GLLiM():
         return l
 
 
-class JGLLiM(GLLiM):
+class jGLLiM(GLLiM):
     """Estimate parameters with joint Gaussian Mixture equivalence."""
 
     def __init__(self,*args,**kwargs):

@@ -12,17 +12,13 @@
 (# else #)
 & \multicolumn{3}{|c}{
 (# endif #)
-L,D = (! exp.L !),(! exp.D !) } (# if loop.last #) \\* (# endif #)
-    (# endfor #)
+(! exp.context.LABEL !)} (# if loop.last #) \\* (# endif #)
+(# endfor #)
 (# endblock #)
 
 
 (# block line_first_cell #)
-\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+\makecell{
 {\small K = (! headercell.K !) } \\
 {\small N = (! headercell.N !) } \\ {\small Local = (! headercell.init_local !) }}
 (# endblock #)
-
-
-
-
