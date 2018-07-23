@@ -186,10 +186,10 @@ def init_cos():
     exp.mesures.illustration(gllim, x, y, savepath=PATHS[5])
 
 def main():
-    # plot_estimeF()
-    # plot_evo_LL()
+    plot_estimeF()
+    plot_evo_LL()
     plusieurs_K_N(50)
-    # init_cos()
+    init_cos()
 
 
 RETRAIN = True

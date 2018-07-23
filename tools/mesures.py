@@ -195,6 +195,73 @@ class Mesures():
             issameX[n] = np.array([i == 0, j == 0, i == j])
         return issameX, issameX.mean(axis=0)
 
+    def error_estimation(self, gllim, X):
+        ti = time.time()
+        context = self.experience.context
+        Y = context.F(X)
+        _, gammas = gllim._helper_forward_conditionnal_density(Y)
+        N, L = X.shape
+        _, D = Y.shape
+        diff, term1, term2 = np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L))
+        maj_e2 = np.empty((N, gllim.K))
+
+        fck = np.matmul(gllim.AkList, gllim.ckList[:, :, None])[:, :, 0] + gllim.bkList
+        delta = np.linalg.norm(fck - context.F(gllim.ckList), axis=1)
+
+        vp_gs = np.linalg.eigvalsh(gllim.GammakListS)
+        alpha = 1 / vp_gs.max(axis=1)
+        det_gs = vp_gs.prod(axis=1)
+        nSG = gllim.norm2_SigmaSGammaInv
+        for k, pik, Aks, bks, Ak, bk, ck, Sigmaks, Gammak, Sigmak in zip(range(gllim.K), gllim.pikList, gllim.AkListS,
+                                                                         gllim.bkListS,
+                                                                         gllim.AkList, gllim.bkList, gllim.ckList,
+                                                                         gllim.SigmakListS,
+                                                                         gllim.GammakList, gllim.SigmakList):
+            ay = Aks.dot(Y.T).T
+
+            diff[:, k, :] = ay + bks - X
+
+            fx = Ak.dot(X.T).T + bk
+
+            aa = Aks.dot(fx.T).T
+            mat = Sigmaks.dot(np.linalg.inv(Gammak))
+
+            term1[:, k, :] = ay - aa
+            term2[:, k, :] = mat.dot((ck - X).T).T
+
+            ncx = np.linalg.norm(ck - X, axis=1)
+
+            neg = -0.5 * (context.COERCIVITE_F * ncx ** 2 + delta[k] ** 2)
+            pos = 1 * delta[k] * context.LIPSCHITZ_F * ncx
+            arg_exp = alpha[k] * (neg + pos)
+
+            d = np.linalg.norm(fck[k] - Y, axis=1)
+            arg_exp2 = -0.5 * alpha[k] * d ** 2
+            ex = np.exp(arg_exp2)
+            assert np.all(~np.isinf(ex))
+            ex = ex * pik / np.sqrt(det_gs[k]) / (2 * np.pi) ** (D / 2)
+
+            maj_e2[:, k] = ex * nSG[k] * ncx
+
+        # assert np.all(gammas <= maj_e2) #attention renormalisation
+
+        diff = gammas[:, :, None] * diff
+        term1 = gammas[:, :, None] * term1
+        term2 = gammas[:, :, None] * term2
+        assert np.allclose(diff, term1 + term2)  # decomposition
+
+        ecart_sum = np.linalg.norm(np.sum(diff, axis=1), axis=1).mean()
+        er_cluster = np.linalg.norm(diff, axis=2).max(axis=1).mean()
+        er1 = np.linalg.norm(term1, axis=2).max(axis=1).mean()
+        er2 = np.linalg.norm(term2, axis=2).max(axis=1).mean()
+        maj_er2 = maj_e2.max(axis=1).mean()
+
+        s = gllim.norm2_SigmaSGammaInv.max()
+        u = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
+        sig = gllim.SigmakList.max()
+        max_pi = gllim.pikList.max()
+        print("{:.2f} s for average error estimation over {} samples".format(time.time() - ti, N))
+        return ecart_sum, er_cluster, er1, er2, maj_er2, delta.max(), s, sig, max_pi, u, gllim.GammakList.max(), alpha.min()
 
 class MesuresSecondLearning(Mesures):
     # TODO : Mettre à jour
@@ -273,73 +340,6 @@ class MesuresSecondLearning(Mesures):
 
 
 
-    def error_estimation(self, gllim, X):
-        ti = time.time()
-        context = self.experience.context
-        Y = context.F(X)
-        _ , gammas = gllim._helper_forward_conditionnal_density(Y)
-        N , L = X.shape
-        _ ,D = Y.shape
-        diff,term1,term2 = np.empty((N,gllim.K,L)) ,np.empty((N,gllim.K,L)),np.empty((N,gllim.K,L))
-        maj_e2 = np.empty((N,gllim.K))
-
-        fck = np.matmul(gllim.AkList, gllim.ckList[:, :, None])[:, :, 0] + gllim.bkList
-        delta = np.linalg.norm(fck - context.F(gllim.ckList), axis=1)
-
-        vp_gs = np.linalg.eigvalsh(gllim.GammakListS)
-        alpha = 1 / vp_gs.max(axis=1)
-        det_gs = vp_gs.prod(axis=1)
-        nSG = gllim.norm2_SigmaSGammaInv
-        for k ,pik,Aks,bks,Ak,bk,ck,Sigmaks,Gammak, Sigmak in zip(range(gllim.K),gllim.pikList,gllim.AkListS,gllim.bkListS,
-                                                          gllim.AkList,gllim.bkList,gllim.ckList,gllim.SigmakListS,
-                                                          gllim.GammakList,gllim.SigmakList):
-            ay = Aks.dot(Y.T).T
-
-            diff[:,k,:] = ay + bks - X
-
-            fx = Ak.dot(X.T).T + bk
-
-            aa = Aks.dot(fx.T).T
-            mat = Sigmaks.dot(np.linalg.inv(Gammak))
-
-            term1[:,k,:] = ay - aa
-            term2[:,k,:] = mat.dot((ck  - X).T).T
-
-            ncx = np.linalg.norm(ck - X, axis=1)
-
-            neg = -0.5 * (context.COERCIVITE_F * ncx ** 2 + delta[k] ** 2)
-            pos = 1 * delta[k]  * context.LIPSCHITZ_F * ncx
-            arg_exp = alpha[k] * ( neg +  pos )
-
-            d = np.linalg.norm( fck[k] - Y ,axis=1)
-            arg_exp2 = -0.5 * alpha[k]* d**2
-            ex = np.exp(arg_exp2)
-            assert np.all(~np.isinf(ex))
-            ex = ex * pik  / np.sqrt(det_gs[k]) / (2 * np.pi) ** (D / 2)
-
-            maj_e2[:,k] = ex * nSG[k] * ncx
-
-
-        # assert np.all(gammas <= maj_e2) #attention renormalisation
-
-        diff = gammas[:,:,None] * diff
-        term1 = gammas[:,:,None] * term1
-        term2 = gammas[:,:,None] * term2
-        assert np.allclose(diff, term1 + term2)  # decomposition
-
-
-        ecart_sum = np.linalg.norm(np.sum(diff, axis=1),axis=1).mean()
-        er_cluster = np.linalg.norm(diff, axis=2).max(axis=1).mean()
-        er1 = np.linalg.norm(term1, axis=2).max(axis=1).mean()
-        er2 = np.linalg.norm(term2, axis=2).max(axis=1).mean()
-        maj_er2 = maj_e2.max(axis=1).mean()
-
-        s = gllim.norm2_SigmaSGammaInv.max()
-        u = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
-        sig = gllim.SigmakList.max()
-        max_pi = gllim.pikList.max()
-        print("{:.2f} s for average error estimation over {} samples".format(time.time() - ti,N))
-        return ecart_sum,er_cluster,er1,er2 ,maj_er2, delta.max(), s, sig, max_pi,u , gllim.GammakList.max(), alpha.min()
 
     def evolution_approx(self,x):
         thetas, LLs = self.experience.archive.load_tracked_thetas()

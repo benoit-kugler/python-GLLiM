@@ -195,6 +195,7 @@ class abstractLatexWriter():
 
     )
     latex_jinja_env.globals.update(zip=zip)
+    latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%M m %S s", time.gmtime(s))
 
     CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean", "retrouveY", "retrouveYbest"]
 
@@ -381,7 +382,6 @@ class LocalMeasure(abstractMeasures):
         return dic
 
 
-
 class AlgosLatexWriter(abstractLatexWriter):
     MEASURE_class = AlgosMeasure
     template = "algos.tex"
@@ -469,21 +469,21 @@ class LocalLatexWriter(abstractLatexWriter):
 
 def main():
     logging.info("Launching tests...\n")
-    # AlgosMeasure.run(False, True)
-    # GenerationMeasure.run(False, True)
-    # DimensionMeasure.run(False, True)
-    # ModalMeasure.run(False, True)
-    # LogistiqueMeasure.run(False, True)
-    # NoisesMeasure.run(False, True)
-    # LocalMeasure.run(False, True)
-    # AlgosLatexWriter.render()
-    AlgosTimeLatexWriter.render(verbose=False)
-    # GenerationLatexWriter.render()
-    # DimensionLatexWriter.render()
-    # ModalLatexWriter.render()
-    # LogistiqueLatexWriter.render()
-    # NoisesLatexWriter.render()
-    # LocalLatexWriter.render()
+    AlgosMeasure.run(True, True)
+    GenerationMeasure.run(True, True)
+    DimensionMeasure.run(True, True)
+    ModalMeasure.run(True, True)
+    LogistiqueMeasure.run(True, True)
+    NoisesMeasure.run(True, True)
+    LocalMeasure.run(True, True)
+    AlgosLatexWriter.render()
+    AlgosTimeLatexWriter.render()
+    GenerationLatexWriter.render()
+    DimensionLatexWriter.render()
+    ModalLatexWriter.render()
+    LogistiqueLatexWriter.render()
+    NoisesLatexWriter.render()
+    LocalLatexWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",
