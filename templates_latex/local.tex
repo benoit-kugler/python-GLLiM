@@ -10,3 +10,11 @@
 & \multicolumn{3}{c | }{ $p = 100$ } & \multicolumn{3}{c | }{ $p = 1000$ } \\*
 
 (# endblock #)
+
+
+(# block line_first_cell #)
+\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+{ \small L,D = (! headercell.L !),(! headercell.D !) } \\
+{\small K = (! headercell.K !) } \\
+{\small N = (! headercell.N !) } }
+(# endblock #)

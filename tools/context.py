@@ -1,4 +1,5 @@
 # Ce module permet de simuler des donneés qui peuvent être utilisées pour tester différents algorithmes.
+import logging
 import os
 import random
 
@@ -247,6 +248,8 @@ class abstractExpFunction(abstractSimpleFunctionModel):
 
     LABEL = r"$(x_{i}) \mapsto (\exp(x_{i}) )$"
 
+    PREFERED_MODAL_PRED = 1
+
     def F(self, X):
         return np.exp(X)
 
@@ -290,7 +293,7 @@ class abstractHapkeModel(abstractFunctionModel):
 
         self.path_dF = os.path.join(self.BASE_PATH,self.__class__.__name__ + "_dF.dill")
         # self._load_dF() Buggy. Use finite difference for now
-        print("Uses finite difference for dF computing.")
+        logging.debug("Uses finite difference for dF computing.")
 
     @property
     def D(self):
@@ -345,20 +348,20 @@ class abstractHapkeModel(abstractFunctionModel):
         Long to execute, do not repeat unless geometries have changed."""
         from hapke import hapke_sym
         hapke_sym.save_dF(self, savepath=self.path_dF)
-        print("dF function saved in",self.path_dF)
+        logging.info("dF function saved in {}".format(self.path_dF))
 
     def _load_dF(self):
         try:
             from hapke import hapke_sym
             dF = hapke_sym.load_dF(self.path_dF)
         except FileNotFoundError:
-            print("Warning ! No dF found. Use compute_dF once to set it up, "
+            logging.warning("Warning ! No dF found. Use compute_dF once to set it up, "
                   "or you won't be able to use dGLLiM (GLLiM version using F gradient) ")
         except EOFError:
-            print("Failed to load dF !")
+            logging.warning("Failed to load dF !")
         else:
             self.dF_total = dF
-            print("dF loaded from ",self.path_dF)
+            logging.info("dF loaded from {}".format(self.path_dF))
 
 
     def dF(self,X,permutation=None):
@@ -379,7 +382,7 @@ class abstractHapkeModel(abstractFunctionModel):
         eps = 0.00000001
         h = np.arange(len(self.variables_names))
         y = (self.F(x0 + eps * h) - self.F(x0)) / eps
-        print(y[0] - self.dF(x0)[0].dot(h))
+        logging.debug(y[0] - self.dF(x0)[0].dot(h))
 
 
     def is_Y_valid(self,Y):

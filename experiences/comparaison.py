@@ -8,6 +8,7 @@ import warnings
 from datetime import timedelta
 import logging
 
+import coloredlogs
 import jinja2
 import numpy as np
 
@@ -24,63 +25,39 @@ warnings.filterwarnings("ignore")
 NOISE = 50
 
 ALGOS_exps = [
-    {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 1000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 1000,
-     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": 500, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": logistic.LogisticOlivineContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
-     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": relation_C.HapkeCRelationContext, "partiel": (0, 1, 2), "K": 100, "N": 100000,
-     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": context.VoieS, "partiel": (0, 1, 2, 3), "K": 300, "N": 10000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
+     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
-     "init_local": 500, "sigma_type": "iso", "gamma_type": "full"},
+     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
 ]
 
 
 GENERATION_exps = [
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 50, "N": 500,
+    {"context": context.InjectiveFunction(4), "partiel": (0, 1, 2, 3), "K": 50, "N": 500,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": context.LabContextOlivine, "partiel": None, "K": 100, "N": 100000,
-     "init_local": None, "sigma_type": "iso", "gamma_type": "full"}
 ]
 
 DIMENSION_exps = [
     {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 50000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.InjectiveFunction(2), "partiel": None, "K": 100, "N": 50000,
-     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.InjectiveFunction(3), "partiel": None, "K": 100, "N": 50000,
-     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.InjectiveFunction(4), "partiel": None, "K": 100, "N": 50000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.InjectiveFunction(5), "partiel": None, "K": 100, "N": 50000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.InjectiveFunction(6), "partiel": None, "K": 100, "N": 50000,
+    {"context": context.InjectiveFunction(7), "partiel": None, "K": 100, "N": 50000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
 ]
 
 MODAL_exps = [
     {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 1000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 1000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
 ]
 
@@ -102,9 +79,11 @@ NOISES_exps = [
 
 LOCAL_exps = [
     {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 5000,
-     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+     "init_local": "", "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
+     "init_local": "", "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 10000, "N": 50000,
+     "init_local": "", "sigma_type": "full", "gamma_type": "full"}
 ]
 
 
@@ -116,13 +95,15 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     ti = time.time()
     try:
         exp.load_data(regenere_data=redata, with_noise=noise, N=exp_params["N"], method=method)
-        gllim1 = exp.load_model(exp_params["K"], mode=retrain and "r" or "l", init_local=exp_params["init_local"],
-                                sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
-                                gllim_cls=gllim_cls)
+        gllim1, training_time = exp.load_model(exp_params["K"], mode=retrain and "r" or "l",
+                                               init_local=exp_params["init_local"],
+                                               sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
+                                               gllim_cls=gllim_cls, with_time=True)
     except FileNotFoundError as e:
         logging.warning(
-            "\nNo model or data found for experience {}, version {} - noise : {}".format(i + 1, gllim_cls.__name__,
-                                                                                         noise))
+            "+++ No model or data found for experience {}, version {} - noise : {} +++".format(i + 1,
+                                                                                               gllim_cls.__name__,
+                                                                                               noise))
         logging.debug(e)
         return None
     except WrongContextError as e:
@@ -142,6 +123,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     else:
         exp.centre_data_test()
     m = exp.mesures.run_mesures(gllim1)  # warning change Xtest,Ytest
+    m["training_time"] = training_time
     logging.info("  Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
     return m
 
@@ -173,14 +155,14 @@ class abstractMeasures():
         old_mesures = Archive.load_mesures(self.CATEGORIE)
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
-                print("\nMesures of experience {}/{}".format(i + 1, imax))
+                logging.info("\nMesures of experience {}/{}".format(i + 1, imax))
                 exp = DoubleLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
                 if dic is not None:
                     assert set(self.METHODES) <= set(dic.keys()), f"Missing measures for {self.CATEGORIE}"
             else:
-                print("\nLoaded mesures {}/{}".format(i + 1, imax))
+                logging.info("\nLoaded mesures {}/{}".format(i + 1, imax))
                 dic = old_mesures[i]
             mesures.append(dic)
         Archive.save_mesures(mesures, self.CATEGORIE)
@@ -290,12 +272,12 @@ class abstractLatexWriter():
         standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
         return baretable, standalone_template.render(TABLE=baretable)
 
-    def render_pdf(self, show_latex=False, verbose=False):
+    def render_pdf(self, show_latex=False, verbose=False, filename=None):
         barelatex, latex = self.render_latex()
         if show_latex:
             print(latex)
 
-        filename = self.CATEGORIE + '.tex'
+        filename = (filename or self.CATEGORIE) + '.tex'
         path = os.path.join(self.LATEX_EXPORT_PATH, filename)
         with open(path, "w", encoding="utf8") as f:
             f.write(barelatex)
@@ -303,9 +285,13 @@ class abstractLatexWriter():
         os.chdir(self.LATEX_BUILD_DIR)
         with open(filename, "w", encoding="utf8") as f:
             f.write(latex)
-        command = ["pdflatex", filename] if verbose else ["pdflatex", "-interaction", "batchmode", filename]
-        subprocess.run(command, check=True)
-        subprocess.run(command, check=True)  # for longtable package
+        command = ["pdflatex", "-interaction", "batchmode", filename]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        rep = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # for longtable package
+        if verbose:
+            logging.debug(rep.stdout)
+        if rep.stderr:
+            logging.error(rep.stderr)
         os.chdir(cwd)
 
 
@@ -403,6 +389,18 @@ class AlgosLatexWriter(abstractLatexWriter):
     DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire bruité ou non."
 
 
+class AlgosTimeLatexWriter(abstractLatexWriter):
+    MEASURE_class = AlgosMeasure
+    template = "time.tex"
+    TITLE = "Temps d'apprentissage"
+    DESCRIPTION = "Temps indicatif d'entrainement des différentes variantes."
+
+    @classmethod
+    def render(cls, **kwargs):
+        kwargs["filename"] = "AlgosTime"
+        super().render(**kwargs)
+
+
 class GenerationLatexWriter(abstractLatexWriter):
     MEASURE_class = GenerationMeasure
     template = "generation.tex"
@@ -470,19 +468,24 @@ class LocalLatexWriter(abstractLatexWriter):
 # GenerationMeasure.run(train=False,run_mesure=True)
 
 def main():
-    print("Launching tests...\n")
-    # AlgosMeasure.run(True, True)
-    # GenerationMeasure.run(True, True)
-    # DimensionMeasure.run(True, True)
-    # ModalMeasure.run(True, True)
-    # NoisesMeasure.run(True, True)
-    # LocalMeasure.run(True, True)
-    AlgosLatexWriter.render()
-    GenerationLatexWriter.render()
-    DimensionLatexWriter.render()
-    ModalLatexWriter.render()
-    NoisesLatexWriter.render()
-    LocalLatexWriter.render()
+    logging.info("Launching tests...\n")
+    # AlgosMeasure.run(False, True)
+    # GenerationMeasure.run(False, True)
+    # DimensionMeasure.run(False, True)
+    # ModalMeasure.run(False, True)
+    # LogistiqueMeasure.run(False, True)
+    # NoisesMeasure.run(False, True)
+    # LocalMeasure.run(False, True)
+    # AlgosLatexWriter.render()
+    AlgosTimeLatexWriter.render(verbose=False)
+    # GenerationLatexWriter.render()
+    # DimensionLatexWriter.render()
+    # ModalLatexWriter.render()
+    # LogistiqueLatexWriter.render()
+    # NoisesLatexWriter.render()
+    # LocalLatexWriter.render()
 
 if __name__ == '__main__':
+    coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
     main()

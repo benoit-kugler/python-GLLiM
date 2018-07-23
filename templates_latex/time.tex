@@ -1,0 +1,30 @@
+(# extends 'base_table.tex' #)
+
+(# import 'macros.tex' as macros #)
+
+(# block table_def #)
+{ l | (! (['c |'] *  (hHeader | length )) | join(' ') !) }
+\cline{2 -  (!  (hHeader | length ) * 1 + 1 !) }
+(# endblock #)
+
+
+(# block header_table #)
+(! super() !)
+
+& GLLiM & jGLLiM
+& dGLLiM  \\*
+
+(# endblock #)
+
+(# block line #)
+\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+{ \small L,D = (! headercell.L !),(! headercell.D !) } \\
+{\small K = (! headercell.K !) } \\
+{\small N = (! headercell.N !) } \\ {\small
+(# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) }}
+
+(# for m in line #)
+& (! m.training_time !) secs
+(# endfor #) \\
+
+(# endblock #)

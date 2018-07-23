@@ -98,12 +98,12 @@ def _compare_Fsym():
 
 
 def simple_function():
-    exp = DoubleLearning(WaveFunction,partiel=None,verbose=True)
+    exp = DoubleLearning(WaveFunction, partiel=None, verbose=True, with_plot=True)
     exp.load_data(regenere_data=False,with_noise=None,N=10000)
     # exp.NB_MAX_ITER = 200
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(100, mode="l", track_theta=True, init_local=1000,
-                           gamma_type="full", gllim_cls=saGLLiM)
+    gllim = exp.load_model(100, mode="l", track_theta=True, init_local=100,
+                           gamma_type="full", gllim_cls=GLLiM)
 
     # assert np.allclose(gllim.AkList, np.array([exp.context.dF(c) for c in gllim.ckList]))
 
@@ -111,9 +111,9 @@ def simple_function():
     y = exp.context.F(x[None,:])
 
     # exp.mesures.evolution_approx(x)
-    print(exp.mesures.run_mesures(gllim))
-    # thetas = exp.archive.load_tracked_thetas()
-    # exp.mesures.evolution1D(thetas)
+    # print(exp.mesures.run_mesures(gllim))
+    thetas, LLs = exp.archive.load_tracked_thetas()
+    exp.mesures.evolution_illustration(thetas, cached=True)
 
     # exp.mesures.compareF(gllim)
     # exp.mesures.plot_modal_prediction(gllim,[0.01,0.001])
@@ -219,9 +219,9 @@ def equivalence_jGLLiM_GLLIM():
 if __name__ == '__main__':
     # cA()
     # graphiques.plot_Y(Y)qw
-    # simple_function()
+    simple_function()
     # evolu_cluster()
-    equivalence_jGLLiM_GLLIM()  # OK
+    # equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
     # test_map()

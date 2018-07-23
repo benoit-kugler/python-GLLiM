@@ -20,7 +20,7 @@ class Experience():
 
     def __init__(self, context_class, partiel=None, verbose=True, with_plot=False, **kwargs):
         """If with_plot is False, methods with use matplotlib or vispy can't be used.
-        Used to speed up (no costly import)"""
+        Used to speed up import (no costly import)"""
         self.only_added = False
         self.adding_method = None
         self.para_learning = False
@@ -35,8 +35,7 @@ class Experience():
         else:
             self.mesures = Mesures(self)
 
-
-    def load_data(self,regenere_data=False,with_noise=None,N=1000,method="sobol"):
+    def load_data(self, regenere_data=False, with_noise=None, N=1000, method="latin"):
         self.Nadd = 0
         self.with_noise = with_noise
         self.method = method
@@ -125,7 +124,7 @@ class Experience():
         return gllim
 
     def load_model(self, K, Lw=0, sigma_type="full", gamma_type="full", gllim_cls=GLLiM,
-                   mode="r", multi_init=True,  init_local=None, track_theta=False):
+                   mode="r", multi_init=True, init_local=None, track_theta=False, with_time=False):
         self.K = K
         self.Lw = Lw
         self.sigma_type = sigma_type
@@ -139,6 +138,7 @@ class Experience():
         if mode == "l": #load from memory
             params = self.archive.load_gllim()
             gllim = self._load_gllim(params)
+            training_time = params["training_time"]
         elif mode == "r": # new training
             t = time.time()
             gllim = self.new_train(track_theta=track_theta)
@@ -147,6 +147,8 @@ class Experience():
         else: # only register meta-data
             return
         gllim.inversion()
+        if with_time:
+            return gllim, training_time
         return gllim
 
     def new_train(self,track_theta=False):

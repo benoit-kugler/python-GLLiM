@@ -5,16 +5,18 @@
 
 
 \setlength\tabcolsep{0.07cm}
-\begin{longtable}{ l c | (! (['c c c |'] *  (hHeader | length )) | join(' ') !) }
-    \endfirsthead
-
+\begin{longtable}
+    (# block table_def #){ l c | (! (['c c c |'] *  (hHeader | length )) | join(' ') !) }
     \cline{3 -  (!  (hHeader | length ) * 3 + 2 !) }
+    (# endblock #)
+
+
 
     (# block header_table #)
     (# endblock #)
 
 
-
+    \endfirsthead
     \endhead
     \endfoot
     \endlastfoot
@@ -22,30 +24,36 @@
     (#for headercell, line in zip(vHeader,MATRIX) #)
     (# if line #)
     \hline
+    (# block line scoped #)
+
     (# for critere in CRITERES #)
     (# if loop.first #)
+
     \multirow{6}{*}{
     (# block line_first_cell scoped #)
     \makecell{ \textbf{ (! headercell.context.LABEL !) } \\
     { \small L,D = (! headercell.L !),(! headercell.D !) } \\
     {\small K = (! headercell.K !) } \\
-    {\small N = (! headercell.N !) } \\ {\small Local = (! headercell.init_local !) }}
+    {\small N = (! headercell.N !) } \\ {\small
+    (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) }}
     (# endblock #)
     }
 
     (# endif #)
     & (! macros.LABEL_CRITERE(critere) !)
     (# for m in line #)
-    & (! macros.MESURES(m,critere) !)
+    &
+    (# block cell scoped #)
+    (! macros.MESURES(m,critere) !)
+    (# endblock #)
     (# endfor #)
-    (# if loop.last #)
-    \\
-    (# else #)
-    \\*
+
+    (# if loop.last #) \\ (# else #) \\* (# endif #)
+
+    (# endfor #)
+    (# endblock #)
     (# endif #)
     (# endfor #)
-(# endif #)
-(# endfor #)
     \hline
     \caption{\textbf{(! title !)}. (! description !)}
     \label{tab:(! label !)}

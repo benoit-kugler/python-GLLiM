@@ -6,13 +6,12 @@ from matplotlib.figure import Figure
 
 matplotlib.use("Qt5Agg")
 
-from matplotlib import cm, ticker, transforms, rc
+from matplotlib import cm, ticker, transforms, rc, axes
 from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
 
-from plotting.axes_seq import AxesSequence, SubplotsSequence, vispyAnimation
-
+from plotting.interaction import AxesSequence, SubplotsSequence, vispyAnimation, mplAnimation
 
 
 def _latex_relative_error(est,true):
@@ -140,9 +139,21 @@ class plusieursKN(simple_plot):
     @staticmethod
     def _format_context(context):
         return f"""Courbe 1: $K$ évolue linéairement et $N = {context['coeffNK']} K$. 
-                Courbe 2: idem pour $K$ mais $N = {context['coeffmaxN1']}  K_{{max}}$
-                Courbe 3: item pour $K$ mais $N = {context['coeffmaxN2']}  K_{{max}}$"""
+                Courbe 2: idem pour $K$ mais $N = {context['coeffmaxN1']}  K_{{max}}$.
+                Courbe 3: item pour $K$ mais $N = {context['coeffmaxN2']}  K_{{max}}$."""
 
+
+def _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims):
+    s = axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
+
+    x_box = np.linspace(0, (xlims[1] - xlims[0]) / 50, 100)
+    artists = [s]
+    for k, a, b in zip(range(len(bk)), Ak[:, 0, 0], bk[:, 0]):
+        x = x_box + ck[k]
+        y = a * x + b
+        p = axe.plot(x, y, color="g", alpha=0.7)
+        artists.extend(p)
+    return artists
 
 class schema_1D(abstractDrawerMPL):
     Y_TITLE_BOX_WITH_CONTEXT = 1.1
@@ -160,13 +171,7 @@ class schema_1D(abstractDrawerMPL):
         axe.set_xlim(*xlims)
 
         axe.plot(*points_true_F, color="b", label="True F")
-        axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
-
-        x_box = np.linspace(0, (xlims[1] - xlims[0]) / 50, 100)
-        for k, a, b in zip(range(len(bk)), Ak[:, 0, 0], bk[:, 0]):
-            x = x_box + ck[k]
-            y = a * x + b
-            axe.plot(x, y, color="g", alpha=0.7)
+        _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims)
 
         if ytest is not None:
             axe = self.fig.add_subplot(2, 1, 2)
@@ -377,110 +382,28 @@ class hist_meanPrediction(abstractHistogram):
     XLABEL = _latex_relative_error("X_{est}", "X")
 
 
-
-
-##### ----------------- TODO A refactor en classe  --------------- #################
-
-
-
-
-
-
-class abstractAnimation():
-    INTERVAL = 200
-
-    def __init__(self, data, xlabel="x1", ylabel=None, xlims=(0,1),ylims=None):
-
-        self.fig, self.axe = pyplot.subplots()
-        self.xlabel = xlabel
-        self.ylabel = ylabel
-        self.xlims = xlims
-        self.ylims = ylims
-
-        self.ani = FuncAnimation(self.fig, self.update, frames=data,
-                                 init_func=self.init_animation, blit=True,
-                                 interval=self.INTERVAL)
-        self.is_paused = False
-        self.fig.canvas.mpl_connect("button_press_event", self.onPause)
-        pyplot.show()
-
-    def init_animation(self):
-        self.axe.set_xlim(*self.xlims)
-        if self.ylims is not None:
-            self.axe.set_ylim(*self.ylims)
-        self.axe.set_xlabel("$" + self.xlabel + "$")
-        if self.ylabel:
-            self.axe.set_ylabel("$" + self.ylabel + "$")
-        return []
-
-
-    def update(self, frame):
-        pass
-
-    def onPause(self, event):
-        self.is_paused = not self.is_paused
-        if self.is_paused:
-            self.ani.event_source.stop()
-        else:
-            self.ani.event_source.start()
-
-class Evolution1D(abstractAnimation):
-
-    def __init__(self,points_true_F,cks,X,Ys,clusters,contexte,xlims=(0,1)):
-        self.points_true_F = points_true_F
-        self.X = X
-        self.contexte = contexte
-        data = list(zip(cks,Ys,clusters))
-        super().__init__(data,xlabel="x",xlims=xlims)
-
-
-    def init_animation(self):
-        super().init_animation()
-        # title = "Evolution fo learning" + "\n" + self.contexte
-        # self.fig.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.4)
-        # self.fig.tight_layout(rect=[0, 0, 1, 1])
-        xF, yF = self.points_true_F
-        s = self.axe.scatter(xF, yF, marker=".", color="b", label="True F", s=0.3)
-        return s,
-
-    def update(self, frame):
-        cks, Y, clusters = frame
-        masks = [clusters == i for i in range(max(clusters))]
-        t = self.axe.scatter(cks, [0] * len(cks), color="red", label="Clusters center")
-        artists = [t]
-        colors = cm.rainbow(np.linspace(0,1,len(masks)))
-        for m ,c in zip(masks,colors):
-            x = self.X[m]
-            y = Y[m]
-            s = self.axe.scatter(x,y,marker=".",color=c)
-            artists.append(s)
-
-        return artists
-
-
-
+##### -------------- Animation -------------------- ####
 
 class EvolutionCluster2D(vispyAnimation):
     INTERVAL = 0.05
     AXE_TITLE = "Clusters evolution"
 
-    def __init__(self,points,rnks,density,xlim,ylim):
+    def __init__(self, points, rnks, density, xlim, ylim):
         self.points = points
-        self.rnks = rnks[:,:,:100]
+        self.rnks = rnks[:, :, :100]
         self.density = density
         self.xlim = xlim
         self.ylim = ylim
         imax, _, self.K = self.rnks.shape
         super().__init__(imax)
 
-
     def init_axe(self):
         super().init_axe()
-        self.line = self.axe.plot(self.points,width=0,symbol="disc",marker_size=2,edge_width=0)
+        self.line = self.axe.plot(self.points, width=0, symbol="disc", marker_size=2, edge_width=0)
         self.axe.title.text = "X clusters"
-        self.axe2 = self.fig[0,1]
+        self.axe2 = self.fig[0, 1]
         self.axe2.title.text = "X density"
-        self.line2 = self.axe2.plot(self.points,width=0,symbol="disc",marker_size=2,edge_width=0)
+        self.line2 = self.axe2.plot(self.points, width=0, symbol="disc", marker_size=2, edge_width=0)
         self._draw()
 
     def reset(self):
@@ -496,6 +419,30 @@ class EvolutionCluster2D(vispyAnimation):
         c2 = cm.coolwarm(dens / dens.max())
         self.line2._markers.set_data(pos=self.points, face_color=c2, edge_color=c2)
 
+
+class Evolution1D(mplAnimation):
+
+    def __init__(self, points_true_F, ck, ckS, Ak, bk, xlims):
+        self.points_true_F = points_true_F
+        data = list(zip(ck, ckS, Ak, bk))
+        super().__init__(data,xlabel="x",xlims=xlims)
+
+
+    def init_animation(self):
+        super().init_animation()
+        xF, yF = self.points_true_F
+        s = self.axe.scatter(xF, yF, marker=".", color="b", label="True F", s=0.3)
+        return s,
+
+    def update(self, frame):
+        i, (ck, ckS, Ak, bk) = frame
+        artists = _axe_schema_1D_direct(self.axe, ck, ckS, Ak, bk, self.xlims)
+        l = self.axe.legend([f"Iteration {i}"], loc="lower left")
+        # t = self.axe.text(0.01,0.01,f"Iteration {i}")
+        return artists + [l]
+
+
+##### ----------------- TODO A refactor en classe  --------------- #################
 
 
 
@@ -767,8 +714,7 @@ def density_sequences1D(fs, modal_preds, xlabels, Xmean, Xweight, Xheight, xlim=
     pyplot.show()
 
 
-
-class CkAnimation(abstractAnimation):
+class CkAnimation(mplAnimation):
 
     def __init__(self,cks,varnames=("x1","x2"), varlims=((0,1),(0,1))):
         super().__init__(cks,xlabel=varnames[0],ylabel=varnames[1],

@@ -1,8 +1,10 @@
 import vispy
+from matplotlib.animation import FuncAnimation
+
 vispy.use(app="PyQt5")
 
 import vispy.app
-from matplotlib import pyplot, gridspec
+from matplotlib import pyplot, gridspec, axes
 from vispy.plot import Fig
 
 class AxesSequence():
@@ -180,6 +182,46 @@ class vispyAnimation():
     def _draw(self):
         pass
 
+
+class mplAnimation():
+    INTERVAL = 200
+
+    axe: axes.Axes
+    fig: pyplot.Figure
+
+    def __init__(self, data, xlabel="x1", ylabel=None, xlims=(0, 1), ylims=None):
+
+        self.fig, self.axe = pyplot.subplots()
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.xlims = xlims
+        self.ylims = ylims
+
+        self.ani = FuncAnimation(self.fig, self.update, frames=enumerate(data),
+                                 init_func=self.init_animation, blit=True,
+                                 interval=self.INTERVAL)
+        self.is_paused = False
+        self.fig.canvas.mpl_connect("button_press_event", self.onPause)
+        pyplot.show()
+
+    def init_animation(self):
+        self.axe.set_xlim(*self.xlims)
+        if self.ylims is not None:
+            self.axe.set_ylim(*self.ylims)
+        self.axe.set_xlabel("$" + self.xlabel + "$")
+        if self.ylabel:
+            self.axe.set_ylabel("$" + self.ylabel + "$")
+        return []
+
+    def update(self, frame):
+        pass
+
+    def onPause(self, event):
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            self.ani.event_source.stop()
+        else:
+            self.ani.event_source.start()
 
 if __name__ == '__main__':
     vispyAnimation(1)

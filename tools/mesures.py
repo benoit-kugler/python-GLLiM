@@ -1,3 +1,4 @@
+import os
 import time
 
 import h5py
@@ -5,6 +6,7 @@ import numpy as np
 
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import dominant_components
+from tools.archive import Archive
 from tools.regularization import best_K, global_regularization, step_by_step, global_regularization_exclusion
 
 
@@ -177,6 +179,25 @@ class Mesures():
                     retrouveYmean = sumup(meanretrouveY)
                     )
 
+    def compare_sorting(self, G: GLLiM):
+        """Returns the proportion of Y such as
+            - X best weight == X initial
+            - X best weight == X best retrouve Y
+            - X best retrouve Y == X initial """
+        exp = self.experience
+        Xs, Y, Xtest, _ = exp.clean_modal_prediction(G, exp.K // 4)  # 25% best components
+        N = len(Xs)
+        Ys = self._compute_FXs(Xs)
+        issameX = np.empty((N, 3))
+        for n, (xs, xtrue, ys, ytest) in enumerate(zip(Xs, Xtest, Ys, Y)):
+            i = np.argmin(np.square(xs - xtrue).sum(axis=1))
+            j = np.argmin(np.square(ys - ytest).sum(axis=1))
+            issameX[n] = np.array([i == 0, j == 0, i == j])
+        return issameX, issameX.mean(axis=0)
+
+
+class MesuresSecondLearning(Mesures):
+    # TODO : Mettre à jour
     def plot_modal_prediction_parallel(self, gllims : [GLLiM], Y, Xtest, methods):
         """Same as plot_modal_prediction, but with one gllim instance per Y"""
         exp = self.experience
@@ -250,78 +271,6 @@ class Mesures():
                           savepath=exp.archive.get_path("figures",
                                                          filecategorie="retrouveYPara{}".format(methods)))
 
-
-    def compare_sorting(self, G : GLLiM):
-        """Returns the proportion of Y such as
-            - X weight == Xx
-            - X weight == Xy
-            - Xy == Xx """
-        exp = self.experience
-        X, Y, Xtest , _ = exp.clean_modal_prediction(G, exp.K //  4) # 25% best components
-        N , K = X.shape[0:2]
-        Xglue = X.reshape((N * K, G.L))
-        Ys = np.split(exp.context.F(Xglue),N)
-        issameX = np.empty((N,3))
-        for n, (xs, xtrue, ys, ytest) in enumerate(zip(X, Xtest, Ys,Y)):
-            i = np.argmin(np.square(xs - xtrue).sum(axis=1))
-            j = np.argmin(np.square(ys - ytest).sum(axis=1))
-            issameX[n] = np.array([i == 0,j == 0,i == j])
-        return issameX
-
-
-    def show_ck_progression(self,marginals):
-        """Load theta progression and build animation"""
-        exp = self.experience
-        thetas, LLs = exp.archive.load_tracked_thetas()
-        cks = np.array([d["c"] for d in thetas])
-        varnames = exp.variables_names
-        varlims = exp.variables_lims
-        a = CkAnimation(cks[:, :, marginals],varnames=varnames[[*marginals]],varlims=varlims[[*marginals]])
-
-
-    def evolution1D(self,thetas):
-        exp = self.experience
-        assert exp.context.D == 1 and exp.context.L == 1
-        N = 10000
-        xlim = exp.context.XLIMS[0]
-        x = np.linspace(*xlim,N)
-        y = exp.context.F(x[:,None])
-        Ys , clusterss = [],[]
-        for theta in thetas:
-            K = len(theta["pi"])
-            gllim = exp.gllim_cls(K,Lw = exp.Lw,sigma_type=exp.sigma_type,
-                                              gamma_type=exp.gamma_type,verbose=False)
-            gllim.init_fit(exp.Xtrain,exp.Ytrain,theta)
-            gllim.inversion()
-            Y , clusters ,_ ,_ , _ = exp.reconstruct_F(gllim,exp.Xtrain)
-            Ys.append(Y)
-            clusterss.append(clusters)
-        cks = [theta["c"] for theta in thetas]
-        Evolution1D((x,y),cks,exp.Xtrain,Ys,clusterss,exp.get_infos(),xlims=xlim)
-
-    def evolution_clusters2D(self,thetas):
-        exp = self.experience
-        X = exp.Xtrain
-        path = "/scratch/WORK/evo_cluster.mat"
-        # rnks ,Xdensity = [] , []
-        # for theta in thetas:
-        #     K = len(theta["pi"])
-        #     gllim = exp.gllim_cls(K,Lw = exp.Lw,sigma_type=exp.sigma_type,
-        #                                       gamma_type=exp.gamma_type,verbose=False)
-        #     gllim.init_fit(exp.Xtrain, exp.Ytrain, theta)
-        #     _, rnk = gllim.predict_cluster(X)
-        #     rnks.append(rnk)  # nb de cluster a afficher
-        #     Xdensity.append(gllim.X_density(X))
-        # # ---- TMP
-        # with h5py.File(path,"w") as f:
-        #     f.create_dataset("rnks",data=rnks)
-        #     f.create_dataset("Xdensity",data=Xdensity)
-        with h5py.File(path) as f:
-            rnks = np.array(f["rnks"])
-            Xdensity = np.array(f["Xdensity"])
-        if X.shape[1] == 1:
-            X = np.append(X,np.array([0.5] * X.shape[0]).T[:,None],axis=1)
-        EvolutionCluster2D(X,rnks,Xdensity,xlim=exp.variables_lims[0],ylim=exp.variables_lims[1])
 
 
     def error_estimation(self, gllim, X):
@@ -804,3 +753,50 @@ class VisualisationMesures(Mesures):
                          modals,
                          context=context, write_context=True, draw_context=False,
                          title="", savepath=savepath)
+
+    def evolution_illustration(self, thetas, cached=False):
+        """Show 1D summary of evolution during fitting
+                If cached is True, load values from archive.BASE_PATH/evo_1D.mat """
+        exp = self.experience
+        assert exp.context.D == 1 and exp.context.L == 1
+        N = 10000
+        xlims = exp.context.XLIMS[0]
+        x = np.linspace(*xlims, N)
+        y = exp.context.F(x[:, None])
+        points_F = (x, y)
+        if not cached:
+            datas = []
+            for theta in thetas:
+                K = len(theta["pi"])
+                gllim = exp.gllim_cls(K, Lw=exp.Lw, sigma_type=exp.sigma_type,
+                                      gamma_type=exp.gamma_type, verbose=False)
+                gllim.init_fit(exp.Xtrain, exp.Ytrain, theta)
+                gllim.inversion()
+                datas.append((gllim.ckList, gllim.ckListS, gllim.AkList, gllim.bkList))
+            cks, ckSs, Aks, bks = zip(*datas)
+            Archive.save_evolution_1D(cks, ckSs, Aks, bks)
+        else:
+            cks, ckSs, Aks, bks = Archive.load_evolution_1D()
+        self.G.Evolution1D(points_F, cks, ckSs, Aks, bks, xlims)
+
+    def evolution_clusters2D(self, thetas, cached=False):
+        """Load theta progression and build animation of clusters and X density evolution.
+        If cached is True, load values from archive.BASE_PATH/evo_cluster.mat """
+        exp = self.experience
+        X = exp.Xtrain
+        if not cached:
+            rnks, Xdensitys = [], []
+            for theta in thetas:
+                K = len(theta["pi"])
+                gllim = exp.gllim_cls(K, Lw=exp.Lw, sigma_type=exp.sigma_type,
+                                      gamma_type=exp.gamma_type, verbose=False)
+                gllim.init_fit(exp.Xtrain, exp.Ytrain, theta)
+                _, rnk = gllim.predict_cluster(X)
+                rnks.append(rnk)  # nb de cluster a afficher
+                Xdensitys.append(gllim.X_density(X))
+            Archive.save_evolution_clusters(rnks, Xdensitys)
+        else:
+            rnks, Xdensitys = Archive.load_evolution_clusters()
+        if X.shape[1] == 1:
+            X = np.append(X, np.array([0.5] * X.shape[0]).T[:, None], axis=1)
+        self.G.EvolutionCluster2D(X, rnks, Xdensitys, xlim=exp.variables_lims[0], ylim=exp.variables_lims[1])
