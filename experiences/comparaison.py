@@ -6,6 +6,7 @@ import subprocess
 import time
 import warnings
 from datetime import timedelta
+import logging
 
 import jinja2
 import numpy as np
@@ -111,7 +112,7 @@ LOCAL_exps = [
 def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain, Xtest=None, Ytest=None):
     """If Xtest and Ytest are given, use instead of exp data.
     Useful to fix data across severals exp"""
-    print("  Starting {} ...".format(gllim_cls.__name__))
+    logging.info("  Starting {} ...".format(gllim_cls.__name__))
     ti = time.time()
     try:
         exp.load_data(regenere_data=redata, with_noise=noise, N=exp_params["N"], method=method)
@@ -119,28 +120,29 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
                                 sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
                                 gllim_cls=gllim_cls)
     except FileNotFoundError as e:
-        print("\nNo model or data found for experience {}, version {} - noise : {}".format(i + 1, gllim_cls.__name__,
-                                                                                           noise))
-        print(e)
+        logging.warning(
+            "\nNo model or data found for experience {}, version {} - noise : {}".format(i + 1, gllim_cls.__name__,
+                                                                                         noise))
+        logging.debug(e)
         return None
     except WrongContextError as e:
-        print("\n{} method is not appropriate for the parameters ! "
+        logging.warning("\n{} method is not appropriate for the parameters ! "
               "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
         return None
     except np.linalg.LinAlgError as e:
-        print("\nTraining failed ! {}".format(e))
+        logging.error("\nTraining failed ! {}".format(e))
         return None
     except AssertionError as e:
-        print("\nTraining failed ! {}".format(e))
+        logging.error("\nTraining failed ! {}".format(e))
         return None
-    print("  Model fitted or loaded in {:.3f} s".format(time.time() - ti))
+    logging.info("  Model fitted or loaded in {:.3f} s".format(time.time() - ti))
     ti = time.time()
     if Xtest is not None:
         exp.Xtest, exp.Ytest = Xtest, Ytest
     else:
         exp.centre_data_test()
     m = exp.mesures.run_mesures(gllim1)  # warning change Xtest,Ytest
-    print("  Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
+    logging.info("  Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
     return m
 
 class abstractMeasures():
@@ -469,12 +471,12 @@ class LocalLatexWriter(abstractLatexWriter):
 
 def main():
     print("Launching tests...\n")
-    AlgosMeasure.run(True, True)
-    GenerationMeasure.run(True, True)
-    DimensionMeasure.run(True, True)
-    ModalMeasure.run(True, True)
-    NoisesMeasure.run(True, True)
-    LocalMeasure.run(True, True)
+    # AlgosMeasure.run(True, True)
+    # GenerationMeasure.run(True, True)
+    # DimensionMeasure.run(True, True)
+    # ModalMeasure.run(True, True)
+    # NoisesMeasure.run(True, True)
+    # LocalMeasure.run(True, True)
     AlgosLatexWriter.render()
     GenerationLatexWriter.render()
     DimensionLatexWriter.render()

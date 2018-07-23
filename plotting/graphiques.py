@@ -140,7 +140,8 @@ class plusieursKN(simple_plot):
     @staticmethod
     def _format_context(context):
         return f"""Courbe 1: $K$ évolue linéairement et $N = {context['coeffNK']} K$. 
-               Courbe 2: $K$ évolue de la même manière mais $N = {context['coeffmaxN']}  K_{{max}}$"""
+                Courbe 2: idem pour $K$ mais $N = {context['coeffmaxN1']}  K_{{max}}$
+                Courbe 3: item pour $K$ mais $N = {context['coeffmaxN2']}  K_{{max}}$"""
 
 
 class schema_1D(abstractDrawerMPL):

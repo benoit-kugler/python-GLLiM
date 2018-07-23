@@ -19,7 +19,6 @@ LATEX_IMAGES_PATH = "../latex/images/plots"
 names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png", "init_cos1.png", "init_cos2.png"]
 PATHS = [os.path.join(LATEX_IMAGES_PATH, i) for i in names]
 
-RETRAIN = True
 
 
 def _merge_image_byside(paths, savepath):
@@ -131,7 +130,8 @@ def plusieurs_K_N(imax):
     filename = os.path.join(Archive.BASE_PATH, filename)
     exp = DoubleLearning(InjectiveFunction(1))
     coeffNK = 10
-    coeffmaxN = 6
+    coeffmaxN1 = 10
+    coeffmaxN2 = 2
     if RETRAIN:
         # k = 10 n
         K_progression = np.arange(imax) * 3 + 2
@@ -140,26 +140,31 @@ def plusieurs_K_N(imax):
 
         # N fixed
         K_progression = np.arange(imax) * 3 + 2
-        N_progression = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN)
+        N_progression1 = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN1)
 
-        l2 = _train_K_N(exp, N_progression, K_progression)
+        N_progression2 = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN2)
 
-        scipy.io.savemat(filename + ".mat", {"l1": l1, "l2": l2})
+        l2 = _train_K_N(exp, N_progression1, K_progression)
+        l3 = _train_K_N(exp, N_progression2, K_progression)
+
+        scipy.io.savemat(filename + ".mat", {"l1": l1, "l2": l2, "l3": l3})
     else:
         m = scipy.io.loadmat(filename + ".mat")
-        l1, l2 = m["l1"], m["l2"]
+        l1, l2, l3 = m["l1"], m["l2"], m["l3"]
 
     labels = exp.mesures.LABELS_STUDY_ERROR
     l1 = l1[:, 0]
     l2 = l2[:, 0]
+    l3 = l3[:, 0]
     label1 = labels[0] + f" - $N = {coeffNK}K$"
-    label2 = labels[0] + f" - $N = {coeffmaxN} * Kmax$"
+    label2 = labels[0] + f" - $N = {coeffmaxN1} * Kmax$"
+    label3 = labels[0] + f" - $N = {coeffmaxN2} * Kmax$"
 
     title = "Evolution de l'erreur en fonction de K et N"
 
-    graphiques.plusieursKN([l1, l2], [label1, label2], None, None, savepath=PATHS[3],
-                           title=title, context={"coeffNK": coeffNK, "coeffmaxN": coeffmaxN},
-                           write_context=True)
+    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], None, True, savepath=PATHS[3],
+                           title=title, write_context=True,
+                           context={"coeffNK": coeffNK, "coeffmaxN1": coeffmaxN1, "coeffmaxN2": coeffmaxN2})
 
 
 def init_cos():
@@ -183,10 +188,10 @@ def init_cos():
 def main():
     # plot_estimeF()
     # plot_evo_LL()
-    # plusieurs_K_N(50)
-    init_cos()
+    plusieurs_K_N(50)
+    # init_cos()
 
 
-RETRAIN = False
+RETRAIN = True
 if __name__ == '__main__':
     main()
