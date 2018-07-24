@@ -104,6 +104,9 @@ class abstractFunctionModel():
         """Takes X values and returns a version in [0,1]"""
         return (X - self.variables_lims[:,0]) / (self.variables_range)
 
+    def normalize_Y(self, Y):
+        """Should return Y version in [0,1]. Used only in measures."""
+        return Y
 
 
     def add_noise_data(self,Y,std=10):
@@ -210,18 +213,27 @@ class abstractSimpleFunctionModel(abstractFunctionModel):
 
     PARAMETERS = np.array(["x"])
 
+    YLIMS = np.array([[0, 1]])
+
+    def normalize_Y(self, Y):
+        return (Y - self.YLIMS[:, 0]) / (self.YLIMS[:, 1] - self.YLIMS[:, 0])
 
 
 class SquaredFunction(abstractSimpleFunctionModel):
 
     LABEL = r"$x \rightarrow x^{2}$"
 
+    YLIMS = np.array([[0, 0.25]])
+
     def F(self,X):
         return np.square(X - 0.5)
+
 
 class WaveFunction(abstractSimpleFunctionModel):
 
     LABEL = r"$x \rightarrow \cos(10x) $"
+
+    YLIMS = np.array([[0, 1]])
 
     def F(self,X):
         return np.cos(X * 30)
@@ -250,6 +262,8 @@ class abstractExpFunction(abstractSimpleFunctionModel):
 
     PREFERED_MODAL_PRED = 1
 
+    YLIMS = np.array([[1, np.exp(1)]])
+
     def F(self, X):
         return np.exp(X)
 
@@ -258,6 +272,7 @@ def InjectiveFunction(d, **kwargs):
     attrs = dict(D=d,
                  DEFAULT_VALUES=np.array([0.5] * d),
                  XLIMS=np.array([[-1, 2]] * d),
+                 YLIMS=np.exp([[-1, 2]] * d),
                  PARAMETERS=np.array(["x{}".format(i + 1) for i in range(d)]), **kwargs)
 
     return type("InjectiveFunction{}".format(d), (abstractExpFunction,), attrs)
@@ -274,7 +289,7 @@ class abstractHapkeModel(abstractFunctionModel):
     SCATTERING_VARIANT = "2002"
 
     """Label of variables"""
-    PARAMETERS = np.array(['\omega', r'\overline{\theta}', 'b', 'c', 'H', 'B_{0}'])
+    PARAMETERS = np.array(['$\omega$', r'$\overline{\theta}$', '$b$', '$c$', '$H$', '$B_{0}$'])
 
     """Therorical intervals [0,xmax]"""
     XLIMS = np.array([[-0.05,1],[0,31], [-0.05,1],[-0.05, 1], [-0.05,1.2], [-0.05,1.2]])
@@ -384,10 +399,11 @@ class abstractHapkeModel(abstractFunctionModel):
         y = (self.F(x0 + eps * h) - self.F(x0)) / eps
         logging.debug(y[0] - self.dF(x0)[0].dot(h))
 
+    def normalize_Y(self, Y):
+        """Does nothing since Y is already (almost) in [0,1]"""
+        return Y
 
-    def is_Y_valid(self,Y):
-        """Returns a mask of acceptable Y values"""
-        return np.array([ np.all((0 <=y ) * (y <= 1)) for y in Y ])
+
 
 
 
@@ -510,8 +526,11 @@ class HapkeGonio1468_50(HapkeGonio1468):
 class abstractLabContext(abstractHapkeModel):
     """Uses lab setup"""
 
+    HAPKE_VECT_PERMUTATION = [2, 3, 1, 0, 5, 4]
+    """Index of parameters in reference given by Hapke_vect"""
+
     """Label of variables"""
-    PARAMETERS = np.array(["b","c",r"\overline{\theta}",r"\omega",'B_{0}','H'])
+    PARAMETERS = abstractHapkeModel.PARAMETERS[HAPKE_VECT_PERMUTATION]
 
     """Therorical intervals [0,xmax]"""
     XLIMS = np.array([ [-0.05, 1], [-0.05, 1],[0, 31],[-0.05, 1],  [-0.05, 1.2], [-0.05, 1.2]])
@@ -523,9 +542,6 @@ class abstractLabContext(abstractHapkeModel):
 
     EXPERIENCES = [("lab_data/data_nontronite_ng1_corr.sav","result_photom/NG1_new_optim_100iter","brf_nontronite"),
                    ("lab_data/data_olivine_olv_corr.sav","result_photom/OLV_new_optim_100iter","brf_olv")]
-
-    HAPKE_VECT_PERMUTATION = [2,3,1,0,5,4]
-    """Index of parameters in reference given by Hapke_vect"""
 
     PDF_NAMES = ["b","c","theta","omega","",""]
 

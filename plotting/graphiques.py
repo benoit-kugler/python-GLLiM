@@ -15,7 +15,7 @@ from plotting.interaction import AxesSequence, SubplotsSequence, vispyAnimation,
 
 
 def _latex_relative_error(est,true):
-    return r"Relative error : $\frac{{|| {est} - {true}||_{{2}} }} {{||{true}||_{{2}} }}$".\
+    return r"Relative error : $|| {est} - {true}||_{{\infty}} }}$". \
         format(est=est,true=true)
 
 def _get_rows_columns(N,coeff_row = 5, coeff_column=5):
@@ -313,6 +313,8 @@ class abstractHistogram(abstractDrawerMPL):
     TITLE = "Histogram"
     XLABEL = "x"
     LABELS = None
+
+    Y_TITLE_BOX_WITH_CONTEXT = 1.3
 
     def set_title(self, title, context, draw_context):
         super().set_title(self.TITLE, context, draw_context)

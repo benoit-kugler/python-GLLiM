@@ -30,7 +30,7 @@ ALGOS_exps = [
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
 ]
@@ -86,6 +86,12 @@ LOCAL_exps = [
      "init_local": "", "sigma_type": "full", "gamma_type": "full"}
 ]
 
+RELATIONC_exps = [
+    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
+     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+    {"context": relation_C.HapkeCRelationContext, "partiel": (0, 1, 2), "K": 1000, "N": 10000,
+     "init_local": None, "sigma_type": "full", "gamma_type": "full"}
+]
 
 
 def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain, Xtest=None, Ytest=None):
@@ -101,20 +107,20 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
                                                gllim_cls=gllim_cls, with_time=True)
     except FileNotFoundError as e:
         logging.warning(
-            "+++ No model or data found for experience {}, version {} - noise : {} +++".format(i + 1,
+            "--- No model or data found for experience {}, version {} - noise : {} ---".format(i + 1,
                                                                                                gllim_cls.__name__,
                                                                                                noise))
         logging.debug(e)
         return None
     except WrongContextError as e:
-        logging.warning("\n{} method is not appropriate for the parameters ! "
+        logging.warning("\t{} method is not appropriate for the parameters ! "
               "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
         return None
     except np.linalg.LinAlgError as e:
-        logging.error("\nTraining failed ! {}".format(e))
+        logging.error("\tTraining failed ! {}".format(e))
         return None
     except AssertionError as e:
-        logging.error("\nTraining failed ! {}".format(e))
+        logging.error("\tTraining failed ! {}".format(e))
         return None
     logging.info("  Model fitted or loaded in {:.3f} s".format(time.time() - ti))
     ti = time.time()
@@ -124,7 +130,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
         exp.centre_data_test()
     m = exp.mesures.run_mesures(gllim1)  # warning change Xtest,Ytest
     m["training_time"] = training_time
-    logging.info("  Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
+    logging.info("Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
     return m
 
 class abstractMeasures():
@@ -155,14 +161,14 @@ class abstractMeasures():
         old_mesures = Archive.load_mesures(self.CATEGORIE)
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
-                logging.info("\nMesures of experience {}/{}".format(i + 1, imax))
+                logging.info("Mesures of experience {}/{}".format(i + 1, imax))
                 exp = DoubleLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
                 if dic is not None:
                     assert set(self.METHODES) <= set(dic.keys()), f"Missing measures for {self.CATEGORIE}"
             else:
-                logging.info("\nLoaded mesures {}/{}".format(i + 1, imax))
+                logging.info("Loaded mesures {}/{}".format(i + 1, imax))
                 dic = old_mesures[i]
             mesures.append(dic)
         Archive.save_mesures(mesures, self.CATEGORIE)
@@ -214,6 +220,9 @@ class abstractLatexWriter():
     template = ""
     "latex template file"
 
+    METHODES = None
+    """Default to Measure_class.METHODES"""
+
     @classmethod
     def render(cls, **kwargs):
         """Wrapper"""
@@ -223,7 +232,8 @@ class abstractLatexWriter():
     def __init__(self):
         self.CATEGORIE = self.MEASURE_class.__name__
         mesures = Archive.load_mesures(self.CATEGORIE)
-        self.methodes, self.experiences = self.MEASURE_class.METHODES, self.MEASURE_class.experiences
+        self.experiences = self.MEASURE_class.experiences
+        self.methodes = self.METHODES or self.MEASURE_class.METHODES
         self.matrix = self._mesures_to_matrix(mesures)
         self.matrix = self._find_best()
 
@@ -382,18 +392,31 @@ class LocalMeasure(abstractMeasures):
         return dic
 
 
+class RelationCMeasure(abstractMeasures):
+    METHODES = ["dgllim"]
+    experiences = RELATIONC_exps
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {"dgllim": _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "latin", t, t)}
+        return dic
+
+
+### ----------------------------- LATEX WRTIERS ------------------------------- ###
+
+
 class AlgosLatexWriter(abstractLatexWriter):
     MEASURE_class = AlgosMeasure
     template = "algos.tex"
     TITLE = "Algorithmes"
-    DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire bruité ou non."
-
+    DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire légèrement bruité."
+    METHODES = ["NG", "NjG", "NdG"]
 
 class AlgosTimeLatexWriter(abstractLatexWriter):
     MEASURE_class = AlgosMeasure
     template = "time.tex"
     TITLE = "Temps d'apprentissage"
     DESCRIPTION = "Temps indicatif d'entrainement des différentes variantes."
+    METHODES = ["nNG", "nNjG", "nNdG"]
 
     @classmethod
     def render(cls, **kwargs):
@@ -467,23 +490,32 @@ class LocalLatexWriter(abstractLatexWriter):
 # mesuresAlgos(train=False,run_mesure=False)
 # GenerationMeasure.run(train=False,run_mesure=True)
 
+
+class RelationCLatexWriter(abstractLatexWriter):
+    MEASURE_class = RelationCMeasure
+    template = "relationC.tex"
+    TITLE = "Relation imposée entre $b$ et $c$"
+    DESCRIPTION = "Comparaison entre un apprentissage standard et un apprentissage en déduisant $c$ de $b$."
+
+
+
 def main():
     logging.info("Launching tests...\n")
-    AlgosMeasure.run(True, True)
-    GenerationMeasure.run(True, True)
-    DimensionMeasure.run(True, True)
-    ModalMeasure.run(True, True)
-    LogistiqueMeasure.run(True, True)
-    NoisesMeasure.run(True, True)
-    LocalMeasure.run(True, True)
+    # AlgosMeasure.run(True, True)
+    # GenerationMeasure.run(True, True)
+    # DimensionMeasure.run(True, True)
+    # ModalMeasure.run(True, True)
+    # LogistiqueMeasure.run(True, True)
+    # NoisesMeasure.run(True, True)
+    # LocalMeasure.run(True, True)
     AlgosLatexWriter.render()
     AlgosTimeLatexWriter.render()
-    GenerationLatexWriter.render()
-    DimensionLatexWriter.render()
-    ModalLatexWriter.render()
-    LogistiqueLatexWriter.render()
-    NoisesLatexWriter.render()
-    LocalLatexWriter.render()
+    # GenerationLatexWriter.render()
+    # DimensionLatexWriter.render()
+    # ModalLatexWriter.render()
+    # LogistiqueLatexWriter.render()
+    # NoisesLatexWriter.render()
+    # LocalLatexWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",

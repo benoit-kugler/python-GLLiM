@@ -9,7 +9,7 @@ from Core.gllim import GLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
-from tools.mesures import Mesures, VisualisationMesures
+from tools.measures import Mesures, VisualisationMesures
 
 Ntest = 50000
 
@@ -404,37 +404,38 @@ def double_learning():
 
 def test_map():
     exp = DoubleLearning(context.HapkeContext, partiel=None)
-    exp.load_data(regenere_data=True,with_noise=50,N=10000,method="sobol")
+    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(1000,mode="r",with_GMM=False,track_theta=False,init_local=500,
+    gllim = exp.load_model(1000, mode="l", track_theta=False, init_local=500,
                            gllim_cls=dGLLiM)
 
-    Y = exp.context.get_observations()
-    latlong, mask = exp.context.get_spatial_coord()
-    Y = Y[mask] #cleaning
-    MCMC_X ,Std = exp.context.get_result(with_std=True)
-    MCMC_X = MCMC_X[mask]
-    Std = Std[mask]
+    # Y = exp.context.get_observations()
+    # latlong, mask = exp.context.get_spatial_coord()
+    # Y = Y[mask] #cleaning
+    # MCMC_X ,Std = exp.context.get_result(with_std=True)
+    # MCMC_X = MCMC_X[mask]
+    # Std = Std[mask]
 
+    print(gllim.ckList[:, (4, 5)])
     # exp.mesures.plot_density_sequence(gllim,Y[0:10],np.arange(10),index=0,Xref=MCMC_X[0:10],StdRef=Std[0:10])
 
-    exp.mesures.map(gllim,Y,latlong,0,Xref = MCMC_X)
+    # exp.mesures.map(gllim,Y,latlong,0,Xref = MCMC_X)
 
     # print(exp.context.get_result(full=True)[mask,9])
 
 def main():
     exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
-    exp.load_data(regenere_data=False,with_noise=50,N=100000,method="sobol")
+    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=500,
+    gllim = exp.load_model(1000, mode="l", track_theta=False, init_local=500,
                            sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
 
 
     # exp.extend_training_parallel(gllim,Y=exp.context.get_observations(),X=None,threshold=None,nb_per_X=5000,clusters_per_X=20)
     # Y ,X , gllims = exp.load_second_learning(64,None,5000,20,withX=False)
-    exp.mesures.plot_mesures(gllim)
+    exp.mesures.plot_mean_prediction(gllim)
     # show_projections(exp.Xtrain)
     # exp.mesures.plot_mesures(gllim)
     # X0= exp.mesures.plot_mean_prediction(gllim)
@@ -445,8 +446,8 @@ def main():
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True, colorplot=True)
     # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True,dim=1)
 
-    exp.mesures.plot_density_X(gllim)
-    exp.mesures.plot_conditionnal_density(gllim, Y0, X0)
+    # exp.mesures.plot_density_X(gllim)
+    # exp.mesures.plot_conditionnal_density(gllim, Y0, X0)
     # exp.mesures.plot_modal_prediction(gllim,[0.02])
 
     # print(exp.mesures.run_mesures(gllim))
@@ -555,9 +556,9 @@ def RTLS():
 
 if __name__ == '__main__':
     # RTLS()
-    main()
+    # main()
     # monolearning()
-    # test_map()
+    test_map()
     # double_learning()
     # glace()
     # test_map()

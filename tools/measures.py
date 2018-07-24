@@ -28,10 +28,15 @@ class Mesures():
     def __init__(self, experience):
         self.experience = experience
 
+    # @staticmethod
+    # def _relative_error(X,trueX):
+    #     """Euclidian relative error"""
+    #     return np.sqrt(np.square(X - trueX).sum(axis=1) / np.square(trueX).sum(axis=1)).tolist()
+
     @staticmethod
     def _relative_error(X,trueX):
-        """Euclidian relative error"""
-        return np.sqrt(np.square(X - trueX).sum(axis=1) / np.square(trueX).sum(axis=1)).tolist()
+        """Absolute difference. Data should be normalized beforehand"""
+        return np.abs(X - trueX).max(axis=1).tolist()
 
     @staticmethod
     def _relative_error_by_components(X,trueX):
@@ -77,6 +82,9 @@ class Mesures():
         Y_estmean, _ = exp.reconstruct_F(gllim, X)
 
         mask_mean = exp.context.is_Y_valid(Y_estmean)
+        # normalisation
+        Y_estmean = exp.context.normalize_Y(Y_estmean)
+        Y_vrai = exp.context.normalize_Y(Y_vrai)
 
         error_mean = self._relative_error(Y_estmean, Y_vrai)
         em_clean = self._relative_error(Y_estmean[mask_mean], Y_vrai[mask_mean])
@@ -102,8 +110,12 @@ class Mesures():
         exp = self.experience
         X_predicted = gllim.predict_high_low(exp.Ytest)
         retrouveY = exp.context.F(X_predicted)
+
         mask = [np.isfinite(y).all() for y in retrouveY]
-        nrmseY = self._relative_error(retrouveY[mask], exp.Ytest[mask])
+        retrouveY = exp.context.normalize_Y(retrouveY)
+        Ytest = exp.context.normalize_Y(exp.Ytest)
+        nrmseY = self._relative_error(retrouveY[mask], Ytest[mask])
+
         if not exp.Lw == 0:
             X_predicted = X_predicted[:, 0:-exp.Lw]
 
@@ -140,7 +152,8 @@ class Mesures():
             raise TypeError("Int or float required for method")
 
         Ys = self._compute_FXs(Xs, ref_function)
-        l = [self._relative_error(ysn, yn[None, :]) for ysn, yn in zip(Ys, Y)]
+        norm = exp.context.normalize_Y
+        l = [self._relative_error(norm(ysn), norm(yn[None, :])) for ysn, yn in zip(Ys, Y)]
         errorsY = [e for subl in l for e in subl]
         errorsY_best = [np.min(subl) for subl in l]
 
@@ -688,9 +701,10 @@ class VisualisationMesures(Mesures):
         exp = self.experience
         nrmse, nrmse_by_components, _, nrmseclean, nb_valid, nrmseY = self._nrmse_mean_prediction(G)
 
-        errors = np.array([nrmse] + nrmse_by_components)
+        errors = [nrmse] + list(nrmse_by_components)
         labels = ["Vector error"] + list(exp.variables_names)
 
+        print(len(errors), len(labels))
         self.G.hist_meanPrediction(errors, 5, labels, context=exp.get_infos(), draw_context=True,
                                    savepath=exp.archive.get_path("figures", filecategorie="meanPrediction"))
 
