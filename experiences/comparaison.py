@@ -303,6 +303,8 @@ class abstractLatexWriter():
             logging.debug(rep.stdout)
         if rep.stderr:
             logging.error(rep.stderr)
+        else:
+            logging.info("Latex compilation done.")
         os.chdir(cwd)
 
 
@@ -460,7 +462,7 @@ class LogistiqueLatexWriter(abstractLatexWriter):
     MEASURE_class = LogistiqueMeasure
     template = "logistique.tex"
     TITLE = "Transformation logistique"
-    DESCRIPTION = "Influence de la transformation logistique"
+    DESCRIPTION = "Méthode standard (gauche) contre version avec transformation logistique (droite)"
 
     def _mesures_to_matrix(self, mesures):
         return [[mes["gllim"] for mes in mesures]]
@@ -501,21 +503,23 @@ class RelationCLatexWriter(abstractLatexWriter):
 
 def main():
     logging.info("Launching tests...\n")
-    # AlgosMeasure.run(True, True)
-    # GenerationMeasure.run(True, True)
-    # DimensionMeasure.run(True, True)
-    # ModalMeasure.run(True, True)
-    # LogistiqueMeasure.run(True, True)
-    # NoisesMeasure.run(True, True)
-    # LocalMeasure.run(True, True)
+    AlgosMeasure.run(True, True)
+    GenerationMeasure.run(True, True)
+    DimensionMeasure.run(True, True)
+    ModalMeasure.run(True, True)
+    LogistiqueMeasure.run(True, True)
+    NoisesMeasure.run(True, True)
+    LocalMeasure.run(True, True)
+    RelationCMeasure.run(True, True)
+
     AlgosLatexWriter.render()
     AlgosTimeLatexWriter.render()
-    # GenerationLatexWriter.render()
-    # DimensionLatexWriter.render()
-    # ModalLatexWriter.render()
-    # LogistiqueLatexWriter.render()
-    # NoisesLatexWriter.render()
-    # LocalLatexWriter.render()
+    GenerationLatexWriter.render()
+    DimensionLatexWriter.render()
+    ModalLatexWriter.render()
+    LogistiqueLatexWriter.render()
+    NoisesLatexWriter.render()
+    LocalLatexWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",

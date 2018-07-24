@@ -16,7 +16,9 @@ from tools.experience import DoubleLearning
 
 LATEX_IMAGES_PATH = "../latex/images/plots"
 
-names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png", "init_cos1.png", "init_cos2.png"]
+names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png",
+         "init_cos1.png", "init_cos2.png",
+         "modalPred1.png", "modalPred2.png", "modalPred3.png"]
 PATHS = [os.path.join(LATEX_IMAGES_PATH, i) for i in names]
 
 
@@ -185,11 +187,37 @@ def init_cos():
 
     exp.mesures.illustration(gllim, x, y, savepath=PATHS[5])
 
+
+def regularization():
+    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True, verbose=None)
+    exp.load_data(regenere_data=RETRAIN, with_noise=50, N=10000, method="latin")
+    dGLLiM.dF_hook = exp.context.dF
+    # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
+    gllim = exp.load_model(1000, mode=RETRAIN and "r" or "l", track_theta=False, init_local=500,
+                           sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
+
+    filenames = [PATHS[6], None, None, None]
+    filenames_regu = [PATHS[7], None, None, None]
+    filenames_regu2 = [PATHS[8], None, None, None]
+    exp.results.plot_modal_preds_1D(gllim, exp.context.get_observations(), exp.context.wave_lengths,
+                                    varlims=[(0, 1), (-0.5, 0.5), (0, 30), (0.5, 1.2)],
+                                    filenames=filenames, filenames_regu=filenames_regu,
+                                    filenames_regu2=filenames_regu2)
+
+
+# X = exp.best_Y_prediction(gllim,exp.context.get_observations())
+
+
+
+
+
+
 def main():
     plot_estimeF()
     plot_evo_LL()
     plusieurs_K_N(50)
     init_cos()
+    regularization()
 
 
 RETRAIN = True

@@ -1,5 +1,6 @@
 """Runs severals real tests on GLLiM, sGLLiM etc... """
 import time
+from typing import Union
 
 import numpy as np
 
@@ -10,6 +11,7 @@ from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
 from tools.measures import Mesures, VisualisationMesures
+from tools.results import Results, VisualisationResults
 
 Ntest = 50000
 
@@ -17,9 +19,10 @@ class Experience():
     context: context.abstractFunctionModel
     archive: Archive
     mesures: VisualisationMesures
+    results: VisualisationResults
 
     def __init__(self, context_class, partiel=None, verbose=True, with_plot=False, **kwargs):
-        """If with_plot is False, methods with use matplotlib or vispy can't be used.
+        """If with_plot is False, methods which use matplotlib or vispy can't be used.
         Used to speed up import (no costly import)"""
         self.only_added = False
         self.adding_method = None
@@ -32,8 +35,10 @@ class Experience():
         self.archive = Archive(self)
         if with_plot:
             self.mesures = VisualisationMesures(self)
+            self.results = VisualisationResults(self)
         else:
             self.mesures = Mesures(self)
+            self.results = Results(self)
 
     def load_data(self, regenere_data=False, with_noise=None, N=1000, method="latin"):
         self.Nadd = 0
@@ -207,6 +212,26 @@ class Experience():
                 raise ValueError("Unknow prediction method")
             X = np.array([xs[0] for xs in Xlist])
         return X
+
+    def compute_FXs(self, Xs, ref_function=None):
+        ref_function = ref_function or self.context.F
+        N = len(Xs)
+        cumlenths = np.cumsum([len(X) for X in Xs])
+        Xglue = np.array([x for X in Xs for x in X])
+        Yall = ref_function(Xglue)
+        Ys = []
+        for i in range(N):
+            debut = 0 if i == 0 else cumlenths[i - 1]
+            fin = cumlenths[i]
+            Ys.append(Yall[debut:fin])
+        return Ys
+
+    def best_Y_prediction(self, gllim: GLLiM, Y, ref_function=None):
+        """Compute modal prediction then choose x for which F(x) is closer to y"""
+        Xlist, _, _ = gllim.modal_prediction(Y, components=10, sort_by="weight")
+        Ylist = np.array(self.compute_FXs(Xlist, ref_function))
+        indexes = np.abs(Ylist - Y[:, :, None]).max(axis=2).argmin(axis=1)
+        return Xlist[indexes]
 
 
     def reconstruct_F(self,gllim,X):

@@ -1,13 +1,11 @@
-import os
 import time
 
-import h5py
 import numpy as np
 
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import dominant_components
 from tools.archive import Archive
-from tools.regularization import best_K, global_regularization, step_by_step, global_regularization_exclusion
+from tools.regularization import step_by_step, global_regularization_exclusion
 
 
 class Mesures():
@@ -94,17 +92,7 @@ class Mesures():
 
 
 
-    def _compute_FXs(self,Xs,ref_function):
-        N = len(Xs)
-        cumlenths = np.cumsum([len(X) for X in Xs])
-        Xglue = np.array([x for X in Xs for x in X])
-        Yall = ref_function(Xglue)
-        Ys = []
-        for i in range(N):
-            debut = 0 if i == 0 else cumlenths[i - 1]
-            fin = cumlenths[i]
-            Ys.append(Yall[debut:fin])
-        return Ys
+
 
     def _nrmse_mean_prediction(self, gllim):
         exp = self.experience
@@ -140,8 +128,6 @@ class Mesures():
     def _nrmse_modal_prediction(self, gllim, method, ref_function=None):
         exp = self.experience
 
-        ref_function = ref_function or exp.context.F
-
         if type(method) is int:
             Xs, Y, Xtest, nb_valid = exp.clean_modal_prediction(gllim, nb_component=method)
             label = "Components : {}".format(method)
@@ -151,7 +137,7 @@ class Mesures():
         else:
             raise TypeError("Int or float required for method")
 
-        Ys = self._compute_FXs(Xs, ref_function)
+        Ys = self.experience.compute_FXs(Xs, ref_function)
         norm = exp.context.normalize_Y
         l = [self._relative_error(norm(ysn), norm(yn[None, :])) for ysn, yn in zip(Ys, Y)]
         errorsY = [e for subl in l for e in subl]
@@ -200,7 +186,7 @@ class Mesures():
         exp = self.experience
         Xs, Y, Xtest, _ = exp.clean_modal_prediction(G, exp.K // 4)  # 25% best components
         N = len(Xs)
-        Ys = self._compute_FXs(Xs)
+        Ys = self.experience.compute_FXs(Xs)
         issameX = np.empty((N, 3))
         for n, (xs, xtrue, ys, ytest) in enumerate(zip(Xs, Xtest, Ys, Y)):
             i = np.argmin(np.square(xs - xtrue).sum(axis=1))
@@ -368,117 +354,7 @@ class MesuresSecondLearning(Mesures):
         simple_plot(list(zip(*l)), labels)
 
 
-    def plot_correlations2D(self, gllim : GLLiM, Y, labels_value, method="mean",
-                       varlims=None, add_points=None):
-        """Prediction for each Y and plot 2D with labels as color"""
-        X = self.experience._one_X_prediction(gllim,Y,method)
-        varlims = varlims or  self.experience.variables_lims
-        varnames = self.experience.variables_names
-        correlations2D(X,labels_value,self.experience.get_infos(),varnames,varlims,
-                       main_title= "Corrélations - Prediction mode :  {}".format(method),add_points=add_points,
-                       savepath=self.experience.archive.get_path("figures",
-                                                                 filecategorie="correlations-{}".format(method)))
 
-
-    def _modal_regularization(self,mode,Xweight,Xheight=None):
-        reg_f = {"global": global_regularization, "step": step_by_step, "exclu": global_regularization_exclusion}[mode]
-        print("Regularization {} ... ".format(mode))
-        t = time.time()
-        Xweight = reg_f(Xweight)
-        if Xheight is not None:
-            Xheight = reg_f(Xheight)
-        print("Done in ", time.time() - t, "s")
-        return Xweight, Xheight
-
-
-    def prediction_by_components(self, gllim : GLLiM, Y, labels, varlims=None, regul=None,filename=None):
-        exp = self.experience
-        varlims = varlims or exp.variables_lims
-        savepath = exp.archive.get_path("figures",filecategorie="synthese1D",filename=filename)
-        Xweight, heights, weights = gllim.modal_prediction(Y,components=3,sort_by="weight")
-        Xweight = np.array(Xweight)
-        if regul:
-            Xweight , _ = self._modal_regularization(regul,Xweight)
-        Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
-        correlations1D(Xmean,Xweight,Covs,labels,exp.get_infos(),exp.variables_names,
-                       varlims, main_title="Prédiction - Vue par composants",
-                       savepath=savepath)
-        return Xmean, Covs
-
-
-
-    def plot_density_sequence(self, gllim : GLLiM, Y, labels_value, index=0, varlims=None,
-                              Xref=None, StdRef=None, with_pdf_images=False, regul=None, post_processing=None):
-
-        Xs, heights, weights = gllim.modal_prediction(Y, components=None)
-        Xweight , Xheight = [] , []
-        for xs, ws in zip(Xs, weights):
-            Xheight.append(xs[0:3])
-            l = zip(xs, ws)
-            l = sorted(l, key=lambda d: d[1], reverse=True)[0:3]
-            Xweight.append([x[0] for x in l])
-        Xweight = np.array(Xweight)
-        Xheight = np.array(Xheight)
-
-        if regul:
-            Xweight ,  Xheight = self._modal_regularization(regul,Xweight,Xheight)
-
-        self._plot_density_sequence(gllim,Y,labels_value,Xweight,Xheight,Xref,StdRef,with_pdf_images,
-                                    index,threshold=0.001,varlims=varlims,post_processing=post_processing)
-
-    def plot_density_sequence_clustered(self,gllim,Y,Xw_clus,Xh_clus,labels_value,index=0,varlims=None,
-                              Xref=None,StdRef=None,with_pdf_images=False):
-
-        Xweight = np.array([xs[0:2,:] for xs in Xw_clus])
-        Xheight = np.array([xs[0:2,:] for xs in Xh_clus])
-
-        self._plot_density_sequence(gllim,Y,labels_value,Xweight,Xheight,Xref,StdRef,with_pdf_images,
-                                    index,threshold=0.001,varlims=varlims)
-
-    def _plot_density_sequence(self,gllim,Y,labels_x,Xweight,Xheight,Xref,StdRef,
-                               with_pdf_images,index,threshold=0.01,varlims=None,post_processing=None):
-        exp = self.experience
-        fs, xlims, ylims, modal_preds, trueXs, varnames, titles = [], [], [], [], [], [], []
-
-        Xmean , Covs = gllim.predict_high_low(Y,with_covariance=True)
-        StdMean = np.sqrt(Covs[:,index,index])
-
-        Xs, heights, weights = gllim.modal_prediction(Y, components=None)
-        for y , xs ,hs ,ws in zip(Y,Xs,heights,weights):
-            Y0_obs = y[None, :]
-
-            def density(x_points,Y0_obs=Y0_obs):
-                return gllim.forward_density(Y0_obs, x_points, marginals=(index,))
-
-            xs = np.array([x for x,w in zip(xs,ws) if w >= threshold])
-            if post_processing:
-                xs = post_processing(xs)
-            mpred = list(zip(xs[:,index],hs,ws))
-            fs.append(density)
-            modal_preds.append(mpred)
-        xlim = varlims or exp.variables_lims[index]
-        xvar = exp.variables_names[index]
-
-        if with_pdf_images:
-            pdf_paths = exp.context.get_images_path_densities(index)
-        else:
-            pdf_paths = None
-
-        if Xref is not None:
-            Xref = Xref[:,index]
-
-        if StdRef is not None:
-            StdRef = StdRef[:,index]
-
-        if post_processing:
-            Xheight = np.array([ post_processing(X) for X in Xheight])
-            Xweight = np.array([ post_processing(X) for X in Xweight])
-            Xmean = np.array([ post_processing(X) for X in Xmean])
-
-        density_sequences1D(fs,modal_preds,labels_x,Xmean[:,index],Xweight[:,:,index],Xheight[:,:,index],StdMean = StdMean,
-                            Yref=Xref,StdRef = StdRef ,
-                            title="Densities - ${}$".format(xvar),xlim=xlim,images_paths=pdf_paths,
-                            savepath=exp.archive.get_path("figures",filecategorie="sequence"))
 
 
     def plot_density_sequence_parallel(self,gllims,Y,labels_x,Xref=None,StdRef=None,
@@ -525,7 +401,7 @@ class MesuresSecondLearning(Mesures):
             pdf_paths = None
 
         if regul:
-            reg_f = {"global":global_regularization,"step":step_by_step,"exclu":global_regularization_exclusion}[regul]
+            reg_f = {"step": step_by_step, "exclu": global_regularization_exclusion}[regul]
             print("Regularization {} ... ".format(regul))
             t = time.time()
             Xweight = reg_f(Xweight)
@@ -539,16 +415,6 @@ class MesuresSecondLearning(Mesures):
 
 
 
-    def map(self, gllim : GLLiM, Y, latlong, index, Xref=None):
-        X = gllim.predict_high_low(Y)
-        x = X[:,index]
-        varname = self.experience.variables_names[index]
-        if Xref is not None:
-            Xref = Xref[:,index]
-
-        map_values(latlong,x,addvalues=Xref,main_title="Parameter ${}$".format(varname),
-                   titles=("GLLiM","MCMC"),
-                   savepath=self.experience.archive.get_path("figures", filecategorie="map-{}".format(varname)))
 
 
 class VisualisationMesures(Mesures):

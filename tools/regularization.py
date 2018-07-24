@@ -137,15 +137,18 @@ def clustered_mean(Xs,weightss):
 
 ## Regularization by penalization of gradient over wave length
 def step_by_step(Xs):
-    """Step by step regularization. Xs shape (N,K,L) (K modes)"""
-    out = np.empty(Xs.shape)
-    for k0 in range(Xs.shape[1]):
-        X = Xs[:,k0,:]
-        for n in range(Xs.shape[0]-1):
+    """Step by step regularization. Xs shape (N,K,L) (K modes).
+    Returns N-K-sized permutation (of order K)"""
+    N, K, L = Xs.shape
+    out = np.empty((N, K), dtype=int)  # choice for sample N and run K
+    for k0 in range(K):
+        X = np.copy(Xs[:, k0, :])  # init with k0 ieme mode. X is the current choice for this try.
+        out[0, k0] = k0  # first choice is identity
+        for n in range(N - 1):
             x = X[n,:]
             best_side_k = np.square(x - Xs[n+1,:,:]).sum(axis=1).argmin()
-            X[n+1,:] = Xs[n+1,best_side_k]
-        out[:,k0,:] = X
+            out[n + 1, k0] = best_side_k  # write index
+            X[n + 1, :] = Xs[n + 1, best_side_k]  #update X accordingly
     return out
 
 
@@ -161,38 +164,40 @@ def sum_gradient(X):
     return np.sqrt(np.square(grad).sum(axis=2)).sum(axis=0)
 
 
-
-def global_regularization(Xs,maxiter=10000,tol=None):
-    """Global gradient regularization. Xs shape (N,K,L) (K modes)"""
-    N ,K , L = Xs.shape
-    alea_N = np.random.randint(0,N ,size=(maxiter,K))
-    alea_K = np.random.randint(0,K , size=(maxiter,K))
-    out = np.copy(Xs)
-    gradient_norm = sum_gradient(out)
-    for indexN, indexK in zip(alea_N,alea_K):
-        tmp = out[indexN, list(range(K))]
-        out[indexN, list(range(K))] = Xs[indexN, indexK] # essai
-        new_grad = sum_gradient(out)
-        is_not_best = new_grad > gradient_norm
-        #cancel change where it's not better
-        cancel_N = indexN[[*is_not_best]]
-        cancel_K = np.arange(K)[[*is_not_best]]
-        out[cancel_N, cancel_K] = tmp[is_not_best]
-        final_grad = sum_gradient(out)
-        if tol and np.square(final_grad - gradient_norm).sum() < tol:
-            break
-        gradient_norm = final_grad
-    return out
+# def global_regularization(Xs,maxiter=10000,tol=None):
+#     """Global gradient regularization. Xs shape (N,K,L) (K modes)"""
+#     N ,K , L = Xs.shape
+#     alea_N = np.random.randint(0,N ,size=(maxiter,K))
+#     alea_K = np.random.randint(0,K , size=(maxiter,K))
+#     out = np.copy(Xs)
+#     gradient_norm = sum_gradient(out)
+#     for indexN, indexK in zip(alea_N,alea_K):
+#         tmp = out[indexN, list(range(K))]
+#         out[indexN, list(range(K))] = Xs[indexN, indexK] # essai
+#         new_grad = sum_gradient(out)
+#         is_not_best = new_grad > gradient_norm
+#         #cancel change where it's not better
+#         cancel_N = indexN[[*is_not_best]]
+#         cancel_K = np.arange(K)[[*is_not_best]]
+#         out[cancel_N, cancel_K] = tmp[is_not_best]
+#         final_grad = sum_gradient(out)
+#         if tol and np.square(final_grad - gradient_norm).sum() < tol:
+#             break
+#         gradient_norm = final_grad
+#     return out
 
 
 def global_regularization_exclusion(Xs):
     N ,K , L = Xs.shape
-    out = np.copy(Xs)
+    currentXs = np.copy(Xs)
+    out = np.empty((N, K), dtype=int)
     perms = list(permutations(range(K)))
+    out[0] = np.arange(K)  # first point is identity
     for n in range(N- 1):
-        diff = np.array([np.sqrt(np.square(out[n] - Xs[n + 1, p]).sum(axis=1)).sum() for p in perms])
+        diff = np.array([np.sqrt(np.square(currentXs[n] - Xs[n + 1, p]).sum(axis=1)).sum() for p in perms])
         best_p = perms[diff.argmin()]
-        out[n + 1] = Xs[n+1,best_p]
+        currentXs[n + 1] = Xs[n + 1, best_p]
+        out[n + 1] = best_p
     return out
 
 

@@ -54,8 +54,7 @@ class abstractDrawerMPL():
         self.set_title(title, context, draw_context)
         self.main_draw(*args)
 
-
-        if write_context:
+        if write_context and savepath:
             self.write_context(context, savepath)
 
         if savepath:
@@ -213,7 +212,7 @@ class abstractGridDrawerMPL(abstractDrawerMPL):
     def get_axes(self):
         n = 1
         projection = "3d" if self.AXES_3D else None
-        while True:
+        while n <= (self.nb_row * self.nb_column):
             axe = self.fig.add_subplot(self.nb_row, self.nb_column, n, projection=projection)
             n += 1
             yield axe
@@ -444,6 +443,74 @@ class Evolution1D(mplAnimation):
         return artists + [l]
 
 
+### -------------------  Results visualisation --------------------- ###
+
+def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle,
+                   StdMean=None, Yref=None, StdRef=None, monoweight=False):
+    if xlim is not None:
+        axe.set_ylim(*xlim)
+        axe.yaxis.set_major_locator(ticker.MultipleLocator((xlim[1] - xlim[0]) / 10))
+
+    axe.set_xlabel(xtitle)
+    axe.set_ylabel(varname)
+
+    if Xmean is not None:
+        axe.plot(xlabels, Xmean, marker="*", label="Mean")
+
+    if StdMean is not None:
+        axe.fill_between(xlabels, Xmean - StdMean, Xmean + StdMean, alpha=0.3,
+                         color="gray", label="Std on mean", hatch="/")
+
+    for i, X in enumerate(Xweight.T):
+        label = "Weight prediction" if monoweight else f"Weight prediction {i}"
+        axe.plot(xlabels, X, marker="+", label=label)
+
+    if Yref is not None:
+        axe.plot(xlabels, Yref, marker=".", label="Reference")
+        axe.fill_between(xlabels, Yref + StdRef, Yref - StdRef, alpha=0.3, color="g", label="Std on reference")
+
+
+class ModalPred1D(abstractGridDrawerMPL):
+    """Draw 1D X modal pred"""
+
+    ROW_SIZE = 5
+    Y_TITLE_BOX_WITHOUT_CONTEXT = 1.01
+
+    def create_figure(self, Xweight, Xmean, xlabels, varlim, varname):
+        self.nb_row, self.nb_column = len(Xweight.T), 1
+        self.fig = pyplot.figure(figsize=(15, self.nb_row * self.ROW_SIZE))
+
+    def main_draw(self, Xweight, Xmean, xlabels, varlim, varname):
+        for i, axe, X in zip(range(self.nb_row), self.get_axes(), Xweight.T):
+            _prediction_1D(axe, varlim, varname, xlabels, Xmean, X[:, None], f"Poids de rang {i}",
+                           monoweight=True)
+        if self.nb_row:
+            self.fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
+
+
+def correlations1D(Xmean, Xweight, StdMean, labels_value, contexte, varnames, varlims, main_title="Synthèse",
+                   savepath=None):
+    nb_var = len(varnames)
+    nb_row, nb_col, figsize = _get_rows_columns(nb_var, coeff_row=4, coeff_column=6)
+    fig = pyplot.figure(figsize=figsize)
+    for i in range(nb_var):
+        axe = fig.add_subplot(nb_row * nb_col, 1, i + 1)
+        _prediction_1D(axe, varlims[i], varnames[i], labels_value, Xmean[:, i], Xweight[:, :, i],
+                       "wavelength (microns)",
+                       StdMean=StdMean[:, i, i])
+    fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
+
+    title = main_title + "\n" + contexte
+    fig.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.25)
+    fig.tight_layout(rect=[0, 0, 1, 1])
+    if savepath:
+        fig.savefig(savepath, bbox_inches='tight')
+        print("Saved in ", savepath)
+        pyplot.close(fig)
+
+
+
+
 ##### ----------------- TODO A refactor en classe  --------------- #################
 
 
@@ -632,46 +699,7 @@ def correlations2D(X,labels_value,contexte,varnames,varlims,main_title="Corréla
         print("Saved in ", savepath)
         pyplot.close(fig)
 
-def correlations1D(Xmean,Xweight,StdMean,labels_value,contexte,varnames,varlims,main_title="Synthèse",savepath=None):
-    nb_var = len(varnames)
-    nb_row,nb_col,figsize = _get_rows_columns(nb_var,coeff_row=4,coeff_column=6)
-    fig = pyplot.figure(figsize=figsize)
-    for i in range(nb_var):
-        axe = fig.add_subplot(nb_row * nb_col,1,i+1)
-        _prediction_1D(axe,varlims[i],varnames[i],labels_value,Xmean[:,i],Xweight[:,:,i],"wavelength (microns)",
-                       StdMean=StdMean[:,i,i])
-    fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
 
-
-    title = main_title + "\n" + contexte
-    fig.suptitle(title, bbox=FIGURE_TITLE_BOX,y = 1.25)
-    fig.tight_layout(rect=[0,0,1,1])
-    if savepath:
-        fig.savefig(savepath, bbox_inches='tight')
-        print("Saved in ", savepath)
-        pyplot.close(fig)
-
-
-def _prediction_1D(axe,xlim,varname,xlabels,Xmean,Xweight,xtitle,
-                   StdMean=None,Yref=None,StdRef=None):
-    if xlim is not None:
-        axe.set_ylim(*xlim)
-        axe.yaxis.set_major_locator(ticker.MultipleLocator((xlim[1] - xlim[0]) / 10))
-
-    axe.set_xlabel(xtitle)
-    axe.set_ylabel("$" + varname + "$")
-
-    axe.plot(xlabels, Xmean, marker="*", label="Mean")
-    if StdMean is not None:
-        axe.fill_between(xlabels, Xmean - StdMean, Xmean + StdMean, alpha=0.3,
-                          color="gray", label="Std on mean", hatch="/")
-    axe.plot(xlabels, Xweight[:, 0], marker="+", label="Weight 1")
-    axe.plot(xlabels, Xweight[:, 1], marker="+", label="Weight 2")
-    axe.plot(xlabels, Xweight[:, 2], marker="+", label="Weight 3")
-
-    if Yref is not None:
-        axe.plot(xlabels, Yref, marker=".", label="Reference")
-        axe.fill_between(xlabels, Yref + StdRef, Yref - StdRef, alpha=0.3, color="g", label="Std on reference")
 
 
 def density_sequences1D(fs, modal_preds, xlabels, Xmean, Xweight, Xheight, xlim=(0, 1), title="Density sequence",

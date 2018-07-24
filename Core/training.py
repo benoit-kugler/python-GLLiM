@@ -2,6 +2,7 @@
 Main functions have signature X (training), Y (training), K, *args, **options -> gllim.
 Archiving of model parameters is not done in this module"""
 import time
+import warnings
 from multiprocessing.pool import Pool
 
 import numpy as np
@@ -23,6 +24,8 @@ NB_MAX_ITER_SECOND = 20
 
 """Number of used processes"""
 PROCESSES = 6
+
+warnings.filterwarnings("ignore")
 
 def run_gllim(process_index, gllim : GLLiM, Xtrain, Ytrain):
     np.random.seed(process_index * 100)  # Differents seed for different process
