@@ -1,3 +1,5 @@
+import logging
+
 import PIL
 import matplotlib
 import numpy as np
@@ -23,7 +25,7 @@ def _get_rows_columns(N,coeff_row = 5, coeff_column=5):
     nb_row = np.ceil(np.sqrt(N))
     nb_column = np.ceil(N / nb_row)
     figsize= (nb_column * coeff_column,nb_row * coeff_row)
-    return nb_row, nb_column, figsize
+    return int(nb_row), int(nb_column), figsize
 
 
 def overlap_colors(rnk, with_base=False):
@@ -49,7 +51,7 @@ class abstractDrawerMPL():
 
     def __init__(self, *args, title="", savepath=None, context=None, draw_context=False, write_context=False):
         self.create_figure(*args)
-        print("Drawing...")
+        logging.info("Drawing...")
 
         self.set_title(title, context, draw_context)
         self.main_draw(*args)
@@ -81,7 +83,7 @@ class abstractDrawerMPL():
         context["para"] = context["para"] or "No"
         s = """
         Data $\\rightarrow N_{{train}}={N}$ (+ {Nadd}) ; $N_{{test}}={Ntest}$ ; Noise : {with_noise} ; 
-                Partial : {partiel} ;  Method : {method} ; Added training : {added}. 
+                Context : {context} ; Partial : {partiel} ;  Method : {method} ; Added training : {added}. 
         Estimator $\\rightarrow$ Class : {gllim_class} ; Second learning : {para}.
         Constraints $\\rightarrow$ $\Sigma$ : {sigma_type} ; $\Gamma$  : {gamma_type}. 
         Mixture $\\rightarrow$ $K={K}$ ; $L_{{w}}$={Lw} ; Init with local cluster : {init_local}"""
@@ -95,7 +97,7 @@ class abstractDrawerMPL():
 
     def save(self, savepath):
         self.fig.savefig(savepath, bbox_inches='tight', pad_inches=0.2)
-        print("Saved in", savepath)
+        logging.info(f"Saved in {savepath}")
         pyplot.close(self.fig)
 
 
@@ -110,8 +112,8 @@ class clusters(abstractDrawerMPL):
         axe.scatter(*ck.T, s=50, c=base_colors, marker="o")
         axe.set_xlim(*xlim)
         axe.set_ylim(*ylim)
-        axe.set_xlabel(r'${}$'.format(varx))
-        axe.set_ylabel(r'${}$'.format(vary))
+        axe.set_xlabel(varx)
+        axe.set_ylabel(vary)
 
 
 class simple_plot(abstractDrawerMPL):
@@ -210,12 +212,12 @@ class abstractGridDrawerMPL(abstractDrawerMPL):
         super().save(savepath)
 
     def get_axes(self):
-        n = 1
         projection = "3d" if self.AXES_3D else None
-        while n <= (self.nb_row * self.nb_column):
-            axe = self.fig.add_subplot(self.nb_row, self.nb_column, n, projection=projection)
-            n += 1
-            yield axe
+        axes = self.fig.subplots(self.nb_row, self.nb_column, subplot_kw={"projection": projection},
+                                 squeeze=False)
+        for l in axes:
+            for a in l:
+                yield a
 
 
 class estimated_F(abstractGridDrawerMPL):
@@ -238,8 +240,8 @@ class estimated_F(abstractGridDrawerMPL):
             axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
             axe.set_xlim(*xlim)
             axe.set_ylim(*ylim)
-            axe.set_xlabel(r'${}$'.format(varx))
-            axe.set_ylabel(r'${}$'.format(vary))
+            axe.set_xlabel(varx)
+            axe.set_ylabel(vary)
 
 
 class plot_density2D(abstractGridDrawerMPL):
@@ -445,8 +447,8 @@ class Evolution1D(mplAnimation):
 
 ### -------------------  Results visualisation --------------------- ###
 
-def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle,
-                   StdMean=None, Yref=None, StdRef=None, monoweight=False):
+def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle, StdMean=None, Xref=None, StdRef=None,
+                   monoweight=False):
     if xlim is not None:
         axe.set_ylim(*xlim)
         axe.yaxis.set_major_locator(ticker.MultipleLocator((xlim[1] - xlim[0]) / 10))
@@ -455,19 +457,21 @@ def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle,
     axe.set_ylabel(varname)
 
     if Xmean is not None:
-        axe.plot(xlabels, Xmean, marker="*", label="Mean")
+        axe.plot(xlabels, Xmean, color="indigo", marker="*", label="Mean")
 
     if StdMean is not None:
         axe.fill_between(xlabels, Xmean - StdMean, Xmean + StdMean, alpha=0.3,
-                         color="gray", label="Std on mean", hatch="/")
+                         color="indigo", label="Std on mean", hatch="/")
 
-    for i, X in enumerate(Xweight.T):
-        label = "Weight prediction" if monoweight else f"Weight prediction {i}"
-        axe.plot(xlabels, X, marker="+", label=label)
+    if Xweight is not None:
+        colors = cm.Oranges(np.linspace(0.4, 0.9, Xweight.shape[1]))
+        for i, X in enumerate(Xweight.T):
+            label = "Weight prediction" if monoweight else f"Weight prediction {i}"
+            axe.plot(xlabels, X, marker="+", label=label, color=colors[i])
 
-    if Yref is not None:
-        axe.plot(xlabels, Yref, marker=".", label="Reference")
-        axe.fill_between(xlabels, Yref + StdRef, Yref - StdRef, alpha=0.3, color="g", label="Std on reference")
+    if Xref is not None:
+        axe.plot(xlabels, Xref, color="g", marker=".", label="Reference")
+        axe.fill_between(xlabels, Xref + StdRef, Xref - StdRef, alpha=0.3, color="g", label="Std on reference")
 
 
 class ModalPred1D(abstractGridDrawerMPL):
@@ -476,45 +480,70 @@ class ModalPred1D(abstractGridDrawerMPL):
     ROW_SIZE = 5
     Y_TITLE_BOX_WITHOUT_CONTEXT = 1.01
 
-    def create_figure(self, Xweight, Xmean, xlabels, varlim, varname):
+    def create_figure(self, Xweight, Xmean, xlabels, varlim, varname, base_xtitle):
         self.nb_row, self.nb_column = len(Xweight.T), 1
         self.fig = pyplot.figure(figsize=(15, self.nb_row * self.ROW_SIZE))
 
-    def main_draw(self, Xweight, Xmean, xlabels, varlim, varname):
+    def main_draw(self, Xweight, Xmean, xlabels, varlim, varname, base_xtitle):
         for i, axe, X in zip(range(self.nb_row), self.get_axes(), Xweight.T):
-            _prediction_1D(axe, varlim, varname, xlabels, Xmean, X[:, None], f"Poids de rang {i}",
-                           monoweight=True)
+            _prediction_1D(axe, varlim, varname, xlabels, Xmean, X[:, None], base_xtitle.format(i), monoweight=True)
         if self.nb_row:
             self.fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
 
 
-def correlations1D(Xmean, Xweight, StdMean, labels_value, contexte, varnames, varlims, main_title="Synthèse",
-                   savepath=None):
-    nb_var = len(varnames)
-    nb_row, nb_col, figsize = _get_rows_columns(nb_var, coeff_row=4, coeff_column=6)
-    fig = pyplot.figure(figsize=figsize)
-    for i in range(nb_var):
-        axe = fig.add_subplot(nb_row * nb_col, 1, i + 1)
-        _prediction_1D(axe, varlims[i], varnames[i], labels_value, Xmean[:, i], Xweight[:, :, i],
-                       "wavelength (microns)",
-                       StdMean=StdMean[:, i, i])
-    fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
+class Results_1D(abstractGridDrawerMPL):
+    """Draw 1D prediction, with modals, reference, standard deviation"""
 
-    title = main_title + "\n" + contexte
-    fig.suptitle(title, bbox=FIGURE_TITLE_BOX, y=1.25)
-    fig.tight_layout(rect=[0, 0, 1, 1])
-    if savepath:
-        fig.savefig(savepath, bbox_inches='tight')
-        print("Saved in ", savepath)
-        pyplot.close(fig)
+    ROW_SIZE = 5
+    Y_TITLE_BOX_WITHOUT_CONTEXT = 1.01
+
+    def create_figure(self, Xmean, StdMean, Xweight, xlabels, xtitle, varnames, varlims, Xref, StdRef):
+        self.nb_row, self.nb_column = len(varnames), 1
+        self.fig = pyplot.figure(figsize=(15, self.nb_row * self.ROW_SIZE))
+
+    def main_draw(self, Xmean, StdMean, Xweight, xlabels, xtitle, varnames, varlims, Xref, StdRef):
+        for i, axe in zip(range(self.nb_row), self.get_axes()):
+            Xw = Xweight[:, :, i] if Xweight is not None else None
+            xlim = varlims[i] if varlims is not None else None
+            _prediction_1D(axe, xlim, varnames[i], xlabels, Xmean[:, i], Xw, xtitle, StdMean=StdMean[:, i, i],
+                           Xref=Xref[:, i], StdRef=StdRef[:, i])
+        if self.nb_row:
+            self.fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
 
 
+class Results_2D(abstractGridDrawerMPL):
+    """Draw 2D predictions, with color as labels indicator"""
+
+    Y_TITLE_BOX_WITHOUT_CONTEXT = 1.01
+    SIZE_COLUMN = 8
+
+    def _get_nb_subplot(self, X, xlabels, xtitle, varnames, varlims, Xref):
+        n = len(varnames)
+        return (n * (n - 1) // 2)
+
+    def main_draw(self, X, xlabels, xtitle, varnames, varlims, Xref):
+        nb_var = len(varnames)
+        indexes = [(i, j) for i in range(nb_var) for j in range(i + 1, nb_var)]
+        for (i, j), axe in zip(indexes, self.get_axes()):
+            x = X[:, (i, j)]
+            l = axe.scatter(*x.T, c=xlabels, marker="+", label="prediction")
+            if Xref is not None:
+                x = Xref[:, (i, j)]
+                l = axe.scatter(*x.T, c=xlabels, marker="^", label="reference")
+            if varlims is not None:
+                axe.set_xlim(varlims[i])
+                axe.set_ylim(varlims[j])
+            axe.set_xlabel(varnames[i])
+            axe.set_ylabel(varnames[j])
+            axe.legend()
+        if nb_var:
+            self.fig.subplots_adjust(right=0.9)
+            new_axe = self.fig.add_axes([1, 0.15, 0.04, 0.7])
+            c = self.fig.colorbar(l, orientation="vertical", cax=new_axe)
+            c.set_label(xtitle)
 
 
 ##### ----------------- TODO A refactor en classe  --------------- #################
-
-
-
 
 
 
@@ -670,34 +699,7 @@ def plot_Y(Y):
     pyplot.show()
 
 
-def correlations2D(X,labels_value,contexte,varnames,varlims,main_title="Corrélations"
-                   ,savepath=None,add_points=None):
-    nb_var = len(varnames)
-    nb_row,nb_col,figsize = _get_rows_columns(nb_var*(nb_var+1)/2)
-    fig = pyplot.figure(figsize=figsize)
-    n= 1
-    for i in range(nb_var):
-        for j in range(i+1,nb_var):
-            x = X[:,(i,j)]
-            axe = fig.add_subplot(nb_row,nb_col,n)
-            n += 1
-            l = axe.scatter(*x.T,c=labels_value,marker="+")
-            axe.set_xlim(varlims[i])
-            axe.set_ylim(varlims[j])
-            axe.set_xlabel("$" + varnames[i] + "$")
-            axe.set_ylabel("$" + varnames[j] + "$")
-            if add_points and (i,j) in add_points:
-                x,y = add_points[(i,j)]
-                axe.scatter(x,y,marker=".",color="g",alpha=0.5,s=0.7)
 
-    title = main_title + "\n" + contexte
-    fig.suptitle(title, bbox=FIGURE_TITLE_BOX,y = 1.1)
-    fig.tight_layout(rect=[0,0,1,1])
-    fig.colorbar(l,orientation="horizontal")
-    if savepath:
-        fig.savefig(savepath, bbox_inches='tight')
-        print("Saved in ", savepath)
-        pyplot.close(fig)
 
 
 
@@ -728,8 +730,8 @@ def density_sequences1D(fs, modal_preds, xlabels, Xmean, Xweight, Xheight, xlim=
         else:
             axe2 = axes[1]
 
-        _prediction_1D(axe2,xlim,varname,xlabels,Xmean,Xweight,"wavelength (microns)",
-                       StdMean = StdMean, Yref=Yref, StdRef=StdRef)
+        _prediction_1D(axe2, xlim, varname, xlabels, Xmean, Xweight, "wavelength (microns)", StdMean=StdMean, Xref=Yref,
+                       StdRef=StdRef)
 
         #Current point
         axe2.axvline(xlabels[i], c="b", marker="<", label="index " + str(i),zorder=4,alpha=0.4)

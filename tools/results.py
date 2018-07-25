@@ -15,13 +15,13 @@ def _modal_regularization(renormalization, mode, Xweight):
     t = time.time()
     Xnorm = renormalization(Xweight)
     perms = reg_f(Xnorm)
-    Xweight2 = np.array([xs[ps] for ps, xs in zip(perms, Xweight)])
-    assert Xweight2.shape == Xweight.shape
+    Xweight = np.array([xs[ps] for ps, xs in zip(perms, Xweight)])
     logging.debug("Done in ", time.time() - t, "s")
-    return Xweight2
+    return Xweight
 
 
 class Results():
+
     NB_MODAL_PREDS = 2
     MODAL_PREDS_ORDER = "weight"
 
@@ -60,41 +60,52 @@ class VisualisationResults(Results):
             varlim, varnames = varlims[i], exp.variables_names[i]
             savepath, savepath1, savepath2 = savepaths[i], savepathsR1[i], savepathsR2[i]
 
-            self.G.ModalPred1D(Xs, Xm, xlabels, varlim, varnames, context=exp.get_infos(), write_context=True,
+            self.G.ModalPred1D(Xs, Xm, xlabels, varlim, varnames, "Poids de rang {}", context=exp.get_infos(),
+                               write_context=True,
                                title="Prédiction modale - Vue par composants", savepath=savepath)
 
-            self.G.ModalPred1D(Xs1, Xm, xlabels, varlim, varnames, context=exp.get_infos(), write_context=True,
-                               title="Prédiction modale - Vue par composants - Avec régularisation par permutation",
-                               savepath=savepath1)
+            self.G.ModalPred1D(Xs1, Xm, xlabels, varlim, varnames, "Initialisation avec poids de rang {}",
+                               context=exp.get_infos(),
+                               write_context=False, savepath=savepath1,
+                               title="Prédiction modale - Vue par composants - Avec régularisation par permutation")
 
-            self.G.ModalPred1D(Xs2, Xm, xlabels, varlim, varnames, context=exp.get_infos(), write_context=True,
+            self.G.ModalPred1D(Xs2, Xm, xlabels, varlim, varnames, "Initialisation avec poids de rang {}",
+                               context=exp.get_infos(), write_context=False,
                                title="Prédiction modale - Vue par composants - Avec régularisation par fusion",
                                savepath=savepath2)
 
-    def plot_correlations2D(self, gllim: GLLiM, Y, labels_value, method="mean",
-                            varlims=None, add_points=None):
-        """Prediction for each Y and plot 2D with labels as color"""
-        X = self.experience._one_X_prediction(gllim, Y, method)
-        varlims = varlims or self.experience.variables_lims
-        varnames = self.experience.variables_names
-        correlations2D(X, labels_value, self.experience.get_infos(), varnames, varlims,
-                       main_title="Corrélations - Prediction mode :  {}".format(method), add_points=add_points,
-                       savepath=self.experience.archive.get_path("figures",
-                                                                 filecategorie="correlations-{}".format(method)))
-
-    def prediction_by_components(self, gllim: GLLiM, Y, labels, varlims=None, regul=None, filename=None):
+    def prediction_by_components(self, gllim: GLLiM, Y, labels, xtitle="observations", varlims=None, with_modal=False,
+                                 savepath=None, Xref=None, StdRef=None):
+        """Draw one axe by variable, with optionnal reference, standard deviation,
+        and modal predictions (with exlu regularization). Return mean predictions with covariances"""
         exp = self.experience
-        varlims = varlims or exp.variables_lims
-        savepath = exp.archive.get_path("figures", filecategorie="synthese1D", filename=filename)
-        Xweight, heights, weights = gllim.modal_prediction(Y, components=3, sort_by="weight")
-        Xweight = np.array(Xweight)
-        if regul:
-            Xweight, _ = _modal_regularization(regul, Xweight)
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="synthese1D")
+        if with_modal:
+            Xweight, _, _ = gllim.modal_prediction(Y, components=with_modal, sort_by="weight")
+            Xweight = np.array(Xweight)
+            Xweight = _modal_regularization(exp.context.normalize_X, "exclu", Xweight)
+        else:
+            Xweight = None
         Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
-        correlations1D(Xmean, Xweight, Covs, labels, exp.get_infos(), exp.variables_names,
-                       varlims, main_title="Prédiction - Vue par composants",
-                       savepath=savepath)
+        varlims = exp.variables_lims if (varlims == "context") else varlims
+        self.G.Results_1D(Xmean, Covs, Xweight, labels, xtitle, exp.variables_names,
+                          varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
+                          title="Prédiction - Vue par composants",
+                          savepath=savepath, write_context=True)
         return Xmean, Covs
+
+    def prediction_2D(self, gllim: GLLiM, Y, labels_value, xtitle="observations", method="mean",
+                      varlims=None, Xref=None, savepath=None):
+        """Prediction for each Y and plot 2D with labels as color.
+        If method is weight or height or bestY, use best modal prediction"""
+        exp = self.experience
+        X = exp._one_X_prediction(gllim, Y, method)
+        varlims = exp.variables_lims if (varlims == "context") else varlims
+        varnames = exp.variables_names
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="correlations-{}".format(method))
+        self.G.Results_2D(X, labels_value, xtitle, varnames, varlims, Xref, context=exp.get_infos(Ntest="-"),
+                          title="Corrélations - Mode de prédiction :  {}".format(method), write_context=True,
+                       savepath=savepath)
 
     def plot_density_sequence(self, gllim: GLLiM, Y, labels_value, index=0, varlims=None,
                               Xref=None, StdRef=None, with_pdf_images=False, regul=None, post_processing=None):

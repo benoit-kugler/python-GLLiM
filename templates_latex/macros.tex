@@ -9,20 +9,28 @@
 
 (# macro FMT_NUMBER(n) #)
     (# if n is number #)
-(# if n < 0.01 #)
-(! (n) | round(3) !)
+(# if n < 0.0001 #)
+(! n | round(5) !)
+(# elif n < 0.001 #)
+(! n | round(4) !)
+(# elif n < 0.01 #)
+(! n | round(3) !)
 (# elif n < 0.1 #)
-(! (n) | round(2) !)
+(! n | round(2) !)
 (# else #)
-(! (n) | round(1) !)
+(! n | round(1) !)
 (# endif #)
     (# else #)
-(# if n[0] < 0.01 #)
-\textbf{ (! (n[0]) | round(3) !)}
+(# if n[0] < 0.0001 #)
+\textbf{ (! n[0] | round(5) !)}
+(# elif n[0] < 0.001 #)
+\textbf{ (! n[0] | round(3) !)}
+(# elif n[0] < 0.01 #)
+\textbf{ (! n[0] | round(3) !)}
 (# elif n[0] < 0.1 #)
-\textbf{ (! (n[0]) | round(2) !)}
+\textbf{ (! n[0] | round(2) !)}
 (# else #)
-\textbf{ (! (n[0]) | round(1) !)}
+\textbf{ (! n[0] | round(1) !)}
 (# endif #)
     (# endif #)
 (# endmacro #)

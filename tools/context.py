@@ -301,7 +301,7 @@ class abstractHapkeModel(abstractFunctionModel):
 
     LABEL = "$F_{hapke}$"
 
-    def __init__(self,partiel):
+    def __init__(self, partiel=None):
         super().__init__(partiel)
         self.geometries = None # emergence, incidence, azimuth
         self._load_context_data()
@@ -416,9 +416,7 @@ class HapkeContext(abstractHapkeModel):
     RESULT_MEAN_INDEXS = np.array([11, 8, 2, 5, 14, 17])
     RESULT_STD_INDEXS = np.array([12, 9, 3, 6, 15, 18])
 
-
-
-    def __init__(self,partiel,index_exp=0):
+    def __init__(self, partiel=None, index_exp=0):
         self.index_exp = index_exp
         super().__init__(partiel)
 
@@ -655,21 +653,20 @@ class abstractGlaceContext(abstractHapkeModel):
     def _load_context_data(self):
         chemin = os.path.join(self.BASE_PATH,self.EXPERIENCE)
         d = scipy.io.loadmat(chemin)
+        self.__data = d  # cached
         self.geometries = np.array([d["theta0"], d["theta"], d["phi"]])
         self.wave_lengths = np.array(d["lambda"])[:,0]
 
     def get_observations_fixed_wl(self,wave_index=0):
         "Renvoi les observations pour une longueur d'onde donnée"
-        chemin = os.path.join(self.BASE_PATH,self.EXPERIENCE)
-        d = scipy.io.loadmat(chemin)
+        d = self.__data
         obs = d["cub_rho_mod"][:,:,wave_index]
         return obs , self._clean_NAN(obs)
 
 
     def get_observations_fixed_coord(self,coord_index=0):
         """Renvoi un jeu d'observation pour une coordonnée spatial donnée"""
-        chemin = os.path.join(self.BASE_PATH,self.EXPERIENCE)
-        d = scipy.io.loadmat(chemin)
+        d = self.__data
         data = d["cub_rho_mod"]
         obs = data[coord_index,:,:].T
         return obs , self._clean_NAN(obs)
@@ -678,8 +675,7 @@ class abstractGlaceContext(abstractHapkeModel):
     def get_spatial_coord(self):
         """Renvoi les coordonnées spatiales.
         N'applique pas de masque"""
-        chemin = os.path.join(self.BASE_PATH,self.EXPERIENCE)
-        d = scipy.io.loadmat(chemin)
+        d = self.__data
         latlong = d["cub_geo_mod"][:,6,(2,1)]
         return latlong , self._clean_spatial_coord(latlong)
 
@@ -688,7 +684,13 @@ class VoieS(abstractGlaceContext):
 
     EXPERIENCE = "Inv_FRT144E9_S_Wfix_0.60427_rho_mod.mat"
 
-    LABEL = "Glace - Voie S"
+    LABEL = "Config. Glace - Voie S"
+
+
+class VoieL(abstractGlaceContext):
+    EXPERIENCE = "Inv_FRT144E9_L_Wfix_0.61075_rho_mod.mat"
+
+    LABEL = "Config. Glace - Voie L"
 
 if __name__ == '__main__':
     h = abstractExpFunction(None)

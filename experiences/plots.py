@@ -1,6 +1,8 @@
 """Trains gllim  and plot severals graphs"""
+import logging
 import os
 
+import coloredlogs
 import numpy as np
 import scipy.io
 from PIL import Image
@@ -18,7 +20,8 @@ LATEX_IMAGES_PATH = "../latex/images/plots"
 
 names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png",
          "init_cos1.png", "init_cos2.png",
-         "modalPred1.png", "modalPred2.png", "modalPred3.png"]
+         "modalPred1.png", "modalPred2.png", "modalPred3.png",
+         "results1.png", "results2.png"]
 PATHS = [os.path.join(LATEX_IMAGES_PATH, i) for i in names]
 
 
@@ -71,6 +74,7 @@ def plot_estimeF():
 
 
 def plot_evo_LL():
+    training.NB_MAX_ITER = 200
     values, labels = [], []
     exp = DoubleLearning(WaveFunction, partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
@@ -104,6 +108,7 @@ def plot_evo_LL():
 
     graphiques.simple_plot(values, labels, None, True, title="Evolution de la log-vraisemblance",
                            savepath=PATHS[2])
+    training.NB_MAX_ITER = 100
 
 
 def _train_K_N(exp, N_progression, K_progression):
@@ -208,18 +213,36 @@ def regularization():
 # X = exp.best_Y_prediction(gllim,exp.context.get_observations())
 
 
+def comparaison_MCMC():
+    # Using comparaison trained model
+    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+    exp.load_data(regenere_data=False, with_noise=50, N=100000, method="sobol")
+    dGLLiM.dF_hook = exp.context.dF
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=None,
+                           sigma_type="full", gamma_type="full", gllim_cls=GLLiM)
+    MCMC_X, Std = exp.context.get_result()
+    # exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wave_lengths,
+    #                                      xtitle="wavelength (microns)", savepath=PATHS[9],
+    #                                      Xref= MCMC_X, StdRef=Std, with_modal=2)
 
+    exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wave_lengths,
+                              Xref=MCMC_X, savepath=PATHS[10], xtitle="wavelength (microns)",
+                              varlims=None, method="mean")
 
 
 
 def main():
-    plot_estimeF()
-    plot_evo_LL()
-    plusieurs_K_N(50)
-    init_cos()
-    regularization()
+    # plot_estimeF()
+    # plot_evo_LL()
+    # plusieurs_K_N(50)
+    # init_cos()
+    # regularization()
+    comparaison_MCMC()
 
 
-RETRAIN = True
+RETRAIN = False
+
 if __name__ == '__main__':
+    coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
     main()

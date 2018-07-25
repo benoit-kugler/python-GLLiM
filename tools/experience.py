@@ -92,7 +92,7 @@ class Experience():
 
 
     def get_infos(self,**kwargs):
-        return dict(**self.meta_data, **kwargs)
+        return dict(self.meta_data, **kwargs)
 
 
     def add_data_training(self,new_data=None,adding_method='threshold',only_added=False,Nadd=None):
@@ -203,6 +203,8 @@ class Experience():
     def _one_X_prediction(self, gllim: GLLiM, Y, method):
         if method == "mean":
             X = gllim.predict_high_low(Y)
+        elif method == "bestY":
+            X = self.best_Y_prediction(gllim, Y)
         else:
             if method == "height":
                 Xlist, _ , _  = gllim.modal_prediction(Y, components=1,sort_by="height")
@@ -229,9 +231,10 @@ class Experience():
     def best_Y_prediction(self, gllim: GLLiM, Y, ref_function=None):
         """Compute modal prediction then choose x for which F(x) is closer to y"""
         Xlist, _, _ = gllim.modal_prediction(Y, components=10, sort_by="weight")
-        Ylist = np.array(self.compute_FXs(Xlist, ref_function))
+        Ylist = np.array(self.compute_FXs(Xlist, ref_function=ref_function))
         indexes = np.abs(Ylist - Y[:, :, None]).max(axis=2).argmin(axis=1)
-        return Xlist[indexes]
+        mask = [i == np.arange(10) for i in indexes]
+        return np.array(Xlist)[mask]
 
 
     def reconstruct_F(self,gllim,X):

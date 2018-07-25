@@ -26,7 +26,7 @@ NOISE = 50
 
 ALGOS_exps = [
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+     "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
@@ -128,7 +128,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
         exp.Xtest, exp.Ytest = Xtest, Ytest
     else:
         exp.centre_data_test()
-    m = exp.mesures.run_mesures(gllim1)  # warning change Xtest,Ytest
+    m = exp.mesures.run_mesures(gllim1)
     m["training_time"] = training_time
     logging.info("Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
     return m
@@ -172,7 +172,7 @@ class abstractMeasures():
                 dic = old_mesures[i]
             mesures.append(dic)
         Archive.save_mesures(mesures, self.CATEGORIE)
-        print("Study carried in {} \n".format(timedelta(seconds=time.time() - ti)))
+        logging.info("Study carried in {} \n".format(timedelta(seconds=time.time() - ti)))
 
 
     def _dic_mesures(self,i,exp,exp_params,t):
@@ -310,17 +310,18 @@ class abstractLatexWriter():
 
 
 class AlgosMeasure(abstractMeasures):
-    METHODES = ["nNG", "nNdG", "nNjG", "NG", "NdG", "NjG"]
+    METHODES = ["NG", "NjG", "NdG"]
     experiences = ALGOS_exps
 
     def _dic_mesures(self,i,exp,exp_params,t):
         dic = {}
-        dic['nNG'] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)  # no noise GLLiM
+        # dic['nNG'] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)  # no noise GLLiM
+        # Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
+        # dic["nNdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, None, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # no noise dGLLiM
+        # dic["nNjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", False, t, Xtest=Xtest,
+        #                                 Ytest=Ytest)  # no noise joint GLLiM
+        dic["NG"] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # noisy GLLiM
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic["nNdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, None, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # no noise dGLLiM
-        dic["nNjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", False, t, Xtest=Xtest,
-                                        Ytest=Ytest)  # no noise joint GLLiM
-        dic["NG"] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t,Xtest=Xtest,Ytest=Ytest)  # noisy GLLiM
         dic["NdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # noisy dGLLiM
         dic["NjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
                                        Ytest=Ytest)  # noisy joint GLLiM
@@ -411,14 +412,13 @@ class AlgosLatexWriter(abstractLatexWriter):
     template = "algos.tex"
     TITLE = "Algorithmes"
     DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire légèrement bruité."
-    METHODES = ["NG", "NjG", "NdG"]
+
 
 class AlgosTimeLatexWriter(abstractLatexWriter):
     MEASURE_class = AlgosMeasure
     template = "time.tex"
     TITLE = "Temps d'apprentissage"
     DESCRIPTION = "Temps indicatif d'entrainement des différentes variantes."
-    METHODES = ["nNG", "nNjG", "nNdG"]
 
     @classmethod
     def render(cls, **kwargs):
@@ -503,14 +503,14 @@ class RelationCLatexWriter(abstractLatexWriter):
 
 def main():
     logging.info("Launching tests...\n")
-    AlgosMeasure.run(True, True)
-    GenerationMeasure.run(True, True)
-    DimensionMeasure.run(True, True)
-    ModalMeasure.run(True, True)
-    LogistiqueMeasure.run(True, True)
-    NoisesMeasure.run(True, True)
-    LocalMeasure.run(True, True)
-    RelationCMeasure.run(True, True)
+    # AlgosMeasure.run(True, True)
+    # GenerationMeasure.run(True, True)
+    # DimensionMeasure.run(True, True)
+    # ModalMeasure.run(True, True)
+    # LogistiqueMeasure.run(True, True)
+    # NoisesMeasure.run(True, True)
+    # LocalMeasure.run(True, True)
+    # RelationCMeasure.run(True, True)
 
     AlgosLatexWriter.render()
     AlgosTimeLatexWriter.render()

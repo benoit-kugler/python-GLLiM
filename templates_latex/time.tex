@@ -23,8 +23,7 @@
 {\small N = (! headercell.N !) } \\ {\small (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) }}
 
 (# for m in line #)
-& (!
-m.training_time | timespent !)
+&  (# if m #) (! m.training_time | timespent !) (# endif #)
 (# endfor #) \\
 
 (# endblock #)
