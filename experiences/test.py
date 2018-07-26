@@ -20,7 +20,7 @@ from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from plotting import graphiques
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext
-from tools.experience import DoubleLearning
+from tools.experience import SecondLearning
 from tools.interface_R import is_egal
 
 np.set_printoptions(precision=20,suppress=False)
@@ -98,7 +98,7 @@ def _compare_Fsym():
 
 
 def simple_function():
-    exp = DoubleLearning(WaveFunction, partiel=None, verbose=True, with_plot=True)
+    exp = SecondLearning(WaveFunction, partiel=None, verbose=True, with_plot=True)
     exp.load_data(regenere_data=False,with_noise=None,N=10000)
     # exp.NB_MAX_ITER = 200
     dGLLiM.dF_hook = exp.context.dF
@@ -162,7 +162,7 @@ def test_dF():
 
 
 def cA():
-    exp = DoubleLearning(HapkeContext)
+    exp = SecondLearning(HapkeContext)
     exp.load_data(regenere_data=False,with_noise=50,N=100000)
     X,Y = exp.Xtrain,exp.Ytrain
     g = dGLLiM(300)
@@ -174,7 +174,7 @@ def cA():
 
 
 def evolu_cluster():
-    exp = DoubleLearning(HapkeContext,partiel=(0,1),verbose=True)
+    exp = SecondLearning(HapkeContext, partiel=(0, 1), verbose=True)
     exp.load_data(regenere_data=False,with_noise=50,N=10000)
     # exp.NB_MAX_ITER = 200
     dGLLiM.dF_hook = exp.context.dF

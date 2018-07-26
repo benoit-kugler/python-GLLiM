@@ -2,7 +2,7 @@ import numpy as np
 from scipy.special._ufuncs import expit, logit
 
 from tools.context import LabContextOlivine
-from tools.experience import DoubleLearning
+from tools.experience import SecondLearning
 
 
 class LogisticOlivineContext(LabContextOlivine):
@@ -63,7 +63,7 @@ def main():
     exp.mesures.plot_mesures(gllim)
 
 if __name__ == '__main__':
-    exp = DoubleLearning(LogisticOlivineContext, partiel=(0, 1, 2, 3))
+    exp = SecondLearning(LogisticOlivineContext, partiel=(0, 1, 2, 3))
     # exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     # dGLLiM.dF_hook = exp.context.dF
     # # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)

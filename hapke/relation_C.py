@@ -4,7 +4,7 @@ import numpy as np
 
 from Core.gllim import GLLiM
 from tools.context import HapkeContext, LabContextOlivine, abstractHapkeModel
-from tools.experience import DoubleLearning
+from tools.experience import SecondLearning
 
 
 def Crelation(B):
@@ -70,7 +70,7 @@ class LabContextOlivine_C(LabContextOlivine):
         return tuple(i >= 1 and i+1 or i for i in self.partiel)
 
 
-class ExperienceCRelation(DoubleLearning):
+class ExperienceCRelation(SecondLearning):
 
     @property
     def variables_lims(self):
@@ -117,8 +117,7 @@ class ExperienceCRelation(DoubleLearning):
 
 
 if __name__ == '__main__':
-
-    exp = DoubleLearning(LabContextOlivine_C,partiel=(0,1,2))
+    exp = SecondLearning(LabContextOlivine_C, partiel=(0, 1, 2))
     exp.load_data(regenere_data=False,with_noise=50,N=150000,method="sobol")
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
     gllim = exp.load_model(100,mode="r",with_GMM=True,track_theta=True,init_local=None ,

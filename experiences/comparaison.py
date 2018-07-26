@@ -18,7 +18,7 @@ from experiences import logistic
 from hapke import relation_C
 from tools import context
 from tools.archive import Archive
-from tools.experience import DoubleLearning
+from tools.experience import SecondLearning
 
 warnings.filterwarnings("ignore")
 
@@ -80,9 +80,9 @@ NOISES_exps = [
 LOCAL_exps = [
     {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 5000,
      "init_local": "", "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 10000,
      "init_local": "", "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 10000, "N": 50000,
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 20000,
      "init_local": "", "sigma_type": "full", "gamma_type": "full"}
 ]
 
@@ -97,7 +97,7 @@ RELATIONC_exps = [
 def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain, Xtest=None, Ytest=None):
     """If Xtest and Ytest are given, use instead of exp data.
     Useful to fix data across severals exp"""
-    logging.info("  Starting {} ...".format(gllim_cls.__name__))
+    logging.info("  Starting {name} (K = {K}, N = {N})  ...".format(name=gllim_cls.__name__, **exp_params))
     ti = time.time()
     try:
         exp.load_data(regenere_data=redata, with_noise=noise, N=exp_params["N"], method=method)
@@ -122,7 +122,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     except AssertionError as e:
         logging.error("\tTraining failed ! {}".format(e))
         return None
-    logging.info("  Model fitted or loaded in {:.3f} s".format(time.time() - ti))
+    logging.info("  Model fitted or loaded in {:.3f} s".format(timedelta(seconds=time.time() - ti)))
     ti = time.time()
     if Xtest is not None:
         exp.Xtest, exp.Ytest = Xtest, Ytest
@@ -161,8 +161,8 @@ class abstractMeasures():
         old_mesures = Archive.load_mesures(self.CATEGORIE)
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
-                logging.info("Mesures of experience {}/{}".format(i + 1, imax))
-                exp = DoubleLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
+                logging.info(f"Tests {self.CATEGORIE} exp. {i+1}/{imax}")
+                exp = SecondLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
                 if dic is not None:
@@ -343,7 +343,7 @@ class DimensionMeasure(abstractMeasures):
     METHODES = ["gllim"]
     experiences = DIMENSION_exps
 
-    def _dic_mesures(self, i, exp: DoubleLearning, exp_params, t):
+    def _dic_mesures(self, i, exp: SecondLearning, exp_params, t):
         dic = {"gllim": _load_train_gllim(i,GLLiM,exp,exp_params,None,"sobol",t,t)}
         return dic
 
@@ -502,24 +502,24 @@ class RelationCLatexWriter(abstractLatexWriter):
 
 
 def main():
-    logging.info("Launching tests...\n")
     # AlgosMeasure.run(True, True)
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
     # LogistiqueMeasure.run(True, True)
     # NoisesMeasure.run(True, True)
-    # LocalMeasure.run(True, True)
+    # LocalMeasure.run([False,False,True], True)
     # RelationCMeasure.run(True, True)
-
-    AlgosLatexWriter.render()
-    AlgosTimeLatexWriter.render()
-    GenerationLatexWriter.render()
-    DimensionLatexWriter.render()
-    ModalLatexWriter.render()
-    LogistiqueLatexWriter.render()
-    NoisesLatexWriter.render()
-    LocalLatexWriter.render()
+    #
+    # AlgosLatexWriter.render()
+    # AlgosTimeLatexWriter.render()
+    # GenerationLatexWriter.render()
+    # DimensionLatexWriter.render()
+    # ModalLatexWriter.render()
+    # LogistiqueLatexWriter.render()
+    # NoisesLatexWriter.render()
+    # LocalLatexWriter.render()
+    RelationCLatexWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",

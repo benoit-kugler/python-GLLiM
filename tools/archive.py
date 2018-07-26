@@ -87,16 +87,14 @@ class Archive():
         exp = self.experience
         n = exp.with_noise and "noisy:" + str(exp.with_noise) or "notNoisy"
         p = exp.partiel and "partiel:" + str(exp.partiel) or "total"
-        added = exp.adding_method and "added:{}".format(exp.adding_method) or "notAdded"
-        s =  "{}_meth:{}_{}_{}_N:{}_Nadd:{}".format(added,exp.method,n,p,exp.N,exp.Nadd)
+        s = "meth:{}_{}_{}_N:{}".format(exp.generation_method, n, p, exp.N)
         return s
 
     def _suffixe(self):
         exp = self.experience
         c = exp.gllim_cls.__name__
-        onlyadded = exp.only_added and "onlyAdded" or ""
-        file = "{}_{}_K:{}_Lw:{}_multiinit:{}_initlocal:{}_Sc:{}_Gc:{}".format(onlyadded,c,exp.K,exp.Lw,
-                                                                               exp.multi_init,exp.init_local, exp.sigma_type,exp.gamma_type)
+        file = "{}_K:{}_Lw:{}_multiinit:{}_initlocal:{}_Sc:{}_Gc:{}".format(c, exp.K, exp.Lw,
+                                                                            exp.multi_init, exp.init_local, exp.sigma_type, exp.gamma_type)
         return file
 
 
@@ -109,36 +107,43 @@ class Archive():
         if mode == "data":
             return subdir
 
-        if not os.path.isdir(subdir):
-            os.mkdir(subdir)
+        if mode == "second_models":
+            subdir = os.path.join(subdir, str(self.experience.number))
 
-        filename = filename or self._suffixe()
+        if not os.path.isdir(subdir):
+            os.makedirs(subdir)
+
+        if filename:
+            return os.path.join(subdir, filename)
+
+        filename = self._suffixe()
+
+        if mode == "second_models":
+            filename += f"sl:{self.experience.second_learning}"
 
         if filecategorie:
             filename = filecategorie + "_" + filename
 
         if with_track:
             filename += "__track"
+
         if mode == "figures":
             filename += fig_extension
 
         return os.path.join(subdir, filename)
 
-
     def load_data(self):
         path = self.get_path("data")
         d = scipy.io.loadmat(path)
         X, Y = d["X"], d["Y"]
-        m = self.experience.only_added and "Additionnal data" or "Data"
-        logging.debug("\t{} loaded from {}".format(m, path))
+        logging.debug("\tData loaded from {}".format(path))
         return X,Y
 
 
     def save_data(self,X,Y):
         path = self.get_path("data") + ".mat"
         scipy.io.savemat(path,{"X":X,"Y":Y})
-        m = self.experience.only_added and "Additionnal data" or "Data"
-        logging.debug("\t{} saved in {}".format(m, path))
+        logging.debug("\tData saved in {}".format(path))
 
 
     def _save_data(self,data,savepath):
@@ -168,7 +173,7 @@ class Archive():
         filename = self.get_path("model")
         with open(filename,encoding='utf8') as f:
             d = json.load(f)
-        logging.debug("f\tModel parameters loaded from {filename}")
+        logging.debug(f"\tModel parameters loaded from {filename}")
         return d
 
     def load_tracked_thetas(self):
@@ -182,9 +187,9 @@ class Archive():
         path = self.get_path("second_models")
         dt = datetime.datetime.now().strftime("%c")
         for i, g in enumerate(gllims):
-            savepath = path + str(i)
+            savepath = path + "-" + str(i)
             self._save_data(dict(g.theta,datetime=dt),savepath)
-        d = {"Yadd": Y}
+        d = {"Yadd": Y, "Nadd": len(gllims)}
         if X is not None:
             assert len(X) == len(Y)
             d["Xadd"] = X
@@ -193,19 +198,16 @@ class Archive():
 
     def load_second_learned(self,withX):
         path = self.get_path("second_models")
+        data = scipy.io.loadmat(path + "add")
         thetas = []
-        exp = self.experience
-        for i in range(exp.Nadd):
-            filename = path + str(i)
+        for i in range(data["Nadd"][0, 0]):
+            filename = path + "-" + str(i)
             with open(filename,encoding='utf8') as f:
                 d = json.load(f)
             thetas.append(d)
 
-        d = scipy.io.loadmat(path  +  "add")
-        Y = d["Yadd"]
-        X = None
-        if withX:
-            X = d["Xadd"]
+        Y = data["Yadd"]
+        X = data["Xadd"] if withX else None
         logging.debug(f"\tModel parameters and additional data loaded from {path}")
         return Y, X, thetas
 

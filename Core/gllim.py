@@ -10,6 +10,7 @@ Reprise : B. KUGLER (April 2018) On vectorise au maximum !
 import time
 
 import numpy as np
+import progressbar as progressbar
 import scipy
 from numpy.linalg import inv
 from scipy.special import logsumexp
@@ -71,6 +72,7 @@ class MyGMM(GaussianMixture):
         self.track = track
         self.track_params = []
 
+
     @property
     def last_ll(self):
         assert self.n_init == 1
@@ -120,6 +122,7 @@ class GLLiM():
         self.verbose = verbose
         self.track_theta = False
         self.nb_init_GMM = 1  # Number of init made by GMM when fit is init with it
+
 
     def start_track(self):
         self.track_theta = True
@@ -529,9 +532,6 @@ class GLLiM():
 
         start_time_EM = time.time()
 
-        # print("Memory after init")
-        # tr.print_diff()
-
         while (not converged) and (self.current_iter < maxIter):
             self._remove_empty_cluster()
 
@@ -617,8 +617,8 @@ class GLLiM():
     def _helper_forward_conditionnal_density(self, Y):
         """
         Compute the mean Ak*Y + Bk and the quantities alpha depending of Y in (7)
-        :param Y: shape (N,D or D)
-        :return: mean shape(L or D,N,K) alpha shape (N,K)
+        :param Y: shape (N,D)
+        :return: mean shape(L,N,K) alpha shape (N,K)
         """
         N = Y.shape[0]
         Y = Y.reshape((N, self.D))
@@ -752,15 +752,15 @@ class GLLiM():
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
         proj, alpha = self._helper_forward_conditionnal_density(Y)
-        l = []
-        for weights, means in zip(alpha, proj.transpose((1, 2, 0))):
+        N, _ = Y.shape
+        out = np.empty((N, nb_per_Y, self.L))
+        alea = np.random.multivariate_normal(np.zeros(self.L), np.eye(self.L), (N, nb_per_Y))
+        for weights, means, Xs, n in zip(alpha, proj.transpose((1, 2, 0)), alea, range(N)):
             clusters = np.random.multinomial(1, weights, size=nb_per_Y).argmax(axis=1)
             means = np.array([means[k] for k in clusters])
             covs = np.array([self.SigmakListS[k] for k in clusters])
-            Xs = np.random.multivariate_normal(np.zeros(self.L), np.eye(self.L), nb_per_Y)
-            Xs = np.matmul(covs, Xs[:, :, None])[:, :, 0] + means
-            l.append(Xs)
-        return l
+            out[n] = np.matmul(covs, Xs[:, :, None])[:, :, 0] + means
+        return out
 
 
 class jGLLiM(GLLiM):

@@ -1,8 +1,10 @@
 """Implements severals training pattern, build on gllims classes.
 Main functions have signature X (training), Y (training), K, *args, **options -> gllim.
 Archiving of model parameters is not done in this module"""
+import logging
 import time
 import warnings
+from datetime import timedelta
 from multiprocessing.pool import Pool
 
 import numpy as np
@@ -32,7 +34,7 @@ def run_gllim(process_index, gllim : GLLiM, Xtrain, Ytrain):
     try:
         gllim.fit(Xtrain, Ytrain, 'random', maxIter=NB_ITER_RNK)
     except AssertionError as e: # numerical issu
-        print("Fitting interrupted due to numerical issues ({})".format(e))
+        logging.warning(f"Init {process_index} interrupted due to numerical issues. Details \n {e}")
     ll = gllim.current_ll
     return (ll, gllim.rnk, gllim)
 
@@ -50,8 +52,7 @@ def _best_rnk(Ttrain,Ytrain,K, Lw, sigma_type, gamma_type,
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])
     minll = min(g[0] for g in r)
-    if verbose:
-        print("Likelihood over differents processes : min : {}, max: {}".format(minll, maxll))
+    logging.debug("Likelihood over differents processes : min : {}, max: {}".format(minll, maxll))
     return rnk, gllim
 
 
@@ -66,7 +67,7 @@ def run_gllim_precisions(process_index, gllim : GLLiM, Xtrain, Ytrain, ck_init, 
     try:
         gllim.fit(Xtrain,Ytrain,{"rnk":rnk},maxIter=NB_ITER_RNK)
     except AssertionError as e:  # numerical issu
-        print("Fitting interrupted due to numerical issues ({})".format(e))
+        logging.warning(f"Init {process_index} interrupted due to numerical issues. Details \n {e}")
     ll = gllim.current_ll
     return (ll, gllim.rnk, gllim)
 
@@ -88,7 +89,9 @@ def _best_rnk_precisions(Xtrain,Ytrain,K,ck_init_function,precision_rate,
     with Pool(processes=PROCESSES) as p:
         r = p.starmap(run_gllim_precisions,gllims)
 
-    maxll,rnk, gllim = max(r,key= lambda x : x[0])
+    maxll, rnk, gllim = max(r, key=lambda x: x[0])
+    minll = min(g[0] for g in r)
+    logging.debug("Likelihood over differents processes : min : {}, max: {}".format(minll, maxll))
     return rnk, gllim
 
 
@@ -129,17 +132,18 @@ def basic_fit(Ttrain, Ytrain, K, Lw = 0, sigma_type = "iso", gamma_type = "full"
 
 ##    ----- SECOND LEARNING TOOLS   ------   ##
 
-def job_second_learning(listXYK) -> [GLLiM]:
+def job_second_learning(listXYK, params) -> [GLLiM]:
     """Trains one GLLiM for each tuple (X,Y,rnk)"""
     gllims = []
+    Lw, sigma_type, gamma_type = params
     for i , (X,Y,K) in enumerate(listXYK):
-        print("Second learning {} in process... ({} data, {} clusters)".format(i,len(X),K))
+        logging.debug("Second learning {} in process... ({} data, {} clusters)".format(i, len(X), K))
 
         K = min(K, len(X))  # In case of degenerate sampling
         rho = np.ones(K) / K
         m = X[0:K,:]
         precisions = 10 * K  * np.array([np.eye(X.shape[1])] * K)
-        gllim = GLLiM(K, Lw=0, sigma_type='iso', gamma_type='full', verbose=None)
+        gllim = GLLiM(K, Lw=Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=None)
         rnk = gllim._T_GMM_init(X, "random",
                                 weights_init=rho, means_init=m, precisions_init=precisions)
         gllim.fit(X, Y, {"rnk": rnk}, maxIter=NB_MAX_ITER_SECOND)
@@ -148,19 +152,21 @@ def job_second_learning(listXYK) -> [GLLiM]:
     return gllims
 
 
-def second_training_parallel(newXYK):
-    print("Second learning starting...")
+def second_training_parallel(newXYK, Lw=0, sigma_type="iso", gamma_type="full"):
+    logging.info("Second learning starting...")
     chunck = len(newXYK) // PROCESSES
     parts = [newXYK[start * chunck:((start + 1) * chunck)] for start in range(PROCESSES - 1)]
     parts.append(newXYK[(PROCESSES - 1) * chunck:])
 
-    t = time.time()
+    params = [(Lw, sigma_type, gamma_type)] * len(parts)
+    ti = time.time()
 
     with Pool(PROCESSES) as p:
-        l = p.map(job_second_learning, parts)
+        l = p.starmap(job_second_learning, zip(parts, params))
 
     gllims = [g for sublist in l for g in sublist]
-    print("Second learning time for {0} observations : {1:.2f} s".format(len(newXYK), time.time() - t))
+    logging.info(
+        "Second learning time for {0} observations : {1} ".format(len(newXYK), timedelta(seconds=time.time() - ti)))
 
     return gllims
 

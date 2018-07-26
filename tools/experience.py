@@ -1,7 +1,9 @@
 """Runs severals real tests on GLLiM, sGLLiM etc... """
 import time
-from typing import Union
+import logging
+import logging.config
 
+import coloredlogs
 import numpy as np
 
 from Core import training
@@ -23,10 +25,10 @@ class Experience():
 
     def __init__(self, context_class, partiel=None, verbose=True, with_plot=False, **kwargs):
         """If with_plot is False, methods which use matplotlib or vispy can't be used.
-        Used to speed up import (no costly import)"""
-        self.only_added = False
-        self.adding_method = None
-        self.para_learning = False
+        Used to speed up import (no costly import).
+        Other keyword args are forwarded to the context object."""
+
+        self.second_learning = None
         self.partiel = partiel
         self.verbose = verbose
 
@@ -41,9 +43,8 @@ class Experience():
             self.results = Results(self)
 
     def load_data(self, regenere_data=False, with_noise=None, N=1000, method="latin"):
-        self.Nadd = 0
         self.with_noise = with_noise
-        self.method = method
+        self.generation_method = method
         self.N = N
         Ndata = N + Ntest
 
@@ -86,36 +87,14 @@ class Experience():
             with_noise=self.with_noise, N=self.N, Ntest=self.Ntest, K=self.K, Lw=self.Lw,
             sigma_type=self.sigma_type, gamma_type=self.gamma_type,
             gllim_class = self.gllim_cls.__name__, context=self.context.__class__.__name__,
-            partiel=self.partiel , method=self.method, init_local=self.init_local,
-            added=self.adding_method, Nadd=self.Nadd, para=self.para_learning
+            partiel=self.partiel, generation_method=self.generation_method, init_local=self.init_local,
+            second_learning=self.second_learning
         )
 
 
     def get_infos(self,**kwargs):
         return dict(self.meta_data, **kwargs)
 
-
-    def add_data_training(self,new_data=None,adding_method='threshold',only_added=False,Nadd=None):
-        self.adding_method = adding_method
-        self.only_added = only_added
-        if new_data:
-            X,Y = new_data
-            self.Nadd = X.shape[0]
-            self.archive.save_data(X,Y)
-        else:
-            self.Nadd = Nadd
-            X,Y = self.archive.load_data()
-
-        if only_added:
-            self.Xtrain = X
-            self.Ytrain = Y
-            self.N = 0
-        print("Training data size after adding : ",self.N +self.Nadd)
-        self.Xtrain = np.concatenate((self.Xtrain,X), axis=0)
-        self.Ytrain = np.concatenate((self.Ytrain,Y), axis=0)
-        # Mean of training responses
-        self.Xmean = self.Xtrain.mean(axis=0)
-        return X,Y
 
     def _load_gllim(self,params):
         """Create instance of gllim, load params and dimensions. Don't proceed to inversion."""
@@ -181,7 +160,10 @@ class Experience():
 
     def clean_X(self,X,as_np_array=False):
         mask = self.context.is_X_valid(X)
-        X = [x[m] for x,m in zip(X,mask) if (m is not None and len(x[m]) > 0) ]
+        if type(X) is list:
+            X = [x[m] for x, m in zip(X, mask) if (m is not None and len(x[m]) > 0)]
+        else:
+            X = X[mask]
         if as_np_array:
             X = np.array(X)
         return X , mask
@@ -248,72 +230,17 @@ class Experience():
         return Y_estmean, rnk
 
 
-class DoubleLearning(Experience):
+class SecondLearning(Experience):
     """Implements double learning methods"""
 
-    def _predict_threshold_add(self, gllim: GLLiM, Y, threshold=0.03, nb_per_X=3):
-        Xs = gllim.modal_prediction(Y,threshold=threshold)
-        Xadd = (np.random.random_sample((nb_per_X, 6)) -0.5) * (self.variables_lims[:, 1] - self.variables_lims[:, 0]) / 5
-        Xadd = [x2 for xsn in Xs for xs in xsn for x2 in Xadd + xs]
-        Xadd, _ = self.clean_X(Xadd,as_np_array=True)
-        Yadd = self.context.F(Xadd)
-        return Xadd, Yadd
+    def __init__(self, context_class, number=1, partiel=None, verbose=True, with_plot=False, **kwargs):
+        """number allows several second learning with the same first learning."""
+        super().__init__(context_class, partiel=None, verbose=True, with_plot=False, **kwargs)
+        self.number = number
 
-    def _predict_sample_add(self, gllim: GLLiM, Y, nb_per_Y=10):
-        Xadd = gllim.predict_sample(Y,nb_per_Y=nb_per_Y)
-        Xadd = np.array([x for Xs in Xadd for x in Xs])
-        Xadd , _ = self.clean_X(Xadd,as_np_array=True)
-        Yadd = self.context.F(Xadd)
-        return Xadd, Yadd
-
-
-    def extend_training(self, gllim: GLLiM, new_K,
-                        Y=None, factor=3, threshold=None, only_added=False, track_theta=False):
-        if Y is None:
-            Y = self.Ytest
-        if threshold:
-            Xadd, Yadd = self._predict_threshold_add(gllim, Y, threshold=threshold, nb_per_X=factor)
-            adding_method = "threshold_perY:{}".format(factor)
-        else:
-            Xadd, Yadd = self._predict_sample_add(gllim,Y,nb_per_Y=factor)
-            adding_method = "sample_perY:{}".format(factor)
-
-        if self.with_noise:
-            Yadd = self.context.add_noise_data(Yadd,std = self.with_noise)
-
-        self.add_data_training(new_data=(Xadd, Yadd), adding_method=adding_method,only_added=only_added)
-        self.K = new_K
-        g = self.new_train(retrain=True, track_theta=track_theta)
-        return g
-
-    def _predict_threshold_parallel(self, gllim :GLLiM, Y, threshold, nb_per_X, clusters_per_X, X=None):
-        """Returns a list of tuples X,K """
-        Xs = gllim.modal_prediction(Y, threshold=threshold)
-        Xadd = (np.random.random_sample((nb_per_X, gllim.L)) -0.5) * (self.variables_lims[:, 1] - self.variables_lims[:, 0]) / 15
-        newXYK = []
-        Yclean = []
-        mask = []
-        for xsn , y in zip(Xs,Y):
-            xadd  = np.array([x for xs in xsn for x in Xadd + xs])
-            K = len(xsn) * clusters_per_X
-            xadd , _ = self.clean_X(xadd,as_np_array=True)
-            is_ok =len(xadd) > 0
-            if is_ok:
-                yadd = self.context.F(xadd)
-                if self.with_noise:
-                    yadd = self.context.add_noise_data(yadd,std= self.with_noise)
-                newXYK.append((xadd,yadd,K))
-                Yclean.append(y)
-            mask.append(is_ok)
-        if X is not None:
-            X = X[mask]
-        return newXYK,np.array(Yclean),X
-
-    def _predict_sample_parallel(self, gllim :GLLiM, Y, nb_per_Y, K, X=None):
+    def _predict_sample_parallel(self, gllim: GLLiM, Y, nb_per_Y, K):
         Xs = gllim.predict_sample(Y,nb_per_Y=nb_per_Y)
-        newXYK = []
-        Yclean = []
-        mask = []
+        newXYK, Yclean, mask = [], [], []
         for xadd , y in zip(Xs,Y):
             xadd , _ = self.clean_X(xadd,as_np_array=True)
             is_ok = len(xadd) > 0
@@ -324,57 +251,34 @@ class DoubleLearning(Experience):
                 newXYK.append((xadd,yadd,K))
                 Yclean.append(y)
             mask.append(is_ok)
-        if X is not None:
-            X = X[mask]
-        return newXYK, np.array(Yclean), X
+        return newXYK, np.array(Yclean), mask
 
+    def extend_training_parallel(self, gllim: GLLiM, Y=None, X=None, nb_per_Y=1000, clusters=50):
+        self.second_learning = "perY:{},{}".format(nb_per_Y, clusters)
 
-    def _get_adding_method(self, mode, nb_per_X, clusters_per_X, threshold=None):
-        if mode == "s":
-            return "sample_perX:{}:{}".format(nb_per_X,clusters_per_X)
-        elif mode == "t":
-            return "threshold{}_perX:{}:{}".format(threshold,nb_per_X,clusters_per_X)
-        else:
-            raise ValueError("Second data generation mode unknown")
-
-    def extend_training_parallel(self, gllim :GLLiM, Y=None, X=None, threshold=None, nb_per_X=100, clusters_per_X=12):
-        self.only_added = True
-        self.para_learning = True
         if Y is None:
             Y = self.Ytest
             X = self.Xtest
 
         t = time.time()
-        print("Modal prediction and data preparation...")
-        if threshold is None:
-            newXYK , Y, X= self._predict_sample_parallel(gllim,Y,nb_per_X*4,clusters_per_X*4,X=X)
-            self.adding_method = self._get_adding_method("s", nb_per_X, clusters_per_X)
-        else:
-            newXYK ,Y , X= self._predict_threshold_parallel(gllim,Y,threshold,nb_per_X,clusters_per_X,X=X)
-            self.adding_method = self._get_adding_method("t", nb_per_X, clusters_per_X, threshold=threshold)
+        logging.info("Modal prediction and data preparation...")
+        newXYK, Y, mask = self._predict_sample_parallel(gllim, Y, nb_per_Y, clusters)
+        X = X[mask] if X is not None else None
+        logging.info("Modal prediction time {0:.2f} s".format(time.time() - t))
 
-        print("Modal prediction time {0:.2f} s".format(time.time() - t))
+        gllims = training.second_training_parallel(newXYK, Lw=self.Lw, sigma_type=self.sigma_type,
+                                                   gamma_type=self.gamma_type)
 
-        gllims = training.second_training_parallel(newXYK)
-
-        self.Nadd = len(Y)
         self.archive.save_second_learned(gllims,Y,X)
 
         return Y,X,gllims
 
-    def load_second_learning(self,Nadd,threshold,nb_per_X,clusters_per_X,withX=True):
-        self.Nadd = Nadd
-        self.only_added = True
-        self.para_learning = True
-        if threshold is None:
-            self.adding_method = self._get_adding_method("s", nb_per_X, clusters_per_X)
-        else:
-            self.adding_method = self._get_adding_method("t", nb_per_X, clusters_per_X, threshold=threshold)
-
+    def load_second_learning(self, nb_per_Y, clusters, withX=True):
+        self.second_learning = "perY:{},{}".format(nb_per_Y, clusters)
         Y, X , thetas = self.archive.load_second_learned(withX)
         gllims = []
         for theta in thetas:
-            gllim = self._load_gllim(theta,False)
+            gllim = self._load_gllim(theta)
             gllim.inversion()
             gllims.append(gllim)
         return Y, X , gllims
@@ -383,7 +287,7 @@ class DoubleLearning(Experience):
 
 
 def monolearning():
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
+    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
     exp.load_data(regenere_data=False, with_noise=50, N=100001, method="sobol")
     exp.Xtrain = exp.Xtrain[:,(0,)]
     gllim = exp.load_model(100, retrain=False, with_GMM=True, track_theta=True, init_uniform_ck=False)
@@ -392,16 +296,15 @@ def monolearning():
 
 
 def double_learning():
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
-    exp.load_data(regenere_data=False,with_noise=50,N=10000,method="sobol")
+    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
+    exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(2000,mode="l",with_GMM=False,track_theta=False,init_local=50000,
-                           sigma_type="iso",gamma_type="full",gllim_cls=dGLLiM)
+    gllim = exp.load_model(1000, mode="r", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
 
-
-    # exp.extend_training_parallel(gllim,Y=exp.context.get_observations(),X=None,threshold=None,nb_per_X=5000,clusters_per_X=10)
-    # Y ,X , gllims = exp.load_second_learning(64,None,5000,20,withX=False)
+    exp.extend_training_parallel(gllim, Y=exp.context.get_observations(), X=None, nb_per_Y=10000, clusters=500)
+    # Y ,X , gllims = exp.load_second_learning(1000,10,withX=False)
 
     index = 3
     # X0 = exp.Xtest[56]
@@ -414,11 +317,8 @@ def double_learning():
 
     MCMC_X, Std = exp.context.get_result()
 
-
-
-
-    exp.mesures.plot_density_sequence(gllim,exp.context.get_observations(), exp.context.wave_lengths,
-                                      index=index,Xref=MCMC_X,StdRef=Std,with_pdf_images=True,varlims=(-0.2,1.2),regul="exclu")
+    # exp.mesures.plot_density_sequence(gllim,exp.context.get_observations(), exp.context.wave_lengths,
+    #                                   index=index,Xref=MCMC_X,StdRef=Std,with_pdf_images=True,varlims=(-0.2,1.2),regul="exclu")
 
 
     # exp.mesures.plot_density_sequence_parallel(gllims,Y, exp.context.wave_lengths,
@@ -431,7 +331,7 @@ def double_learning():
 
 
 def test_map():
-    exp = DoubleLearning(context.HapkeContext, partiel=None)
+    exp = SecondLearning(context.HapkeContext, partiel=None)
     exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     gllim = exp.load_model(1000, mode="l", track_theta=False, init_local=500,
@@ -452,12 +352,12 @@ def test_map():
     # print(exp.context.get_result(full=True)[mask,9])
 
 def main():
-    exp = DoubleLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
     exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(1000, mode="l", track_theta=False, init_local=500,
+    gllim = exp.load_model(1000, mode="r", track_theta=False, init_local=500,
                            sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
 
 
@@ -499,31 +399,9 @@ def main():
     #                                               varlims=(-0.2,1.2),regul="exclu")
 
 
-    # exp.extend_training(gllim,100,Y = exp.context.get_observations(),factor=2000,only_added=True,track_theta=True)
-    # gllim2 = gllim
-
-
-    # gllim2 = gllims[81]
-    # Y0 = Y[81][None,:]
-    # X0= X[81]
-
-    # exp.mesures.plot_modal_prediction_parallel(gllims,Y,X,[2,4,0.01,0.05])
-    # exp.mesures.plot_retrouveY_parallel(gllims,Y,[2,4,0.01,0.05])
-
-
-
-
-    # #
-    # X = gllim2.modal_prediction(Y0,components=4)[0]
-    # Y = exp.CONTEXT_CLASS.F(X,partiel=exp.partiel)
-    # print(exp.mesures._relative_error(Y,Y0))
-    # X = gllim2.modal_prediction(Y0,threshold=0.02)[0]
-    # Y = exp.CONTEXT_CLASS.F(X,partiel=exp.partiel)
-    # print(exp.mesures._relative_error(Y,Y0))
-
 
 def glace():
-    exp = DoubleLearning(context.VoieS, partiel=(0, 1, 2, 3))
+    exp = SecondLearning(context.VoieS, partiel=(0, 1, 2, 3))
     exp.load_data(regenere_data=False,with_noise=50,N=10000,method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
@@ -583,10 +461,12 @@ def RTLS():
 
 
 if __name__ == '__main__':
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
     # RTLS()
     # main()
     # monolearning()
-    test_map()
-    # double_learning()
+    # test_map()
+    double_learning()
     # glace()
     # test_map()

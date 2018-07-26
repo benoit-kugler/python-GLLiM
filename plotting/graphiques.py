@@ -82,9 +82,9 @@ class abstractDrawerMPL():
         context["added"] = "-" if context["added"] is None else context["added"]
         context["para"] = context["para"] or "No"
         s = """
-        Data $\\rightarrow N_{{train}}={N}$ (+ {Nadd}) ; $N_{{test}}={Ntest}$ ; Noise : {with_noise} ; 
-                Context : {context} ; Partial : {partiel} ;  Method : {method} ; Added training : {added}. 
-        Estimator $\\rightarrow$ Class : {gllim_class} ; Second learning : {para}.
+        Data $\\rightarrow N_{{train}}={N}$ ; $N_{{test}}={Ntest}$ ; Noise : {with_noise} ; 
+                Context : {context} ; Partial : {partiel} ;  Generation : {generation_method} 
+        Estimator $\\rightarrow$ Class : {gllim_class} ; Second learning : {second_learning}.
         Constraints $\\rightarrow$ $\Sigma$ : {sigma_type} ; $\Gamma$  : {gamma_type}. 
         Mixture $\\rightarrow$ $K={K}$ ; $L_{{w}}$={Lw} ; Init with local cluster : {init_local}"""
         return s.format(**context)

@@ -1,8 +1,8 @@
 from Core.dgllim import dGLLiM
 from tools.context import HapkeGonio1468_50
-from tools.experience import DoubleLearning
+from tools.experience import SecondLearning
 
-exp = DoubleLearning(HapkeGonio1468_50, partiel=(0, 1, 2, 3))
+exp = SecondLearning(HapkeGonio1468_50, partiel=(0, 1, 2, 3))
 exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
 # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
 dGLLiM.dF_hook = exp.context.dF
