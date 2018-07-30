@@ -16,7 +16,7 @@ def _modal_regularization(renormalization, mode, Xweight):
     Xnorm = renormalization(Xweight)
     perms = reg_f(Xnorm)
     Xweight = np.array([xs[ps] for ps, xs in zip(perms, Xweight)])
-    logging.debug("Done in ", time.time() - t, "s")
+    logging.debug(f"Done in  {time.time() - t} s")
     return Xweight
 
 
@@ -27,11 +27,26 @@ class Results():
 
     def __init__(self, experience):
         self.experience = experience
-        from plotting import graphiques
-        self.G = graphiques
+
+    def full_prediction(self, gllim, Y, with_regu=True, with_modal=3):
+        exp = self.experience
+        if with_modal:
+            Xweight, heights, weights = gllim.modal_prediction(Y, components=with_modal, sort_by="weight")
+            Xweight = np.array(Xweight)
+            if with_regu:
+                Xweight = _modal_regularization(exp.context.normalize_X, "exclu", Xweight)
+        else:
+            Xweight = None
+        Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
+        return Xmean, Covs, Xweight, heights, weights
 
 
 class VisualisationResults(Results):
+
+    def __init__(self, experience):
+        super(VisualisationResults, self).__init__(experience)
+        from plotting import graphiques
+        self.G = graphiques
 
     def plot_modal_preds_1D(self, gllim: GLLiM, Y, xlabels, varlims=None,
                             filenames=None, filenames_regu=None, filenames_regu2=None):
@@ -80,13 +95,7 @@ class VisualisationResults(Results):
         and modal predictions (with exlu regularization). Return mean predictions with covariances"""
         exp = self.experience
         savepath = savepath or exp.archive.get_path("figures", filecategorie="synthese1D")
-        if with_modal:
-            Xweight, _, _ = gllim.modal_prediction(Y, components=with_modal, sort_by="weight")
-            Xweight = np.array(Xweight)
-            Xweight = _modal_regularization(exp.context.normalize_X, "exclu", Xweight)
-        else:
-            Xweight = None
-        Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
+        Xmean, Covs, Xweight, _, _ = self.full_prediction(gllim, Y, with_modal=with_modal)
         varlims = exp.variables_lims if (varlims == "context") else varlims
         self.G.Results_1D(Xmean, Covs, Xweight, labels, xtitle, exp.variables_names,
                           varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
@@ -107,55 +116,23 @@ class VisualisationResults(Results):
                           title="Corrélations - Mode de prédiction :  {}".format(method), write_context=True,
                        savepath=savepath)
 
-    def plot_density_sequence(self, gllim: GLLiM, Y, labels_value, index=0, varlims=None,
+    def plot_density_sequence(self, gllim: GLLiM, Y, xlabels, index=0, varlims=None, xtitle="observations",
                               Xref=None, StdRef=None, with_pdf_images=False, regul=None, post_processing=None):
-        Xs, heights, weights = gllim.modal_prediction(Y, components=None)
-        Xweight, Xheight = [], []
-        for xs, ws in zip(Xs, weights):
-            Xheight.append(xs[0:3])
-            l = zip(xs, ws)
-            l = sorted(l, key=lambda d: d[1], reverse=True)[0:3]
-            Xweight.append([x[0] for x in l])
-        Xweight = np.array(Xweight)
-        Xheight = np.array(Xheight)
-
-        if regul:
-            Xweight, Xheight = _modal_regularization(regul, Xweight, Xheight)
-
-        self._plot_density_sequence(gllim, Y, labels_value, Xweight, Xheight, Xref, StdRef, with_pdf_images,
-                                    index, threshold=0.001, varlims=varlims, post_processing=post_processing)
-
-    def plot_density_sequence_clustered(self, gllim, Y, Xw_clus, Xh_clus, labels_value, index=0, varlims=None,
-                                        Xref=None, StdRef=None, with_pdf_images=False):
-        Xweight = np.array([xs[0:2, :] for xs in Xw_clus])
-        Xheight = np.array([xs[0:2, :] for xs in Xh_clus])
-
-        self._plot_density_sequence(gllim, Y, labels_value, Xweight, Xheight, Xref, StdRef, with_pdf_images,
-                                    index, threshold=0.001, varlims=varlims)
-
-    def _plot_density_sequence(self, gllim, Y, labels_x, Xweight, Xheight, Xref, StdRef,
-                               with_pdf_images, index, threshold=0.01, varlims=None, post_processing=None):
-        exp = self.experience
-        fs, xlims, ylims, modal_preds, trueXs, varnames, titles = [], [], [], [], [], [], []
-
-        Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
+        Xmean, Covs, Xweight, heights, weights = self.full_prediction(gllim, Y, with_regu=regul)
         StdMean = np.sqrt(Covs[:, index, index])
+        exp = self.experience
 
-        Xs, heights, weights = gllim.modal_prediction(Y, components=None)
-        for y, xs, hs, ws in zip(Y, Xs, heights, weights):
-            Y0_obs = y[None, :]
+        def densitys(x_points):
+            return gllim.forward_density(Y, x_points, marginals=(index,))
 
-            def density(x_points, Y0_obs=Y0_obs):
-                return gllim.forward_density(Y0_obs, x_points, marginals=(index,))
-
-            xs = np.array([x for x, w in zip(xs, ws) if w >= threshold])
+        modal_preds = []
+        for y, xs, hs, ws in zip(Y, Xweight, heights, weights):
             if post_processing:
                 xs = post_processing(xs)
             mpred = list(zip(xs[:, index], hs, ws))
-            fs.append(density)
             modal_preds.append(mpred)
         xlim = varlims or exp.variables_lims[index]
-        xvar = exp.variables_names[index]
+        varname = exp.variables_names[index]
 
         if with_pdf_images:
             pdf_paths = exp.context.get_images_path_densities(index)
@@ -169,23 +146,21 @@ class VisualisationResults(Results):
             StdRef = StdRef[:, index]
 
         if post_processing:
-            Xheight = np.array([post_processing(X) for X in Xheight])
             Xweight = np.array([post_processing(X) for X in Xweight])
             Xmean = np.array([post_processing(X) for X in Xmean])
 
-        density_sequences1D(fs, modal_preds, labels_x, Xmean[:, index], Xweight[:, :, index], Xheight[:, :, index],
-                            StdMean=StdMean,
-                            Yref=Xref, StdRef=StdRef,
-                            title="Densities - ${}$".format(xvar), xlim=xlim, images_paths=pdf_paths,
-                            savepath=exp.archive.get_path("figures", filecategorie="sequence"))
+        self.G.density_sequences1D(densitys, modal_preds, xlabels, xtitle, Xmean[:, index], Xweight[:, :, index],
+                                   xlim, varname, Xref, StdRef, StdMean, pdf_paths,
+                                   title="Densities - {}".format(varname),
+                                   savepath=exp.archive.get_path("figures", filecategorie="sequence"))
 
-    def map(self, gllim: GLLiM, Y, latlong, index, Xref=None):
+    def map(self, gllim: GLLiM, Y, latlong, index, Xref=None, savepath=None):
         X = gllim.predict_high_low(Y)
         x = X[:, index]
         varname = self.experience.variables_names[index]
         if Xref is not None:
             Xref = Xref[:, index]
-
-        map_values(latlong, x, addvalues=Xref, main_title="Parameter ${}$".format(varname),
-                   titles=("GLLiM", "MCMC"),
-                   savepath=self.experience.archive.get_path("figures", filecategorie="map-{}".format(varname)))
+        savepath = savepath or self.experience.archive.get_path("figures",
+                                                                filecategorie="map-{}".format(varname))
+        self.G.MapValues(latlong, x, Xref, ("GLLiM", "MCMC"),
+                         title="Parameter {}".format(varname), savepath=savepath)

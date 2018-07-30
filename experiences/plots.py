@@ -74,7 +74,7 @@ def plot_estimeF():
 
 
 def plot_evo_LL():
-    training.NB_MAX_ITER = 200
+    training.NB_MAX_ITER, old_MAXITER = 200, training.NB_MAX_ITER
     values, labels = [], []
     exp = Experience(WaveFunction, partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
@@ -108,7 +108,7 @@ def plot_evo_LL():
 
     graphiques.simple_plot(values, labels, None, True, title="Evolution de la log-vraisemblance",
                            savepath=PATHS[2])
-    training.NB_MAX_ITER = 100
+    training.NB_MAX_ITER = old_MAXITER
 
 
 def _train_K_N(exp, N_progression, K_progression):
@@ -124,7 +124,7 @@ def _train_K_N(exp, N_progression, K_progression):
         Ytrain = Y[0:N, :]
         # def ck_init_function():
         #     return c.get_X_uniform(K)
-        print("\nFit {i}/{imax} for K={K}, N={N}".format(i=i + 1, imax=imax, K=K, N=Xtrain.shape[0]))
+        logging.debug("\nFit {i}/{imax} for K={K}, N={N}".format(i=i + 1, imax=imax, K=K, N=Xtrain.shape[0]))
         gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None)
         gllim.inversion()
 
@@ -239,7 +239,7 @@ def main():
     comparaison_MCMC()
 
 
-RETRAIN = True
+RETRAIN = False
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",

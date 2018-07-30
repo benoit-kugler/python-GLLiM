@@ -18,7 +18,7 @@ from experiences import logistic
 from hapke import relation_C
 from tools import context
 from tools.archive import Archive
-from tools.experience import SecondLearning
+from tools.experience import SecondLearning, Experience
 
 warnings.filterwarnings("ignore")
 
@@ -162,7 +162,7 @@ class abstractMeasures():
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
                 logging.info(f"Tests {self.CATEGORIE}, exp. {i+1}/{imax}")
-                exp = SecondLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
+                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
                 if dic is not None:
@@ -344,7 +344,7 @@ class DimensionMeasure(abstractMeasures):
     experiences = DIMENSION_exps
 
     def _dic_mesures(self, i, exp: SecondLearning, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i,GLLiM,exp,exp_params,None,"sobol",t,t)}
+        dic = {"gllim": _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
         return dic
 
 
@@ -543,6 +543,6 @@ def main():
     # DoubleLearningWriter.render()
 
 if __name__ == '__main__':
-    coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",
+    coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     main()

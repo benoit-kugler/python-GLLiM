@@ -7,6 +7,7 @@ The equation numbers refer to _High-Dimensional Regression with Gaussian Mixture
 
 Reprise : B. KUGLER (April 2018) On vectorise au maximum !
 """
+import logging
 import time
 
 import numpy as np
@@ -92,9 +93,9 @@ class MyGMM(GaussianMixture):
         if self.track:
             self.track_params.append((self.weights_, self.means_, self.full_covariances_))
         if self.verbose == 1:
-            print(f"Iteration {n_iter} \n Log-likelihood = {self.current_iter_ll[-1]} at iteration nb : {n_iter}")
+            logging.debug(f"Iteration {n_iter} : Log-likelihood = {self.current_iter_ll[-1]}")
         elif self.verbose == 0:
-            print(f"Iteration {n_iter}")
+            logging.debug(f"Iteration {n_iter}")
 
     def _print_verbose_msg_init_end(self, ll):
         super()._print_verbose_msg_init_end(ll)
@@ -127,34 +128,35 @@ class GLLiM():
         self.track_theta = True
         self.track = []
 
-    def _init_from_dict(self, dict):
-        if "A" in dict:
-            self.AkList = np.array(dict['A'])
-        if "b" in dict:
-            self.bkList = np.array(dict['b'])
-        if 'c' in dict:
-            ckList = np.array(dict['c'])
+    def _init_from_dict(self, dic):
+        if "A" in dic:
+            self.AkList = np.array(dic['A'])
+        if "b" in dic:
+            self.bkList = np.array(dic['b'])
+        if 'c' in dic:
+            ckList = np.array(dic['c'])
             self.ckList_T = ckList[:, :self.Lt]
             if self.Lw == 0:
                 self.ckList_W = np.zeros((self.K, 0))
             else:
                 self.ckList_W = ckList[:, -self.Lw:]
-        if "Gamma" in dict:
-            GammakList = np.array(dict['Gamma'])
+        if "Gamma" in dic:
+            GammakList = np.array(dic['Gamma'])
             if self.gamma_type == "iso":
                 self.GammakList_T = GammakList[:, 0, 0]
-                print("Gamma_T init from first coeff of given matrix")
+                logging.debug("Gamma_T init from first coeff of given matrix")
             elif self.gamma_type == 'full':
                 self.GammakList_T = GammakList[:, :self.Lt, :self.Lt]
             else:
                 raise CovarianceTypeError
             self.GammakList_W = GammakList[:, -self.Lw:, -self.Lw:]
-        if "pi" in dict:
-            self.pikList = np.array(dict["pi"])
-        if "Sigma" in dict:
-            self.SigmakList = np.array(dict["Sigma"])
+        if "pi" in dic:
+            self.pikList = np.array(dic["pi"])
+        if "Sigma" in dic:
+            self.SigmakList = np.array(dic["Sigma"])
         if self.verbose:
-            print("Init from parameters ", dict.keys())
+            used_keys = set(dic.keys()) & {"A", "b", "c", "Gamma", "pi", "Sigma"}
+            logging.debug(f"Init from parameters {used_keys}")
 
     @property
     def theta(self):
@@ -221,7 +223,7 @@ class GLLiM():
     def _T_GMM_init(self, T, init_mode, **theta):
         """Performs GMM init_mode, initialized with theta if given. Returns rnk"""
         if self.verbose:
-            print("Initialization of posterior with GaussianMixture")
+            logging.debug("Initialization of posterior with GaussianMixture")
         start_time_EMinit = time.time()
 
         gmm = GaussianMixture(n_components=self.K, covariance_type='full', max_iter=5,
@@ -229,7 +231,7 @@ class GLLiM():
         gmm.fit(T)
         rnk = gmm.predict_proba(T)  # shape N , K
         if self.verbose:
-            print("--- {} seconds for EM initialization---".format(time.time() - start_time_EMinit))
+            logging.debug("--- {} seconds for EM initialization---".format(time.time() - start_time_EMinit))
         return rnk
 
     def init_fit(self, T, Y, init):
@@ -281,7 +283,7 @@ class GLLiM():
 
         elif 'rnk' in init:
             if self.verbose:
-                print('Initialization with given rnk')
+                logging.debug('Initialization with given rnk')
             self.rnk = np.array(init['rnk'])
             assert self.rnk.shape == (T.shape[0], self.K)
         elif type(init) is dict:
@@ -300,7 +302,7 @@ class GLLiM():
         if not cpt:
             return
         if self.verbose is not None:
-            print("{} cluster(s) removed".format(cpt))
+            logging.debug("{} cluster(s) removed".format(cpt))
         self.K -= cpt
         self.rkList = self.rkList[keep]
         self.AkList = self.AkList[keep]
@@ -475,7 +477,7 @@ class GLLiM():
                 A = np.dot(YXt_stark, i)
                 assert np.isfinite(A).all()
             except (np.linalg.LinAlgError, AssertionError) as e:
-                print("Warning ! {} -> A set to 0".format(e))
+                logging.warning(f"Warning ! {e} at iter. {self.current_iter}-> A set to 0")
                 AkList[k] = np.zeros((self.D, self.L))
             else:
                 AkList[k] = A
@@ -520,11 +522,11 @@ class GLLiM():
         N, L = T.shape
         _, D = Y.shape
         if self.verbose is not None:
-            print("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
-                                                                                  N, L, D, self.K))
+            logging.info("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
+                                                                                         N, L, D, self.K))
         self.init_fit(T, Y, init)
         if self.verbose is not None:
-            print("Done. GLLiM fitting...")
+            logging.info("Done. GLLiM fitting...")
         self.current_iter = 0
         self.LLs_ = []
         converged = False
@@ -549,20 +551,20 @@ class GLLiM():
             self.current_iter += 1
 
         if self.verbose:
-            print("Final log-likelihood : " + str(self.LLs_[self.current_iter - 1]))
-            print(" Converged in %s iterations" % (self.current_iter))
+            logging.debug("Final log-likelihood : " + str(self.LLs_[self.current_iter - 1]))
+            logging.debug(" Converged in %s iterations" % (self.current_iter))
 
         if self.verbose is not None:
             t = int(time.time() - start_time_EM)
-            print("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
+            logging.info("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
 
     def end_iter_callback(self, loglikelihood):
         if self.verbose is not None:
-            print("Iteration", self.current_iter)
-        self.LLs_.append(loglikelihood)
-        if self.verbose:
-            print("Log-likelihood = " + str(loglikelihood) + " at iteration nb :" + str(self.current_iter))
+            logging.debug("Iteration", self.current_iter)
+        elif self.verbose:
+            logging.debug("Log-likelihood = " + str(loglikelihood) + " at iteration nb :" + str(self.current_iter))
 
+        self.LLs_.append(loglikelihood)
         if self.track_theta:  # Save parameters history
             self.track.append(self.theta)
 
@@ -571,7 +573,7 @@ class GLLiM():
 
         # Inversion step
         if self.verbose is not None:
-            print("Proceeding to the inversion")
+            logging.debug("Proceeding to the inversion")
         start_time_inversion = time.time()
 
         self.ckListS = np.array([Ak.dot(ck) + bk for Ak, bk, ck in zip(self.AkList, self.bkList, self.ckList)])  # (9)
@@ -606,7 +608,7 @@ class GLLiM():
             self.bkListS[k] = bS
 
         if self.verbose is not None:
-            print("--- %s seconds for inversion ---" % (time.time() - start_time_inversion))
+            logging.debug("--- %s seconds for inversion ---" % (time.time() - start_time_inversion))
 
     @property
     def norm2_SigmaSGammaInv(self):
@@ -691,11 +693,7 @@ class GLLiM():
         if (not marginals) and not X_points.shape[1] == self.L:
             raise WrongContextError("Dimension of X samples doesn't match the choosen Lw")
         proj, alpha = self._helper_forward_conditionnal_density(Y)
-        if self.verbose:
-            print("pik : ", sorted(self.pikList, reverse=True))
-            l = zip(alpha.flat, proj[:, 0, :].T)
-            dominants = sorted(l, key=lambda d: d[0], reverse=True)
-            print("Dominant components of the mixture : ", dominants)
+
 
         NX, D = X_points.shape
         N = Y.shape[0]
@@ -715,7 +713,7 @@ class GLLiM():
                 for i, (_, w, m, c) in enumerate(dominants):
                     sub_dens[i, n] = np.exp(chol_loggausspdf(X_points.T, m.reshape((D, 1)), c)) * w
         if self.verbose:
-            print("Density calcul time {:.3f}".format(time.time() - t))
+            logging.debug("Density calcul time {:.3f}".format(time.time() - t))
 
         return densites, sub_dens
 
@@ -725,7 +723,7 @@ class GLLiM():
         If threshold is given, gets rid of components with weight <= threshold
         Priority on components"""
         if self.verbose:
-            print("Modal prediction...")
+            logging.debug("Modal prediction...")
         proj, alpha = self._helper_forward_conditionnal_density(Y)
         covs = self.SigmakListS
         chols = np.linalg.cholesky(covs)
@@ -739,7 +737,7 @@ class GLLiM():
                                             sort_by=sort_by, dets=det_covs)[0:lc]
             if len(dominants) == 0:
                 max_w = max(alphan)
-                print("Warning ! No prediction for this threshold (best weight : {:.2e}!".format(max_w))
+                logging.error("Warning ! No prediction for this threshold (best weight : {:.2e}!".format(max_w))
                 hs, ws, xs = np.empty((0,)) , np.empty((0,)) , np.empty((0,))
             else:
                 hs, ws, xs, _ = zip(*dominants)
@@ -747,6 +745,7 @@ class GLLiM():
             heights.append(np.array(hs))
             X.append(np.array(xs))
         return X, heights, weights
+
 
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
@@ -839,11 +838,11 @@ class jGLLiM(GLLiM):
         N, L = T.shape
         _, D = Y.shape
         if self.verbose is not None:
-            print("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
-                                                                                  N, L, D, self.K))
+            logging.info("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
+                                                                                         N, L, D, self.K))
         self.init_fit(T, Y, init)
         if self.verbose is not None:
-            print("Done. jGMM fitting...")
+            logging.info("Done. jGMM fitting...")
 
         start_time_EM = time.time()
 
@@ -858,7 +857,7 @@ class jGLLiM(GLLiM):
 
         if self.verbose is not None:
             t = int(time.time() - start_time_EM)
-            print("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
+            logging.info("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
 
         if self.track_theta:
             def tolist(rho, m, V):
@@ -871,10 +870,4 @@ class jGLLiM(GLLiM):
         t = time.time()
         self._init_from_dict(self.GMM_to_GLLiM(rho, m, V, self.L))
         if self.verbose is not None:
-            print("--- {:.3f} s to compute correspondance".format(time.time() - t))
-
-
-
-
-
-
+            logging.debug("--- {:.3f} s to compute correspondance".format(time.time() - t))

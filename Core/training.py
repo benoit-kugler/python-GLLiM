@@ -148,7 +148,7 @@ def job_second_learning(listXYK, params, process_index) -> [GLLiM]:
         gllim.fit(X, Y, {"rnk": rnk}, maxIter=NB_MAX_ITER_SECOND)
         gllim.inversion()
         gllims.append(gllim)
-        if i % 10 == 0:
+        if (i + 1) % 10 == 0:
             logging.info(f"Second learning {i+1}/{maxi} in process {process_index} done.")
     return gllims
 

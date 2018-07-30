@@ -318,7 +318,7 @@ class SecondLearning(Experience):
 #     exp.mesures.correlations2D(gllim, exp.context.get_observations(), exp.context.wave_lengths, 1, method="mean")
 
 
-def double_learning():
+def double_learning(Ntest=200):
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
     exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
@@ -327,7 +327,7 @@ def double_learning():
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     exp.centre_data_test()
-    exp.Xtest, exp.Ytest = exp.Xtest[0:2000], exp.Ytest[0:2000]
+    exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]
 
     d1 = exp.mesures.run_mesures(gllim)
 
@@ -363,72 +363,32 @@ def double_learning():
 
 
 def test_map():
-    exp = SecondLearning(context.HapkeContext, partiel=None)
+    exp = Experience(context.HapkeContext, partiel=(0, 1, 2, 3), with_plot=True)
     exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(1000, mode="l", track_theta=False, init_local=500,
-                           gllim_cls=dGLLiM)
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
+                           gllim_cls=jGLLiM)
 
-    # Y = exp.context.get_observations()
-    # latlong, mask = exp.context.get_spatial_coord()
-    # Y = Y[mask] #cleaning
-    # MCMC_X ,Std = exp.context.get_result(with_std=True)
-    # MCMC_X = MCMC_X[mask]
-    # Std = Std[mask]
+    Y = exp.context.get_observations()
+    latlong, mask = exp.context.get_spatial_coord()
+    Y = Y[mask]  # cleaning
+    MCMC_X, Std = exp.context.get_result(with_std=True)
+    MCMC_X = MCMC_X[mask]
 
-    print(gllim.ckList[:, (4, 5)])
-    # exp.mesures.plot_density_sequence(gllim,Y[0:10],np.arange(10),index=0,Xref=MCMC_X[0:10],StdRef=Std[0:10])
+    exp.results.map(gllim, Y, latlong, 0, Xref=MCMC_X)
 
-    # exp.mesures.map(gllim,Y,latlong,0,Xref = MCMC_X)
-
-    # print(exp.context.get_result(full=True)[mask,9])
 
 def main():
-    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
-    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
-    dGLLiM.dF_hook = exp.context.dF
-    # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(1000, mode="r", track_theta=False, init_local=500,
-                           sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
+    exp.load_data(regenere_data=False, with_noise=50, N=1000, method="sobol")
+    gllim = exp.load_model(10, mode="l", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-
-    # exp.extend_training_parallel(gllim,Y=exp.context.get_observations(),X=None,threshold=None,nb_per_X=5000,clusters_per_X=20)
-    # Y ,X , gllims = exp.load_second_learning(64,None,5000,20,withX=False)
-    exp.mesures.plot_mean_prediction(gllim)
-    # show_projections(exp.Xtrain)
-    # exp.mesures.plot_mesures(gllim)
-    # X0= exp.mesures.plot_mean_prediction(gllim)
-    X0 = exp.Xtest[87]
-    Y0 = exp.context.F(X0[None, :])
-    # exp.mesures.plot_density_X(gllim, with_modal=False,resolution=400,colorplot=True)
-    # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True, colorplot=False)
-    # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True, colorplot=True)
-    # exp.mesures.plot_conditionnal_density(gllim, Y0, X0, sub_densities=4, with_modal=True,dim=1)
-
-    # exp.mesures.plot_density_X(gllim)
-    # exp.mesures.plot_conditionnal_density(gllim, Y0, X0)
-    # exp.mesures.plot_modal_prediction(gllim,[0.02])
-
-    # print(exp.mesures.run_mesures(gllim))
-    # exp.mesures.plot_estimatedF(gllim,[0,4,9]) #Dim 2 only
-
-
-
-    # Y0 = exp.context.get_observations()[20:21,:]
-    # x_MCMC = exp.context.get_result()
-    # x_gllim = gllim.predict_high_low(exp.context.get_observations())
-    # print(exp.mesures._relative_error(x_gllim,x_MCMC))
-
-    varlims = [(0, 1), (-0.2, 1), (0, 25), (0, 1)]
-    # exp.mesures.correlations(gllim,exp.context.get_observations(),exp.context.wave_lengths,1,method="mean",varlims=varlims)
-    # exp.mesures.correlations(gllim,exp.context.get_observations(),exp.context.wave_lengths,2,method="weight",varlims=varlims)
-
-
-    # MCMC_X , Std = exp.context.get_result()
-    # exp.mesures.plot_density_sequence(gllim,exp.context.get_observations(),exp.context.wave_lengths,
-    #                                               index=0,Xref=MCMC_X,StdRef=Std,with_pdf_images=True,
-    #                                               varlims=(-0.2,1.2),regul="exclu")
+    MCMC_X, Std = exp.context.get_result()
+    exp.results.plot_density_sequence(gllim, exp.context.get_observations(), exp.context.wave_lengths,
+                                      index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=True,
+                                      varlims=(-0.2, 1.2), regul=True, xtitle="wavelength (microns)")
 
 
 
@@ -492,7 +452,7 @@ def RTLS():
 
 
 def job():
-    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s  %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     double_learning()
 
@@ -502,7 +462,7 @@ if __name__ == '__main__':
     # RTLS()
     # main()
     # monolearning()
-    # test_map()
-    double_learning()
+    test_map()
+    # double_learning()
     # glace()
     # test_map()

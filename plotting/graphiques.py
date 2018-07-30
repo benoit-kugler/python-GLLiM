@@ -47,6 +47,8 @@ class abstractDrawerMPL():
 
     Y_TITLE_BOX_WITH_CONTEXT = 1.2
     Y_TITLE_BOX_WITHOUT_CONTEXT = 1.05
+    FIGSIZE = None
+
     fig: Figure
 
     def __init__(self, *args, title="", savepath=None, context=None, draw_context=False, write_context=False):
@@ -63,7 +65,7 @@ class abstractDrawerMPL():
             self.save(savepath)
 
     def create_figure(self, *args):
-        self.fig = pyplot.figure()
+        self.fig = pyplot.figure(figsize=self.FIGSIZE)
 
     def main_draw(self, *args):
         pass
@@ -200,9 +202,12 @@ class abstractGridDrawerMPL(abstractDrawerMPL):
     def _get_nb_subplot(self, *args):
         return 1
 
+    def _get_dims_fig(self, *args):
+        nb_subplot = self._get_nb_subplot(*args)
+        return _get_rows_columns(nb_subplot, coeff_row=self.SIZE_ROW, coeff_column=self.SIZE_COLUMN)
+
     def create_figure(self, *args):
-        self.nb_row, self.nb_column, figsize = _get_rows_columns(self._get_nb_subplot(*args),
-                                                                 coeff_row=self.SIZE_ROW, coeff_column=self.SIZE_COLUMN)
+        self.nb_row, self.nb_column, figsize = self._get_dims_fig(*args)
         self.fig = pyplot.figure(figsize=figsize)
 
     def save(self, savepath):
@@ -500,14 +505,17 @@ class Results_1D(abstractGridDrawerMPL):
         self.fig = pyplot.figure(figsize=(15, self.nb_row * self.ROW_SIZE))
 
     def main_draw(self, Xmean, StdMean, Xweight, xlabels, xtitle, varnames, varlims, Xref, StdRef):
+        print(StdMean.shape)
         for i, axe in zip(range(self.nb_row), self.get_axes()):
             Xw = Xweight[:, :, i] if Xweight is not None else None
             xlim = varlims[i] if varlims is not None else None
-            StdMean = StdMean[:, i, i] if StdMean is not None else None
-            Xref = Xref[:, i] if Xref is not None else None
-            StdRef = StdRef[:, i] if StdRef is not None else None
-            _prediction_1D(axe, xlim, varnames[i], xlabels, Xmean[:, i], Xw, xtitle, StdMean=StdMean,
-                           Xref=Xref, StdRef=StdRef)
+
+            SMi = StdMean[:, i, i] if StdMean is not None else None
+
+            Xr = Xref[:, i] if Xref is not None else None
+            SRi = StdRef[:, i] if StdRef is not None else None
+            _prediction_1D(axe, xlim, varnames[i], xlabels, Xmean[:, i], Xw, xtitle, StdMean=SMi,
+                           Xref=Xr, StdRef=SRi)
         if self.nb_row:
             self.fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
 
@@ -544,29 +552,112 @@ class Results_2D(abstractGridDrawerMPL):
             c.set_label(xtitle)
 
 
-##### ----------------- TODO A refactor en classe  --------------- #################
+class abstractGridSequence(abstractGridDrawerMPL):
+
+    def create_figure(self, *args):
+        self.nb_row, self.nb_column, figsize = self._get_dims_fig(*args)
+        self.axes_seq = SubplotsSequence(self.nb_row, self.nb_column, self._get_nb_subplot(*args), figsize=figsize)
+        self.fig = self.axes_seq.fig
 
 
-
-def _axe_density_1D(axe,x,y,xlims,
-                   varnames,modal_preds,truex,title):
-
+def _axe_density_1D(axe, x, y, xlims,
+                    varname, modal_preds, truex, title):
     # axe.xaxis.set_minor_locator(ticker.MultipleLocator((xlims[1] - xlims[0]) / 100))
-    axe.xaxis.set_major_locator(ticker.MultipleLocator((xlims[1] - xlims[0])/20))
-    axe.plot(x,y,"-",linewidth=1)
+    axe.xaxis.set_major_locator(ticker.MultipleLocator((xlims[1] - xlims[0]) / 20))
+    axe.plot(x, y, "-", linewidth=1)
     axe.set_xlim(*xlims)
-    axe.set_xlabel("$" + varnames[0] + "$")
+    axe.set_xlabel(varname)
     axe.set_title(title)
 
-    # for i,yi in enumerate(sub_densities):
-    #     axe.plot(x_points,yi.flatten(),"--",label="Dominant {}".format(i),linewidth=0.5)
-
     for i, (X, height, weight) in enumerate(modal_preds):
-        axe.axvline(x=X, color="b",linestyle="--",
-                    label="X modal {0:.2e} - {1:.3f}".format(height,weight),alpha=0.5)
+        axe.axvline(x=X, color="b", linestyle="--",
+                    label="X modal {0:.2e} - {1:.3f}".format(height, weight), alpha=0.5)
 
     if truex:
-        axe.axvline(x=truex,label="True value",alpha=0.5)
+        axe.axvline(x=truex, label="True value", alpha=0.5)
+
+
+class density_sequences1D(abstractGridSequence):
+    RESOLUTION = 200
+    FIGSIZE = (25, 15)
+    SAVEBOUNDS = (2, 0.5, 21, 6)
+
+    def _get_nb_subplot(self, densitys, modal_preds, xlabels, xtitle, Xmean, Xweight, xlim,
+                        varname, Yref, StdRef, StdMean, images_paths):
+        return images_paths and 3 or 2
+
+    def _get_dims_fig(self, densitys, modal_preds, xlabels, xtitle, Xmean, Xweight, xlim,
+                      varname, Yref, StdRef, StdMean, images_paths):
+        return images_paths and (2, 2, self.FIGSIZE) or (2, 1, self.FIGSIZE)
+
+    def main_draw(self, densitys, modal_preds, xlabels, xtitle, Xmean, Xweight, xlim,
+                  varname, Yref, StdRef, StdMean, images_paths):
+        x = np.linspace(*xlim, self.RESOLUTION)[:, None]
+        ydensity, _ = densitys(x)
+        xpoints = x.flatten()
+
+        for i, axes, y, m in zip(range(len(ydensity)), self.axes_seq, ydensity, modal_preds):
+
+            _axe_density_1D(axes[0], xpoints, y.flatten(), xlim, varname, m, None, "")
+
+            if images_paths:
+                axe2 = axes[2]
+                axe_im = axes[1]
+                img = PIL.Image.open(images_paths[i]).convert("L")
+                axe_im.imshow(np.asarray(img), cmap="gray", aspect="auto")
+                axe_im.get_xaxis().set_visible(False)
+                axe_im.get_yaxis().set_visible(False)
+            else:
+                axe2 = axes[1]
+
+            _prediction_1D(axe2, xlim, varname, xlabels, Xmean, Xweight, xtitle,
+                           StdMean=StdMean, Xref=Yref, StdRef=StdRef)
+
+            # Current point
+            axe2.axvline(xlabels[i], c="b", marker="<", label="index " + str(i), zorder=4, alpha=0.4)
+            axe2.legend()
+        self.axes_seq.show_first()
+
+    def save(self, savepath):
+        self.fig.show()
+        pyplot.show()
+        self.fig.savefig(savepath, bbox_inches=transforms.Bbox.from_bounds(*self.SAVEBOUNDS))
+        logging.info(f"Saved in {savepath}")
+
+
+#### --------------- Maps ------------- #####
+
+class MapValues(abstractDrawerMPL):
+    FIGSIZE = (25, 12)
+
+    def main_draw(self, latlong, values, addvalues, titles):
+        lat = list(latlong[:, 0])
+        long = list(latlong[:, 1])
+        axe = self.fig.add_subplot(121, projection=crs.PlateCarree())
+
+        totalvalues = list(values) + list([] if addvalues is None else addvalues)
+        vmin, vmax = min(totalvalues), max(totalvalues)
+
+        s = axe.scatter(long, lat, transform=crs.Geodetic(),
+                        cmap=cm.rainbow, vmin=vmin, vmax=vmax,
+                        c=list(values))
+        axe.set_title(titles[0])
+
+        if addvalues is None:
+            self.fig.colorbar(s)
+        else:
+            ax2 = self.fig.add_subplot(122, projection=crs.PlateCarree())
+            s2 = ax2.scatter(long, lat, transform=crs.Geodetic(), cmap=cm.rainbow, vmin=vmin, vmax=vmax,
+                             c=addvalues)
+            ax2.set_title(titles[1])
+            self.fig.subplots_adjust(right=0.8)
+            cbar_ax = self.fig.add_axes([0.85, 0.15, 0.02, 0.7])
+            self.fig.colorbar(s2, cax=cbar_ax)
+
+
+
+
+##### ----------------- TODO A refactor en classe  --------------- #################
 
 
 
@@ -704,49 +795,6 @@ def plot_Y(Y):
 
 
 
-
-def density_sequences1D(fs, modal_preds, xlabels, Xmean, Xweight, Xheight, xlim=(0, 1), title="Density sequence",
-                        varname="x", resolution=200, Yref=None, StdRef=None, StdMean=None,
-                        images_paths=None,savepath=None):
-    if images_paths:
-        axes_seq = SubplotsSequence(2,2,3,figsize=(25,15))
-    else:
-        axes_seq = SubplotsSequence(2,1,2,figsize=(25,15))
-
-    x = np.linspace(*xlim, resolution)[:, None]
-
-    for i , axes, f, m in zip(range(len(fs)),axes_seq,fs,modal_preds):
-        y, _ = f(x)
-        xpoints = x.flatten()
-        _axe_density_1D(axes[0],xpoints,y.flatten(),xlim,varname,m,None,"")
-
-
-        if images_paths:
-            axe2 = axes[2]
-            axe_im = axes[1]
-            img =PIL.Image.open(images_paths[i]).convert("L")
-            axe_im.imshow(np.asarray(img),cmap="gray", aspect="auto")
-            axe_im.get_xaxis().set_visible(False)
-            axe_im.get_yaxis().set_visible(False)
-        else:
-            axe2 = axes[1]
-
-        _prediction_1D(axe2, xlim, varname, xlabels, Xmean, Xweight, "wavelength (microns)", StdMean=StdMean, Xref=Yref,
-                       StdRef=StdRef)
-
-        #Current point
-        axe2.axvline(xlabels[i], c="b", marker="<", label="index " + str(i),zorder=4,alpha=0.4)
-
-        axe2.legend()
-
-    axes_seq.fig.suptitle(title)
-    axes_seq.show_first()
-    if savepath:
-        axes_seq.fig.savefig(savepath, bbox_inches=transforms.Bbox.from_bounds(2,1,22,6))
-        print("Saved in ", savepath)
-    pyplot.show()
-
-
 class CkAnimation(mplAnimation):
 
     def __init__(self,cks,varnames=("x1","x2"), varlims=((0,1),(0,1))):
@@ -762,44 +810,6 @@ class CkAnimation(mplAnimation):
         self.ln.set_data(frame.T)
         return self.ln,
 
-
-
-def map_values(latlong,values,addvalues=None,main_title="Map",titles=None,savepath=None):
-    fig = pyplot.figure(figsize=(25,10))
-    print(latlong)
-    lat = list(latlong[:,0])
-    long = list(latlong[:,1])
-    ax = fig.add_subplot(121,projection=crs.PlateCarree())
-
-    if addvalues is None:
-        s = ax.scatter(long, lat, transform=crs.Geodetic(),c=values,cmap=cm.rainbow)
-        fig.colorbar(s)
-    else:
-        totalvalues = list(values) + list(addvalues)
-        vmin, vmax = min(totalvalues),max(totalvalues)
-        ax.scatter(long, lat , transform=crs.Geodetic(),
-                         cmap=cm.rainbow, vmin=vmin,vmax=vmax,
-                         c=list(values))
-        ax2 = fig.add_subplot(122,projection=crs.PlateCarree())
-        s2 = ax2.scatter(long, lat , transform=crs.Geodetic(),cmap=cm.rainbow,vmin=vmin,vmax=vmax,
-                        c=addvalues )
-
-        ax.set_title(titles[0])
-        ax2.set_title(titles[1])
-
-        fig.subplots_adjust(right=0.8)
-        cbar_ax = fig.add_axes([0.85, 0.15, 0.02, 0.7])
-        fig.colorbar(s2,cax=cbar_ax)
-
-
-
-    fig.suptitle(main_title)
-    if savepath:
-        fig.savefig(savepath, bbox_inches='tight')
-        print("Saved in ", savepath)
-        pyplot.close(fig)
-    else:
-        pyplot.show()
 
 
 def illustre_derivative(F,dF):

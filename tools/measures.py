@@ -1,4 +1,5 @@
 import time
+import logging
 
 import numpy as np
 
@@ -257,7 +258,7 @@ class Mesures():
         u = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
         sig = gllim.SigmakList.max()
         max_pi = gllim.pikList.max()
-        print("{:.2f} s for average error estimation over {} samples".format(time.time() - ti, N))
+        logging.debug("{:.2f} s for average error estimation over {} samples".format(time.time() - ti, N))
         return ecart_sum, er_cluster, er1, er2, maj_er2, delta.max(), s, sig, max_pi, u, gllim.GammakList.max(), alpha.min()
 
 

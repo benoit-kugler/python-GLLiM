@@ -13,6 +13,4 @@ class dGLLiM(GLLiM):
         ck = (self.rnk[:, :, None] * Xnk).sum(axis=0) / self.rkList[:, None]
         return self.dF_hook(ck)
 
-    def fit_with_GMM(self, X, Y, maxIter=50, stochastic=0):
-        raise ValueError("Class designed to work with dF, which is not compatible with joint GMM fit !")
 
