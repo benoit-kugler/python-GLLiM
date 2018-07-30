@@ -314,63 +314,6 @@ class MesuresSecondLearning(Mesures):
 
 
 
-    def plot_density_sequence_parallel(self,gllims,Y,labels_x,Xref=None,StdRef=None,
-                               with_pdf_images=False,index=0,threshold=0.005,varlims=None,regul=None):
-        exp = self.experience
-        fs, xlims, ylims, modal_preds, trueXs, varnames, titles = [], [], [], [], [], [], []
-
-        Xmean , StdMean = [] ,[]
-        Xweight, Xheight = [], []
-
-        for y, gllim in zip(Y,gllims):
-            Y0_obs = y[None, :]
-            xmean, cov = gllim.predict_high_low(Y0_obs, with_covariance=True)
-            StdMean.append( np.sqrt(cov[0,index, index]))
-            Xmean.append(xmean[0])
-
-            def density(x_points,gllim=gllim,Y0_obs=Y0_obs):
-                return gllim.forward_density(Y0_obs, x_points, marginals=(index,))
-
-
-            Xs, heights, weights = gllim.modal_prediction(Y0_obs, components=None)
-            xs , hs,  ws = Xs[0], heights[0], weights[0]
-            Xheight.append(xs[0:3])
-            l = zip(xs, ws)
-            l = sorted(l, key=lambda d: d[1], reverse=True)[0:3]
-            Xweight.append([x[0] for x in l])
-
-
-            xs = np.array([x for x,w in zip(xs,ws) if w >= threshold])
-            mpred = list(zip(xs[:,index],ws))
-            fs.append(density)
-            modal_preds.append(mpred)
-
-        Xweight = np.array(Xweight)
-        Xheight = np.array(Xheight)
-        Xmean = np.array(Xmean)
-        StdMean = np.array(StdMean)
-        xlim = varlims or exp.variables_lims[index]
-        xvar = exp.variables_names[index]
-
-        if with_pdf_images:
-            pdf_paths = exp.context.get_images_path_densities(index)
-        else:
-            pdf_paths = None
-
-        if regul:
-            reg_f = {"step": step_by_step, "exclu": global_regularization_exclusion}[regul]
-            print("Regularization {} ... ".format(regul))
-            t = time.time()
-            Xweight = reg_f(Xweight)
-            Xheight = reg_f(Xheight)
-            print("Done in ",time.time() - t, "s")
-
-        density_sequences1D(fs,modal_preds,labels_x,Xmean[:,index],Xweight[:,:,index],Xheight[:,:,index],StdMean = StdMean,
-                            Yref=Xref[:,index],StdRef = StdRef[:,index] ,
-                            title="Second dependant learning - Densities - ${}$".format(xvar),xlim=xlim,images_paths=pdf_paths,
-                            savepath=exp.archive.get_path("figures", filecategorie="dependant_learning_sequence"))
-
-
 
 
 
@@ -654,3 +597,55 @@ class VisualisationMesures(Mesures):
         labels = self.LABELS_STUDY_ERROR
         self.G.simple_plot(list(zip(*l)), labels, "iterations", True, savepath=savepath,
                            title="Approximation evolution over iterations")
+
+
+class VisualisationSecondLearning(MesuresSecondLearning, VisualisationMesures):
+
+    def compare_density2D_parallel(self, Y, gllim_base, gllims, X=None, colorplot=True):
+        exp = self.experience
+        fsbefore, fsafter, modal_preds_before, modal_preds_after, trueXs = [], [], [], [], []
+
+        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
+        X = X if X is not None else [None] * len(Y)
+        gllim_base.verbose = False
+        for y, X0_obs, gllim in zip(Y, X, gllims):
+            gllim.verbose = False
+            Y0_obs = y[None, :]
+
+            data = []
+
+            Xweight, hs, ws = gllim_base.modal_prediction(Y0_obs, components=3)
+            modal_pred_full_before = Xweight[0], hs[0], ws[0]
+
+            Xweight, hs, ws = gllim.modal_prediction(Y0_obs, components=3)
+            modal_pred_full_after = Xweight[0], hs[0], ws[0]
+
+            def densitybefore_full(x_points, marginal, Y0_obs=Y0_obs):
+                return gllim_base.forward_density(Y0_obs, x_points, marginals=marginal)
+
+            def densityafter_full(x_points, marginal, gllim=gllim, Y0_obs=Y0_obs):
+                return gllim.forward_density(Y0_obs, x_points, marginals=marginal)
+
+            metadata = []
+            for i in range(nb_var):
+                for j in range(i + 1, nb_var):
+                    densityb, xlim, ylim, modal_predb, trueX, varx, vary, titleb = \
+                        self._collect_infos_density(densitybefore_full, "Density of ${},{}$", X0_obs, i,
+                                                    j=j, modal_pred_full=modal_pred_full_before)
+
+                    densitya, xlim, ylim, modal_preda, trueX, varx, vary, titlea = \
+                        self._collect_infos_density(densityafter_full, "Snd learning - Density of ${},{}$", X0_obs, i,
+                                                    j=j, modal_pred_full=modal_pred_full_after)
+
+                    data.append((densityb, densitya, modal_predb, modal_preda, trueX))
+                    metadata.append(((xlim, ylim), (varx, vary), titleb, titlea))
+
+            fb, fa, mpb, mpa, tX = zip(*data)
+            fsbefore.append(fb)
+            fsafter.append(fa)
+            modal_preds_before.append(mpb)
+            modal_preds_after.append(mpa)
+            trueXs.append(tX)
+        varlims, varnames, titlesb, titlesa = zip(*metadata)
+        self.G.Density2DSequence(fsbefore, fsafter, varlims, varnames, titlesb, titlesa,
+                                 modal_preds_before, modal_preds_after, trueXs, colorplot)

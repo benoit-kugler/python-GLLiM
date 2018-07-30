@@ -13,7 +13,7 @@ from Core.riemannian import RiemannianjGLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
-from tools.measures import Mesures, VisualisationMesures, MesuresSecondLearning
+from tools.measures import Mesures, VisualisationMesures, MesuresSecondLearning, VisualisationSecondLearning
 from tools.results import Results, VisualisationResults
 
 Ntest = 50000
@@ -245,11 +245,12 @@ class SecondLearning(Experience):
     mesures: MesuresSecondLearning
 
     @classmethod
-    def from_experience(cls, exp: Experience, number=1):
+    def from_experience(cls, exp: Experience, number=1, with_plot=False):
         """Promote exp to SecondLearning"""
         exp.__class__ = cls
         exp.number = number
-        exp.mesures = MesuresSecondLearning(exp)
+        exp.mesures = VisualisationSecondLearning(exp) if with_plot else MesuresSecondLearning(exp)
+
         return exp
 
     def __init__(self, context_class, number=1, partiel=None, verbose=True, with_plot=False, **kwargs):
@@ -299,7 +300,7 @@ class SecondLearning(Experience):
         gllims = []
         self.verbose, old_verbose = None, self.verbose
         t = time.time()
-        logging.info("Loading and inversion of gllims...")
+        logging.info("Loading and inversion of second learning gllims...")
         for theta in thetas:
             gllim = self._load_gllim(theta)
             gllim.inversion()
@@ -331,13 +332,14 @@ def double_learning(Ntest=200):
 
     d1 = exp.mesures.run_mesures(gllim)
 
-    exp = SecondLearning.from_experience(exp)
-    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    exp = SecondLearning.from_experience(exp, with_plot=True)
+    # exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
     Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
     d2 = exp.mesures.run_mesures(gllims, Y, X)
     exp.archive.save_mesures({"first": d1, "second": d2}, "SecondLearning")
 
+    exp.mesures.compare_density2D_parallel(Y, gllim, gllims, X=X)
     index = 3
     # X0 = exp.Xtest[56]
     # Y0 = exp.context.F(X0[None, :])
@@ -369,7 +371,7 @@ def test_map():
     gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
                            gllim_cls=jGLLiM)
 
-    Y = exp.context.get_observations()
+    Y = exp.conte & xt.get_observations()
     latlong, mask = exp.context.get_spatial_coord()
     Y = Y[mask]  # cleaning
     MCMC_X, Std = exp.context.get_result(with_std=True)
@@ -462,7 +464,7 @@ if __name__ == '__main__':
     # RTLS()
     # main()
     # monolearning()
-    test_map()
-    # double_learning()
+    # test_map()
+    double_learning()
     # glace()
     # test_map()

@@ -36,7 +36,7 @@ class Results():
             if with_regu:
                 Xweight = _modal_regularization(exp.context.normalize_X, "exclu", Xweight)
         else:
-            Xweight = None
+            Xweight, heights, weights = None, None, None
         Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
         return Xmean, Covs, Xweight, heights, weights
 
@@ -114,7 +114,7 @@ class VisualisationResults(Results):
         savepath = savepath or exp.archive.get_path("figures", filecategorie="correlations-{}".format(method))
         self.G.Results_2D(X, labels_value, xtitle, varnames, varlims, Xref, context=exp.get_infos(Ntest="-"),
                           title="Corrélations - Mode de prédiction :  {}".format(method), write_context=True,
-                       savepath=savepath)
+                          savepath=savepath)
 
     def plot_density_sequence(self, gllim: GLLiM, Y, xlabels, index=0, varlims=None, xtitle="observations",
                               Xref=None, StdRef=None, with_pdf_images=False, regul=None, post_processing=None):

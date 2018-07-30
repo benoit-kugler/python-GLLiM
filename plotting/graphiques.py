@@ -552,6 +552,8 @@ class Results_2D(abstractGridDrawerMPL):
             c.set_label(xtitle)
 
 
+#### ------------- Density sequences ------------------ ######
+
 class abstractGridSequence(abstractGridDrawerMPL):
 
     def create_figure(self, *args):
@@ -625,7 +627,51 @@ class density_sequences1D(abstractGridSequence):
         logging.info(f"Saved in {savepath}")
 
 
-#### --------------- Maps ------------- #####
+class Density2DSequence(abstractGridSequence):
+    """Show a sequence of conditionnal densities with 2 versions."""
+
+    RESOLUTION = 200
+
+    def _get_nb_subplot(self, sbefore, fsafter, varlims, *args):
+        return len(varlims) * 2
+
+    def main_draw(self, fsbefore, fsafter, varlims, varnames, titlesb, titlesa,
+                  modal_predss_before, modal_predss_after, trueXss, colorplot):
+        N = len(fsafter)
+        for i, fbefore, fafter, axes, trueXs, modal_preds_before, modal_preds_after in \
+                zip(range(N), fsbefore, fsafter, self.axes_seq, trueXss, modal_predss_before,
+                    modal_predss_after):  # sequence of points
+            iterator = self.get_axes()
+            for fb, fa, (xlim, ylim), modal_predb, modal_preda, truex, varname, titleb, titlea in zip(fbefore, fafter,
+                                                                                                      varlims,
+                                                                                                      modal_preds_before,
+                                                                                                      modal_preds_after,
+                                                                                                      trueXs, varnames,
+                                                                                                      titlesb, titlesa):
+                x, y = np.meshgrid(np.linspace(*xlim, self.RESOLUTION, dtype=float),
+                                   np.linspace(*ylim, self.RESOLUTION, dtype=float))
+                variable = np.array([x.flatten(), y.flatten()]).T
+                za, _ = fa(variable)
+                zb, _ = fb(variable)
+                za = za.reshape((self.RESOLUTION, self.RESOLUTION))
+                zb = zb.reshape((self.RESOLUTION, self.RESOLUTION))
+                axeb = next(iterator)
+                axea = next(iterator)
+                _axe_density2D(self.fig, axeb, x, y, zb, colorplot, xlim, ylim, varname, modal_predb, truex, titleb)
+                _axe_density2D(self.fig, axea, x, y, za, colorplot, xlim, ylim, varname, modal_preda, truex, titlea)
+            logging.debug(f"Drawing of page {i+1}/{N}")
+        self.fig.show()
+        pyplot.show()
+
+        # if len(fsbefore[0])
+        #     handles, labels = axe.get_legend_handles_labels()
+        #     self.fig.legend(handles, labels, loc="center left")
+
+        # self.fig.text(0.5, -0.1, var_description, horizontalalignment='center',
+        #               fontsize=12, bbox=self.FIGURE_TITLE_BOX, fontweight='bold')
+
+
+######  ------------------------------------ Maps ---------------------------------- #####
 
 class MapValues(abstractDrawerMPL):
     FIGSIZE = (25, 12)
