@@ -141,7 +141,7 @@ def job_second_learning(listXYK, params, process_index) -> [GLLiM]:
         logging.debug(f"Second learning {i+1}/{maxi} in process {process_index}... ({len(X)} data, {K} clusters)")
         rho = np.ones(K) / K
         m = X[0:K,:]
-        precisions = 10 * K  * np.array([np.eye(X.shape[1])] * K)
+        precisions = K * np.array([np.eye(X.shape[1])] * K)
         gllim = GLLiM(K, Lw=Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=None)
         rnk = gllim._T_GMM_init(X, "random",
                                 weights_init=rho, means_init=m, precisions_init=precisions)

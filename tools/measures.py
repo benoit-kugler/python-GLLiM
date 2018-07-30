@@ -630,11 +630,11 @@ class VisualisationSecondLearning(MesuresSecondLearning, VisualisationMesures):
             for i in range(nb_var):
                 for j in range(i + 1, nb_var):
                     densityb, xlim, ylim, modal_predb, trueX, varx, vary, titleb = \
-                        self._collect_infos_density(densitybefore_full, "Density of ${},{}$", X0_obs, i,
+                        self._collect_infos_density(densitybefore_full, "Density of {},{}", X0_obs, i,
                                                     j=j, modal_pred_full=modal_pred_full_before)
 
                     densitya, xlim, ylim, modal_preda, trueX, varx, vary, titlea = \
-                        self._collect_infos_density(densityafter_full, "Snd learning - Density of ${},{}$", X0_obs, i,
+                        self._collect_infos_density(densityafter_full, "Snd learning - Density of {},{}", X0_obs, i,
                                                     j=j, modal_pred_full=modal_pred_full_after)
 
                     data.append((densityb, densitya, modal_predb, modal_preda, trueX))

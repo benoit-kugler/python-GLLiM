@@ -635,19 +635,24 @@ class Density2DSequence(abstractGridSequence):
     def _get_nb_subplot(self, sbefore, fsafter, varlims, *args):
         return len(varlims) * 2
 
+    def _get_dims_fig(self, *args):
+        n = self._get_nb_subplot(*args)
+        return n // 4, 4, (5 * n // 4, 5 * 4)
+
+    def get_axes(self, page_axes):
+        for axe in page_axes:
+            yield axe
+
     def main_draw(self, fsbefore, fsafter, varlims, varnames, titlesb, titlesa,
                   modal_predss_before, modal_predss_after, trueXss, colorplot):
         N = len(fsafter)
         for i, fbefore, fafter, axes, trueXs, modal_preds_before, modal_preds_after in \
                 zip(range(N), fsbefore, fsafter, self.axes_seq, trueXss, modal_predss_before,
                     modal_predss_after):  # sequence of points
-            iterator = self.get_axes()
-            for fb, fa, (xlim, ylim), modal_predb, modal_preda, truex, varname, titleb, titlea in zip(fbefore, fafter,
-                                                                                                      varlims,
-                                                                                                      modal_preds_before,
-                                                                                                      modal_preds_after,
-                                                                                                      trueXs, varnames,
-                                                                                                      titlesb, titlesa):
+            iterator = self.get_axes(axes)
+            for fb, fa, (xlim, ylim), modal_predb, modal_preda, \
+                truex, varname, titleb, titlea in zip(fbefore, fafter, varlims, modal_preds_before, modal_preds_after,
+                                                      trueXs, varnames, titlesb, titlesa):
                 x, y = np.meshgrid(np.linspace(*xlim, self.RESOLUTION, dtype=float),
                                    np.linspace(*ylim, self.RESOLUTION, dtype=float))
                 variable = np.array([x.flatten(), y.flatten()]).T
@@ -657,10 +662,13 @@ class Density2DSequence(abstractGridSequence):
                 zb = zb.reshape((self.RESOLUTION, self.RESOLUTION))
                 axeb = next(iterator)
                 axea = next(iterator)
-                _axe_density2D(self.fig, axeb, x, y, zb, colorplot, xlim, ylim, varname, modal_predb, truex, titleb)
-                _axe_density2D(self.fig, axea, x, y, za, colorplot, xlim, ylim, varname, modal_preda, truex, titlea)
+                _axe_density2D(axeb, x, y, zb, colorplot, xlim, ylim, varname, modal_predb, truex, titleb,
+                               with_colorbar=False)
+                _axe_density2D(axea, x, y, za, colorplot, xlim, ylim, varname, modal_preda, truex, titlea,
+                               with_colorbar=False)
             logging.debug(f"Drawing of page {i+1}/{N}")
-        self.fig.show()
+        self.axes_seq.show_first()
+        # self.fig.show()
         pyplot.show()
 
         # if len(fsbefore[0])
@@ -742,19 +750,21 @@ def plot_density1D(fs,contexte,xlims=((0,1),),resolution=200,main_title="Density
         print("Saved in ", filename)
         pyplot.close(fig)
 
-def _axe_density2D(fig,axe,x,y,z,colorplot,xlims,ylims,
-                   varnames,modal_preds,truex,title):
+
+def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
+                   varnames, modal_preds, truex, title, with_colorbar=True):
     if colorplot:
         pc = axe.pcolormesh(x,y,z)
         axe.set_xlim(*xlims)
         axe.set_ylim(*ylims)
-        fig.colorbar(pc)
+        if with_colorbar:
+            pyplot.colorbar(pc, ax=axe)
     else:
         levels = np.linspace(0,z.max(),20)
         levels = [0.001] + list(levels)
         axe.contour(x,y,z,levels=levels,alpha=0.5)
-    axe.set_xlabel("$"+ varnames[0]  + "$")
-    axe.set_ylabel("$"+ varnames[1]  + "$")
+    axe.set_xlabel(varnames[0])
+    axe.set_ylabel(varnames[1])
 
     colors = cm.coolwarm(np.arange(len(modal_preds)) / len(modal_preds))
     for i, (X,height,weight) in enumerate(modal_preds):
