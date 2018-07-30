@@ -32,14 +32,13 @@ class Mesures():
     #     return np.sqrt(np.square(X - trueX).sum(axis=1) / np.square(trueX).sum(axis=1)).tolist()
 
     @staticmethod
-    def _relative_error(X,trueX):
+    def _relative_error(X, trueX, with_components=False):
         """Absolute difference. Data should be normalized beforehand"""
-        return np.abs(X - trueX).max(axis=1).tolist()
-
-    @staticmethod
-    def _relative_error_by_components(X,trueX):
-        """If X.shape = N,L returns L,N array"""
-        return np.abs( (X - trueX) / trueX ).T
+        diff = np.abs(X - trueX)
+        norm = diff.max(axis=1)
+        if with_components:
+            return norm, diff.T
+        return norm
 
 
     def _collect_infos_density(self,density_full,title,X0_obs,i,j=None,modal_pred_full=None):
@@ -90,40 +89,55 @@ class Mesures():
         nb_valid = mask_mean.sum() / len(mask_mean)
         return error_mean, em_clean, nb_valid
 
+    def _normalize_nrmse(self, Xpredicted, Xtrue, normalization):
+        Xtrue = normalization(Xtrue)
+        Xpredicted = normalization(Xpredicted)
+        nrmse, nrmse_components = self._relative_error(Xpredicted, Xtrue, with_components=True)
+        worst_index = np.argmax(nrmse) if len(nrmse) > 0 else 0  # worst prediction
+        return nrmse, nrmse_components, worst_index
 
+    def _nrmse_oneXperY(self, Xpredicted, Xtrue, Y, ref_function):
+        exp = self.experience
+        retrouveY = ref_function(Xpredicted)
 
+        mask = [np.isfinite(y).all() for y in retrouveY]
+        nrmseY, _, _ = self._normalize_nrmse(retrouveY[mask], Y[mask], exp.context.normalize_Y)
 
+        if not exp.Lw == 0:
+            Xpredicted = Xpredicted[:, 0:-exp.Lw]
+
+        mask = exp.context.is_X_valid(Xpredicted)
+
+        nb_valid = mask.sum() / len(mask)
+
+        nrmse, nrmse_by_components, i = self._normalize_nrmse(Xpredicted, Xtrue, exp.context.normalize_X)
+        # nrmseclean, _, _ = self._normalize_nrmse(Xpredicted[mask], Xtrue[mask], exp.context.normalize_X)
+
+        return nrmse, nrmse_by_components, Xtrue[i], nb_valid, nrmseY
+
+    def _nrmse_multiXperY(self, Xspredicted, Xtrue, Y, ref_function):
+        exp = self.experience
+        Ys = self.experience.compute_FXs(Xspredicted, ref_function)
+        norm = exp.context.normalize_Y
+        l = [self._relative_error(norm(ysn), norm(yn[None, :])) for ysn, yn in zip(Ys, Y)]
+        nrmseY = [e for subl in l for e in subl]
+        nrmseY_best = [np.min(subl) for subl in l]
+
+        bestX = np.empty(Xtrue.shape)
+        for n, (xs, xtrue) in enumerate(zip(Xspredicted, Xtrue)):
+            diff = (xs - xtrue)
+            i = np.square(diff / exp.variables_range).sum(axis=1).argmin()
+            bestX[n] = xs[i]
+
+        nrmse, nrmse_by_components, worst_index = self._normalize_nrmse(bestX, Xtrue, exp.context.normalize_X)
+
+        return nrmse, nrmse_by_components, Xtrue[worst_index], nrmseY, nrmseY_best
 
     def _nrmse_mean_prediction(self, gllim):
         exp = self.experience
         X_predicted = gllim.predict_high_low(exp.Ytest)
-        retrouveY = exp.context.F(X_predicted)
 
-        mask = [np.isfinite(y).all() for y in retrouveY]
-        retrouveY = exp.context.normalize_Y(retrouveY)
-        Ytest = exp.context.normalize_Y(exp.Ytest)
-        nrmseY = self._relative_error(retrouveY[mask], Ytest[mask])
-
-        if not exp.Lw == 0:
-            X_predicted = X_predicted[:, 0:-exp.Lw]
-
-        mask = exp.context.is_X_valid(X_predicted)
-        Xclean = X_predicted[mask]
-
-        # Normalisation
-        X_test = exp.context.normalize_X(exp.Xtest)
-        Xclean = exp.context.normalize_X(Xclean)
-        X_predicted = exp.context.normalize_X(X_predicted)
-
-        nb_valid = mask.sum() / len(mask)
-
-        nrmse = self._relative_error(X_predicted, X_test)
-        nrmseclean = self._relative_error(Xclean, X_test[mask])
-
-        nrmse_by_components = self._relative_error_by_components(X_predicted, X_test)
-        i = np.argmax(nrmse)  # worst prediction
-
-        return nrmse, nrmse_by_components, exp.Xtest[i], nrmseclean, nb_valid, nrmseY
+        return self._nrmse_oneXperY(X_predicted, exp.Xtest, exp.Ytest, exp.context.F)
 
     def _nrmse_modal_prediction(self, gllim, method, ref_function=None):
         exp = self.experience
@@ -137,24 +151,9 @@ class Mesures():
         else:
             raise TypeError("Int or float required for method")
 
-        Ys = self.experience.compute_FXs(Xs, ref_function)
-        norm = exp.context.normalize_Y
-        l = [self._relative_error(norm(ysn), norm(yn[None, :])) for ysn, yn in zip(Ys, Y)]
-        errorsY = [e for subl in l for e in subl]
-        errorsY_best = [np.min(subl) for subl in l]
+        nrmse, nrmse_by_components, worstX, nrmseY, nrmseY_best = self._nrmse_multiXperY(Xs, Xtest, Y, ref_function)
 
-        bestX = np.empty(Xtest.shape)
-        for n, (xs, xtrue) in enumerate(zip(Xs, Xtest)):
-            diff = (xs - xtrue)
-            er = np.square(diff / exp.variables_range).sum(axis=1)
-            i = np.argmin(er)
-            bestX[n] = xs[i]
-        # renormlisation
-        Xtest = exp.context.normalize_X(Xtest)
-        bestX  =exp.context.normalize_X(bestX)
-        nrmse = self._relative_error(bestX, Xtest)
-        worst_index =  np.argmax(nrmse) if len(nrmse) > 0 else 0 # worst prediction
-        return nrmse, label, Xtest[worst_index], nb_valid, errorsY, errorsY_best
+        return nrmse, label, worstX, nb_valid, nrmseY, nrmseY_best
 
     def run_mesures(self, gllim):
         """Runs severals tests. It's advised to center data before. Returns results (mean, median, std)"""
@@ -168,14 +167,13 @@ class Mesures():
             method = exp.context.PREFERED_MODAL_PRED
 
         errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim)
-        errorsMe, _, _, errorsMe_clean, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
+        errorsMe, _, _, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
         errorsMo, _, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllim, method)
 
-        return dict(compareF=sumup(errorsF),meanPred=sumup(errorsMe),
-                    modalPred=sumup(errorsMo),retrouveY=sumup(errorsY),
-                    compareF_clean = sumup(errorsF_clean),errorsMe_clean = sumup(errorsMe_clean),
-                    retrouveYbest = sumup(errorsY_best), validPreds = (validMe,validMo),
-                    retrouveYmean = sumup(meanretrouveY)
+        return dict(compareF=sumup(errorsF), meanPred=sumup(errorsMe),
+                    modalPred=sumup(errorsMo), retrouveY=sumup(errorsY),
+                    compareF_clean=sumup(errorsF_clean), retrouveYbest=sumup(errorsY_best),
+                    validPreds=(validMe, validMo), retrouveYmean=sumup(meanretrouveY)
                     )
 
     def compare_sorting(self, G: GLLiM):
@@ -262,98 +260,56 @@ class Mesures():
         print("{:.2f} s for average error estimation over {} samples".format(time.time() - ti, N))
         return ecart_sum, er_cluster, er1, er2, maj_er2, delta.max(), s, sig, max_pi, u, gllim.GammakList.max(), alpha.min()
 
+
 class MesuresSecondLearning(Mesures):
-    # TODO : Mettre à jour
-    def plot_modal_prediction_parallel(self, gllims : [GLLiM], Y, Xtest, methods):
-        """Same as plot_modal_prediction, but with one gllim instance per Y"""
-        exp = self.experience
-        errors = []
-        labels = []
-        for m in methods:
-            print("Modal prediction...")
-            bestX = np.empty(Xtest.shape)
-            for n ,(g,y,xtrue) in enumerate(zip(gllims,Y,Xtest)):
 
-                if type(m) is int:
-                    xpreds = g.modal_prediction(y[None,:], components=m)[0]
-                elif type(m) is float:
-                    xpreds = g.modal_prediction(y[None, :], threshold=m)[0]
-                else:
-                    raise TypeError("Int or float required for method")
-                er = np.square((xpreds - xtrue) / exp.variables_range).sum(axis=1)
-                print(min(er),n)
-                i = np.argmin(er)
-                bestX[n] = xpreds[i]
+    def _nrmse_mean_prediction(self, gllims: [GLLiM], Y, Xtest):
+        """Mean prediction errors for each gllims and Y"""
+        Xpredicted = np.array([gllim.predict_high_low(y[None, :])[0] for gllim, y in zip(gllims, Y)])
+        return self._nrmse_oneXperY(Xpredicted, Xtest, Y, self.experience.context.F)
 
-            if type(m) is int:
-                label = "Components : {}".format(m)
-            elif type(m) is float:
-                label = "Weight threshold : {}".format(m)
+    def _nrmse_modal_prediction(self, gllims: [GLLiM], Y, Xtest, method, ref_function=None):
+        if type(method) is int:
+            label = "Components : {}".format(method)
+        elif type(method) is float:
+            label = "Weight threshold : {}".format(method)
+        else:
+            raise TypeError("Int or float required for method")
+        Xspredicted = []
+        for n, (g, y, xtrue) in enumerate(zip(gllims, Y, Xtest)):
+            if type(method) is int:
+                xpreds, _, _ = g.modal_prediction(y[None, :], components=method)
             else:
-                raise TypeError("Int or float required for method")
+                xpreds, _, _ = g.modal_prediction(y[None, :], threshold=method)
+            Xspredicted.append(xpreds[0])
 
-            nrmse = self._relative_error(bestX,Xtest)
-            errors.append(nrmse)
-            labels.append(label)
+        Xspredicted, mask = self.experience.clean_X(Xspredicted)
+        nb_valid = self.experience.get_nb_valid(mask)
+        nrmse, nrmse_by_components, worstX, nrmseY, nrmseY_best = \
+            self._nrmse_multiXperY(Xspredicted, Xtest, Y, ref_function)
 
-        filename = exp.archive.get_path("figures",filecategorie="modalPredictionPara_meth:{}".format(methods))
-        modalx_prediction(errors, labels, exp.get_infos(), savepath=filename, cut_tail=5)
+        return nrmse, label, worstX, nb_valid, nrmseY, nrmseY_best
 
-
-    def plot_retrouveY_parallel(self, gllims : [GLLiM], Y, methods):
+    def run_mesures(self, gllims: [GLLiM], Y, Xtest):
+        """Runs severals tests. It's advised to center data before. Returns results (mean, median, std)"""
         exp = self.experience
-        values = []
-        labels = []
-        for m in methods:
-            print("Modal prediction...")
-            errors = []
-            for n ,(g,y) in enumerate(zip(gllims,Y)):
 
-                if type(m) is int:
-                    xpreds = g.modal_prediction(y[None,:], components=m)[0]
-                elif type(m) is float:
-                    xpreds = g.modal_prediction(y[None, :], threshold=m)[0]
-                else:
-                    raise TypeError("Int or float required for method")
+        def sumup(l):
+            return {"mean": np.mean(l), "median": np.median(l), "std": np.std(l)}
 
-                xpreds , _ = exp.clean_X(xpreds,as_np_array=True)
-                if len(xpreds) == 0:
-                    continue
-                ysn = exp.context.F(xpreds)
-                err = self._relative_error(ysn, y[None, :])
-                errors.extend(err)
+        if exp.context.PREFERED_MODAL_PRED == "prop":
+            method = 1 / gllims[0].K
+        else:
+            method = exp.context.PREFERED_MODAL_PRED
 
-            if type(m) is int:
-                label = "Components : {}".format(m)
-            elif type(m) is float:
-                label = "Weight threshold : {}".format(m)
-            else:
-                raise TypeError("Int or float required for method")
+        errorsMe, _, _, validMe, meanretrouveY = self._nrmse_mean_prediction(gllims, Y, Xtest)
+        errorsMo, _, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllims, Y, Xtest, method)
 
-            values.append(errors)
-            labels.append(label)
-
-        compare_retrouveY(values, exp.get_infos(), methods=labels, cut_tail =2,
-                          savepath=exp.archive.get_path("figures",
-                                                         filecategorie="retrouveYPara{}".format(methods)))
-
-
-
-
-    def evolution_approx(self,x):
-        thetas, LLs = self.experience.archive.load_tracked_thetas()
-        l = []
-        for theta in thetas:
-            gllim = self.experience.gllim_cls(self.experience.K,Lw = self.experience.Lw,sigma_type=self.experience.sigma_type,
-                                              gamma_type=self.experience.gamma_type,verbose=False)
-            gllim.init_fit(self.experience.Xtrain,self.experience.Ytrain,theta)
-            assert gllim.D == 1 and gllim.L == 1
-            gllim.inversion()
-            l.append(self.error_estimation(gllim,x[None,:]))
-        labels = self.LABELS_STUDY_ERROR
-        simple_plot(list(zip(*l)), labels)
-
-
+        return dict(compareF=None, meanPred=sumup(errorsMe),
+                    modalPred=sumup(errorsMo), retrouveY=sumup(errorsY),
+                    compareF_clean=None, retrouveYbest=sumup(errorsY_best),
+                    validPreds=(validMe, validMo), retrouveYmean=sumup(meanretrouveY)
+                    )
 
 
 
@@ -680,3 +636,20 @@ class VisualisationMesures(Mesures):
         if X.shape[1] == 1:
             X = np.append(X, np.array([0.5] * X.shape[0]).T[:, None], axis=1)
         self.G.EvolutionCluster2D(X, rnks, Xdensitys, xlim=exp.variables_lims[0], ylim=exp.variables_lims[1])
+
+    def evolution_approx(self, thetas, savepath=None):
+        """Show precision over iterations"""
+        exp = self.experience
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="estimation-evo")
+        l = []
+        for theta in thetas:
+            K = len(theta["pi"])
+            gllim = exp.gllim_cls(K, Lw=exp.Lw, sigma_type=exp.sigma_type,
+                                  gamma_type=exp.gamma_type, verbose=False)
+            gllim.init_fit(exp.Xtrain, exp.Ytrain, theta)
+            assert gllim.D == 1 and gllim.L == 1
+            gllim.inversion()
+            l.append(self.error_estimation(gllim, exp.Xtest))
+        labels = self.LABELS_STUDY_ERROR
+        self.G.simple_plot(list(zip(*l)), labels, "iterations", True, savepath=savepath,
+                           title="Approximation evolution over iterations")

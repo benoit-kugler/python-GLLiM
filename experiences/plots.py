@@ -9,12 +9,12 @@ from PIL import Image
 
 from Core import training
 from Core.dgllim import dGLLiM
-from Core.gllim import GLLiM
+from Core.gllim import GLLiM, jGLLiM
 from plotting import graphiques
 from tools import context
 from tools.archive import Archive
 from tools.context import WaveFunction, InjectiveFunction, HapkeContext
-from tools.experience import SecondLearning
+from tools.experience import Experience
 
 LATEX_IMAGES_PATH = "../latex/images/plots"
 
@@ -43,29 +43,29 @@ def _merge_image_byside(paths, savepath):
 
 
 def plot_estimeF():
-    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1), with_plot=True, verbose=None)
-    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000, method="sobol")
-    dGLLiM.dF_hook = exp.context.dF
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1), with_plot=True, verbose=None)
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000, method="sobol")
+
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=False, init_local=500,
-                           sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
+    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     p1 = PATHS[0]
     var = f"$({exp.variables_names[0]} , {exp.variables_names[1]})$"
-    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 6, 8], savepath=p1, title=f"Estimation de F - variables {var}",
+    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 8], savepath=p1, title=f"Estimation de F - variables {var}",
                                 write_context=True)
     #
     #
-    exp = SecondLearning(context.LabContextOlivine, partiel=(2, 3), with_plot=True, verbose=None)
-    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000, method="sobol")
-    dGLLiM.dF_hook = exp.context.dF
+    exp = Experience(context.LabContextOlivine, partiel=(2, 3), with_plot=True, verbose=None)
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000, method="sobol")
+
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=False, init_local=500,
-                           sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
+    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     p2 = PATHS[1]
     var = f"$({exp.variables_names[0]} , {exp.variables_names[1]})$"
-    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 6, 8], savepath=p2, title=f"Estimation de F - variables {var}",
+    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 8], savepath=p2, title=f"Estimation de F - variables {var}",
                                 write_context=True)
 
     # merging both
@@ -76,7 +76,7 @@ def plot_estimeF():
 def plot_evo_LL():
     training.NB_MAX_ITER = 200
     values, labels = [], []
-    exp = SecondLearning(WaveFunction, partiel=None, verbose=None)
+    exp = Experience(WaveFunction, partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -86,7 +86,7 @@ def plot_evo_LL():
     values.append(LLs)
     labels.append(exp.context.LABEL)
 
-    exp = SecondLearning(InjectiveFunction(4), partiel=None, verbose=None)
+    exp = Experience(InjectiveFunction(4), partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=800)
     gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -96,7 +96,7 @@ def plot_evo_LL():
     values.append(LLs)
     labels.append(exp.context.LABEL)
 
-    exp = SecondLearning(HapkeContext, partiel=None, verbose=None)
+    exp = Experience(HapkeContext, partiel=None, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000)
     gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -135,7 +135,7 @@ def _train_K_N(exp, N_progression, K_progression):
 def plusieurs_K_N(imax):
     filename = "plusieursKN.mat"
     filename = os.path.join(Archive.BASE_PATH, filename)
-    exp = SecondLearning(InjectiveFunction(1))
+    exp = Experience(InjectiveFunction(1))
     coeffNK = 10
     coeffmaxN1 = 10
     coeffmaxN2 = 2
@@ -175,7 +175,7 @@ def plusieurs_K_N(imax):
 
 
 def init_cos():
-    exp = SecondLearning(WaveFunction, partiel=None, verbose=None, with_plot=True)
+    exp = Experience(WaveFunction, partiel=None, verbose=None, with_plot=True)
     exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
 
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=None,
@@ -194,7 +194,7 @@ def init_cos():
 
 
 def regularization():
-    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True, verbose=None)
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True, verbose=None)
     exp.load_data(regenere_data=RETRAIN, with_noise=50, N=10000, method="latin")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
@@ -215,11 +215,11 @@ def regularization():
 
 def comparaison_MCMC():
     # Using comparaison trained model
-    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
-    exp.load_data(regenere_data=False, with_noise=50, N=100000, method="sobol")
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=None,
-                           sigma_type="full", gamma_type="full", gllim_cls=GLLiM)
+    gllim = exp.load_model(200, mode="l", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
     MCMC_X, Std = exp.context.get_result()
     exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wave_lengths,
                                          xtitle="wavelength (microns)", savepath=PATHS[9],
@@ -228,7 +228,6 @@ def comparaison_MCMC():
     exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wave_lengths,
                               Xref=MCMC_X, savepath=PATHS[10], xtitle="wavelength (microns)",
                               varlims=None, method="mean")
-
 
 
 def main():

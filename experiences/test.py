@@ -6,21 +6,24 @@
 # precisions_chol : Matrice triangulaire correspondant à la decomp de Cholesky de la matrice de precisions
 # weights : Pi_k : coefficient de chaque zone
 import json
+import logging
 import time
 
+import coloredlogs
 import numpy as np
 import scipy.io
 
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.log_gauss_densities import chol_loggausspdf
+from Core.riemannian import RiemannianjGLLiM
 from Core.sGllim import saGLLiM
 from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from plotting import graphiques
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext
-from tools.experience import SecondLearning
+from tools.experience import SecondLearning, Experience
 from tools.interface_R import is_egal
 
 np.set_printoptions(precision=20,suppress=False)
@@ -98,12 +101,12 @@ def _compare_Fsym():
 
 
 def simple_function():
-    exp = SecondLearning(WaveFunction, partiel=None, verbose=True, with_plot=True)
-    exp.load_data(regenere_data=False,with_noise=None,N=10000)
+    exp = Experience(WaveFunction, partiel=None, verbose=True, with_plot=True)
+    exp.load_data(regenere_data=True, with_noise=None, N=10000)
     # exp.NB_MAX_ITER = 200
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(100, mode="l", track_theta=True, init_local=100,
-                           gamma_type="full", gllim_cls=GLLiM)
+    gllim = exp.load_model(100, mode="r", track_theta=False, init_local=None, multi_init=None,
+                           gamma_type="full", gllim_cls=RiemannianjGLLiM)
 
     # assert np.allclose(gllim.AkList, np.array([exp.context.dF(c) for c in gllim.ckList]))
 
@@ -111,15 +114,15 @@ def simple_function():
     y = exp.context.F(x[None,:])
 
     # exp.mesures.evolution_approx(x)
-    # print(exp.mesures.run_mesures(gllim))
-    thetas, LLs = exp.archive.load_tracked_thetas()
-    exp.mesures.evolution_illustration(thetas, cached=True)
+    # # print(exp.mesures.run_mesures(gllim))
+    # thetas, LLs = exp.archive.load_tracked_thetas()
+    # exp.mesures.evolution_illustration(thetas, cached=True)
 
     # exp.mesures.compareF(gllim)
     # exp.mesures.plot_modal_prediction(gllim,[0.01,0.001])
     # exp.mesures.plot_mean_prediction(gllim)
     # exp.mesures.plot_retrouveY(gllim,[0.01,0.08,2,4])
-    # exp.mesures.illustration(gllim,x,y,with_clustering=False)
+    exp.mesures.illustration(gllim, x, y)
 
     #  Xtest, Ytest , errs = exp.mesures.plot_modal_prediction(gllim,[0.00001])
     # print(errs)
@@ -217,6 +220,8 @@ def equivalence_jGLLiM_GLLIM():
 
 
 if __name__ == '__main__':
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
     # cA()
     # graphiques.plot_Y(Y)qw
     simple_function()

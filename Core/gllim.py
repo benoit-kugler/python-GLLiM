@@ -10,7 +10,6 @@ Reprise : B. KUGLER (April 2018) On vectorise au maximum !
 import time
 
 import numpy as np
-import progressbar as progressbar
 import scipy
 from numpy.linalg import inv
 from scipy.special import logsumexp

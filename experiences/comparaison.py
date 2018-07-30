@@ -122,7 +122,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     except AssertionError as e:
         logging.error("\tTraining failed ! {}".format(e))
         return None
-    logging.info("  Model fitted or loaded in {:.3f} s".format(timedelta(seconds=time.time() - ti)))
+    logging.info("  Model fitted or loaded in {}".format(timedelta(seconds=time.time() - ti)))
     ti = time.time()
     if Xtest is not None:
         exp.Xtest, exp.Ytest = Xtest, Ytest
@@ -130,7 +130,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
         exp.centre_data_test()
     m = exp.mesures.run_mesures(gllim1)
     m["training_time"] = training_time
-    logging.info("Mesures done in {} s".format(timedelta(seconds=time.time() - ti)))
+    logging.info("  Mesures done in {}".format(timedelta(seconds=time.time() - ti)))
     return m
 
 class abstractMeasures():
@@ -161,7 +161,7 @@ class abstractMeasures():
         old_mesures = Archive.load_mesures(self.CATEGORIE)
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
-                logging.info(f"Tests {self.CATEGORIE} exp. {i+1}/{imax}")
+                logging.info(f"Tests {self.CATEGORIE}, exp. {i+1}/{imax}")
                 exp = SecondLearning(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
@@ -500,17 +500,37 @@ class RelationCLatexWriter(abstractLatexWriter):
     DESCRIPTION = "Comparaison entre un apprentissage standard et un apprentissage en déduisant $c$ de $b$."
 
 
+class DoubleLearningWriter(abstractLatexWriter):
+    template = "doublelearning.tex"
+    TITLE = "Double apprentissage"
+    DESCRIPTION = "Test sur les mêmes données: apprentissage standard (gauche) " \
+                  "contre double apprentissage (droite)"
+    METHODES = ["first", "second"]
+
+    def __init__(self):
+        self.CATEGORIE = "SecondLearning"
+        mesures = Archive.load_mesures(self.CATEGORIE)
+        self.experiences = [{"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 200, "N": 10000,
+                             "init_local": 200, "sigma_type": "full", "gamma_type": "full"}]
+        self.methodes = self.METHODES
+        self.matrix = self._mesures_to_matrix(mesures)
+        self.matrix = self._find_best()
+
+    def _mesures_to_matrix(self, mesures):
+        return [[mesures[m] for m in self.methodes]]
+
+
 
 def main():
     # AlgosMeasure.run(True, True)
     # GenerationMeasure.run(True, True)
-    # DimensionMeasure.run(True, True)
+    DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
     # LogistiqueMeasure.run(True, True)
     # NoisesMeasure.run(True, True)
-    # LocalMeasure.run([False,False,True], True)
+    # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
-    #
+    # #
     # AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()
@@ -519,7 +539,8 @@ def main():
     # LogistiqueLatexWriter.render()
     # NoisesLatexWriter.render()
     # LocalLatexWriter.render()
-    RelationCLatexWriter.render()
+    # RelationCLatexWriter.render()
+    # DoubleLearningWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",

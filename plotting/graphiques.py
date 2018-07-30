@@ -79,8 +79,6 @@ class abstractDrawerMPL():
     def _format_context(context):
         """Retuns a matplolib compatible string which describes metadata."""
         context["with_noise"] = "-" if context["with_noise"] is None else context["with_noise"]
-        context["added"] = "-" if context["added"] is None else context["added"]
-        context["para"] = context["para"] or "No"
         s = """
         Data $\\rightarrow N_{{train}}={N}$ ; $N_{{test}}={Ntest}$ ; Noise : {with_noise} ; 
                 Context : {context} ; Partial : {partiel} ;  Generation : {generation_method} 
@@ -235,7 +233,7 @@ class estimated_F(abstractGridDrawerMPL):
         x, y, zs_true = data_trueF
         for g, axe in zip(Y_components, self.get_axes()):
             axe.set_title("Component {}".format(g))
-            axe.scatter(*X.T, Y[:, g], c=colors, marker=".", s=1, alpha=0.6)
+            axe.scatter(*X.T, Y[:, g], c=colors, marker="o", s=1, alpha=0.6)
             z = zs_true[g]
             axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
             axe.set_xlim(*xlim)
@@ -505,8 +503,11 @@ class Results_1D(abstractGridDrawerMPL):
         for i, axe in zip(range(self.nb_row), self.get_axes()):
             Xw = Xweight[:, :, i] if Xweight is not None else None
             xlim = varlims[i] if varlims is not None else None
-            _prediction_1D(axe, xlim, varnames[i], xlabels, Xmean[:, i], Xw, xtitle, StdMean=StdMean[:, i, i],
-                           Xref=Xref[:, i], StdRef=StdRef[:, i])
+            StdMean = StdMean[:, i, i] if StdMean is not None else None
+            Xref = Xref[:, i] if Xref is not None else None
+            StdRef = StdRef[:, i] if StdRef is not None else None
+            _prediction_1D(axe, xlim, varnames[i], xlabels, Xmean[:, i], Xw, xtitle, StdMean=StdMean,
+                           Xref=Xref, StdRef=StdRef)
         if self.nb_row:
             self.fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
 

@@ -39,6 +39,8 @@
 (#  macro MEAN_MEDIAN_STD_FREQ(dic) #)
     (# if dic #)
     (! FMT_NUMBER(dic.mean) !) & {\footnotesize (! FMT_NUMBER(dic.median) !)} & {\footnotesize (! FMT_NUMBER(dic.std)  !) }
+    (# else #)
+    & &
     (# endif #)
 (# endmacro #)
 

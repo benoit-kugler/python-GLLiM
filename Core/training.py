@@ -23,7 +23,6 @@ NB_MAX_ITER = 100
 """Number of iterations for second learning"""
 NB_MAX_ITER_SECOND = 20
 
-
 """Number of used processes"""
 PROCESSES = 6
 
@@ -132,14 +131,14 @@ def basic_fit(Ttrain, Ytrain, K, Lw = 0, sigma_type = "iso", gamma_type = "full"
 
 ##    ----- SECOND LEARNING TOOLS   ------   ##
 
-def job_second_learning(listXYK, params) -> [GLLiM]:
+def job_second_learning(listXYK, params, process_index) -> [GLLiM]:
     """Trains one GLLiM for each tuple (X,Y,rnk)"""
     gllims = []
     Lw, sigma_type, gamma_type = params
+    maxi = len(listXYK)
     for i , (X,Y,K) in enumerate(listXYK):
-        logging.debug("Second learning {} in process... ({} data, {} clusters)".format(i, len(X), K))
-
         K = min(K, len(X))  # In case of degenerate sampling
+        logging.debug(f"Second learning {i+1}/{maxi} in process {process_index}... ({len(X)} data, {K} clusters)")
         rho = np.ones(K) / K
         m = X[0:K,:]
         precisions = 10 * K  * np.array([np.eye(X.shape[1])] * K)
@@ -149,6 +148,8 @@ def job_second_learning(listXYK, params) -> [GLLiM]:
         gllim.fit(X, Y, {"rnk": rnk}, maxIter=NB_MAX_ITER_SECOND)
         gllim.inversion()
         gllims.append(gllim)
+        if i % 10 == 0:
+            logging.info(f"Second learning {i+1}/{maxi} in process {process_index} done.")
     return gllims
 
 
@@ -162,11 +163,11 @@ def second_training_parallel(newXYK, Lw=0, sigma_type="iso", gamma_type="full"):
     ti = time.time()
 
     with Pool(PROCESSES) as p:
-        l = p.starmap(job_second_learning, zip(parts, params))
+        l = p.starmap(job_second_learning, zip(parts, params, range(len(parts))))
 
     gllims = [g for sublist in l for g in sublist]
-    logging.info(
-        "Second learning time for {0} observations : {1} ".format(len(newXYK), timedelta(seconds=time.time() - ti)))
+    logging.info("Second learning time for {0} observations : {1} ".format(len(newXYK),
+                                                                           timedelta(seconds=time.time() - ti)))
 
     return gllims
 

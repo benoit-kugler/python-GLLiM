@@ -8,11 +8,12 @@ import numpy as np
 
 from Core import training
 from Core.dgllim import dGLLiM
-from Core.gllim import GLLiM
+from Core.gllim import GLLiM, jGLLiM
+from Core.riemannian import RiemannianjGLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
-from tools.measures import Mesures, VisualisationMesures
+from tools.measures import Mesures, VisualisationMesures, MesuresSecondLearning
 from tools.results import Results, VisualisationResults
 
 Ntest = 50000
@@ -136,6 +137,9 @@ class Experience():
         return gllim
 
     def new_train(self,track_theta=False):
+        if self.gllim_cls is RiemannianjGLLiM and self.multi_init:
+            raise ValueError("Multi init can't be used with Manifold optimization")
+
         if self.init_local:
             def ck_init_function():
                 return self.context.get_X_uniform(self.K)
@@ -167,6 +171,11 @@ class Experience():
         if as_np_array:
             X = np.array(X)
         return X , mask
+
+    @staticmethod
+    def get_nb_valid(mask):
+        return sum(m.sum() if m is not None else 0 for m in mask) / sum(len(m) if m is not None else 1 for m in mask)
+
 
     def clean_modal_prediction(self, G:GLLiM, nb_component=None, threshold=None):
         """Modal predicts and removes theoretically absurd prediction"""
@@ -233,10 +242,21 @@ class Experience():
 class SecondLearning(Experience):
     """Implements double learning methods"""
 
+    mesures: MesuresSecondLearning
+
+    @classmethod
+    def from_experience(cls, exp: Experience, number=1):
+        """Promote exp to SecondLearning"""
+        exp.__class__ = cls
+        exp.number = number
+        exp.mesures = MesuresSecondLearning(exp)
+        return exp
+
     def __init__(self, context_class, number=1, partiel=None, verbose=True, with_plot=False, **kwargs):
         """number allows several second learning with the same first learning."""
-        super().__init__(context_class, partiel=None, verbose=True, with_plot=False, **kwargs)
+        super().__init__(context_class, partiel=partiel, verbose=verbose, with_plot=with_plot, **kwargs)
         self.number = number
+        self.mesures = MesuresSecondLearning(self)
 
     def _predict_sample_parallel(self, gllim: GLLiM, Y, nb_per_Y, K):
         Xs = gllim.predict_sample(Y,nb_per_Y=nb_per_Y)
@@ -264,7 +284,7 @@ class SecondLearning(Experience):
         logging.info("Modal prediction and data preparation...")
         newXYK, Y, mask = self._predict_sample_parallel(gllim, Y, nb_per_Y, clusters)
         X = X[mask] if X is not None else None
-        logging.info("Modal prediction time {0:.2f} s".format(time.time() - t))
+        logging.info("Modal prediction done in {0:.2f} secs".format(time.time() - t))
 
         gllims = training.second_training_parallel(newXYK, Lw=self.Lw, sigma_type=self.sigma_type,
                                                    gamma_type=self.gamma_type)
@@ -277,34 +297,46 @@ class SecondLearning(Experience):
         self.second_learning = "perY:{},{}".format(nb_per_Y, clusters)
         Y, X , thetas = self.archive.load_second_learned(withX)
         gllims = []
+        self.verbose, old_verbose = None, self.verbose
+        t = time.time()
+        logging.info("Loading and inversion of gllims...")
         for theta in thetas:
             gllim = self._load_gllim(theta)
             gllim.inversion()
             gllims.append(gllim)
+        logging.info("Done in {0:.2f} secs".format(time.time() - t))
+        self.verbose = old_verbose
         return Y, X , gllims
 
 
-
-
-def monolearning():
-    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
-    exp.load_data(regenere_data=False, with_noise=50, N=100001, method="sobol")
-    exp.Xtrain = exp.Xtrain[:,(0,)]
-    gllim = exp.load_model(100, retrain=False, with_GMM=True, track_theta=True, init_uniform_ck=False)
-    exp.context.partiel = (0,)
-    exp.mesures.correlations2D(gllim, exp.context.get_observations(), exp.context.wave_lengths, 1, method="mean")
+# def monolearning():
+#     exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
+#     exp.load_data(regenere_data=False, with_noise=50, N=100001, method="sobol")
+#     exp.Xtrain = exp.Xtrain[:,(0,)]
+#     gllim = exp.load_model(100, retrain=False, with_GMM=True, track_theta=True, init_uniform_ck=False)
+#     exp.context.partiel = (0,)
+#     exp.mesures.correlations2D(gllim, exp.context.get_observations(), exp.context.wave_lengths, 1, method="mean")
 
 
 def double_learning():
-    exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
-    exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
+    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(1000, mode="r", track_theta=False, init_local=200,
-                           sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
+    gllim = exp.load_model(200, mode="l", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    exp.extend_training_parallel(gllim, Y=exp.context.get_observations(), X=None, nb_per_Y=10000, clusters=500)
-    # Y ,X , gllims = exp.load_second_learning(1000,10,withX=False)
+    exp.centre_data_test()
+    exp.Xtest, exp.Ytest = exp.Xtest[0:2000], exp.Ytest[0:2000]
+
+    d1 = exp.mesures.run_mesures(gllim)
+
+    exp = SecondLearning.from_experience(exp)
+    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
+
+    d2 = exp.mesures.run_mesures(gllims, Y, X)
+    exp.archive.save_mesures({"first": d1, "second": d2}, "SecondLearning")
 
     index = 3
     # X0 = exp.Xtest[56]
@@ -459,6 +491,10 @@ def RTLS():
                       })
 
 
+def job():
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
+    double_learning()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
