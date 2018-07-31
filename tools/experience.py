@@ -43,7 +43,7 @@ class Experience():
             self.mesures = Mesures(self)
             self.results = Results(self)
 
-    def load_data(self, regenere_data=False, with_noise=None, N=1000, method="latin"):
+    def load_data(self, regenere_data=False, with_noise=None, N=1000, method="sobol"):
         self.with_noise = with_noise
         self.generation_method = method
         self.N = N
@@ -165,7 +165,7 @@ class Experience():
     def clean_X(self,X,as_np_array=False):
         mask = self.context.is_X_valid(X)
         if type(X) is list:
-            X = [x[m] for x, m in zip(X, mask) if (m is not None and len(x[m]) > 0)]
+            X = [x[m] for x, m in zip(X, mask) if (m is not None and len(x[m]) > 0)]  # at least one x is ok
         else:
             X = X[mask]
         if as_np_array:
@@ -180,15 +180,15 @@ class Experience():
     def clean_modal_prediction(self, G:GLLiM, nb_component=None, threshold=None):
         """Modal predicts and removes theoretically absurd prediction"""
         t = time.time()
-        X , _ , _  = G.modal_prediction(self.Ytest,components=nb_component,threshold=threshold,sort_by="weight")
+        X, _, weights = G.modal_prediction(self.Ytest, components=nb_component, threshold=threshold, sort_by="weight")
+
         if self.verbose:
-            print("Gllim modal prediction done in {:.2f} secs".format(time.time() - t))
+            logging.debug("Gllim modal prediction done in {:.2f} secs".format(time.time() - t))
+
         X , mask = self.clean_X(X)
-        nb_valid = sum(m.sum() if m is not None else 0 for m in mask) / sum(len(m) if m is not None else 1 for m in mask)
-        mask = [m is not None for m in mask] #only X,Y for which at least one prediction is clean
-        Xtest = self.Xtest[mask]
-        Y = self.Ytest[mask]
-        return X , Y , Xtest , nb_valid
+        nb_valid = self.get_nb_valid(mask)
+        mask = [(m is not None and sum(m, 0) > 0) for m in mask]  # only X,Y for which at least one prediction is clean
+        return X, self.Ytest[mask], self.Xtest[mask], nb_valid
 
 
     def _one_X_prediction(self, gllim: GLLiM, Y, method):
@@ -339,7 +339,9 @@ def double_learning(Ntest=200):
     # d2 = exp.mesures.run_mesures(gllims, Y, X)
     # exp.archive.save_mesures({"first": d1, "second": d2}, "SecondLearning")
 
-    exp.mesures.compare_density2D_parallel(Y[0:2], gllim, gllims[0:2], X=X[0:2])
+    savepath = "/scratch/WORK/sequence2D"
+    exp.mesures.compare_density2D_parallel(Y[0:2], gllim, gllims[0:2], X=X[0:2], savepath=savepath)
+    # exp.mesures.G.load_interactive_fig(savepath)
     index = 3
     # X0 = exp.Xtest[56]
     # Y0 = exp.context.F(X0[None, :])

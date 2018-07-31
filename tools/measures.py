@@ -163,14 +163,14 @@ class Mesures():
         sumup = lambda l  = None : {"mean":np.mean(l),"median":np.median(l), "std":np.std(l)}
 
         if exp.context.PREFERED_MODAL_PRED == "prop":
-            method =1/gllim.K
+            method = 1 / gllim.K
         else:
             method = exp.context.PREFERED_MODAL_PRED
-
         errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim)
         errorsMe, _, _, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
-        errorsMo, _, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllim, method)
+        errorsMo, labelmodal, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllim, method)
 
+        logging.debug(f'\tModal prediction mode for {exp.context.__class__.__name__} : {labelmodal}')
         return dict(compareF=sumup(errorsF), meanPred=sumup(errorsMe),
                     modalPred=sumup(errorsMo), retrouveY=sumup(errorsY),
                     compareF_clean=sumup(errorsF_clean), retrouveYbest=sumup(errorsY_best),
@@ -601,7 +601,7 @@ class VisualisationMesures(Mesures):
 
 class VisualisationSecondLearning(MesuresSecondLearning, VisualisationMesures):
 
-    def compare_density2D_parallel(self, Y, gllim_base, gllims, X=None, colorplot=True):
+    def compare_density2D_parallel(self, Y, gllim_base, gllims, X=None, colorplot=True, savepath=None):
         exp = self.experience
         fsbefore, fsafter, modal_preds_before, modal_preds_after, trueXs = [], [], [], [], []
 
@@ -647,5 +647,7 @@ class VisualisationSecondLearning(MesuresSecondLearning, VisualisationMesures):
             modal_preds_after.append(mpa)
             trueXs.append(tX)
         varlims, varnames, titlesb, titlesa = zip(*metadata)
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="sequenceDensity2D")
         self.G.Density2DSequence(fsbefore, fsafter, varlims, varnames, titlesb, titlesa,
-                                 modal_preds_before, modal_preds_after, trueXs, colorplot)
+                                 modal_preds_before, modal_preds_after, trueXs, colorplot,
+                                 savepath=savepath)

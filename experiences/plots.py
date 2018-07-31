@@ -239,7 +239,7 @@ def main():
     comparaison_MCMC()
 
 
-RETRAIN = False
+RETRAIN = True
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",

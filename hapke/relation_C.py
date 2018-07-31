@@ -58,8 +58,7 @@ class LabContextOlivine_C(LabContextOlivine):
         return Xfull[:,i]
 
     def get_result(self,index_wavelength=None,full=False):
-        tmp_partiel = self.partiel
-        self.partiel = None # needed to avoid variable shift
+        self.partiel, tmp_partiel = None, self.partiel  # needed to avoid variable shift
         X , Std  = super().get_result(index_wavelength=index_wavelength,full=full)
         self.partiel = tmp_partiel
         return X[:,self.corrected_partiel] , Std[:,self.corrected_partiel]

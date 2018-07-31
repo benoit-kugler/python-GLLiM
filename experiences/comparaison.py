@@ -57,7 +57,7 @@ DIMENSION_exps = [
 MODAL_exps = [
     {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 1000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 1000,
+    {"context": context.InjectiveFunction(3), "partiel": None, "K": 100, "N": 10000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
 ]
 
@@ -174,8 +174,7 @@ class abstractMeasures():
         Archive.save_mesures(mesures, self.CATEGORIE)
         logging.info("Study carried in {} \n".format(timedelta(seconds=time.time() - ti)))
 
-
-    def _dic_mesures(self,i,exp,exp_params,t):
+    def _dic_mesures(self, i, exp: Experience, exp_params, t):
         return {}
 
 
@@ -183,6 +182,9 @@ class abstractLatexWriter():
     """Builds latex template and runs pdflatex.
     This class transforms mesures into uniformed representation matrix, where one line represents one context.
     """
+
+    FACTOR_NUMBERS = 100
+    """Multiply errors by this factor"""
 
     LATEX_BUILD_DIR = "latex_build"
 
@@ -279,7 +281,8 @@ class abstractLatexWriter():
         CRITERES = self.CRITERES + ["validPreds"]
         baretable = template.render(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
                                     hHeader=self._horizontal_header(), vHeader=self._vertical_header(),
-                                    label=self.CATEGORIE, CRITERES=CRITERES)
+                                    label=self.CATEGORIE, CRITERES=CRITERES,
+                                    FACTOR_NUMBERS=self.FACTOR_NUMBERS)
         standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
         return baretable, standalone_template.render(TABLE=baretable)
 
@@ -292,6 +295,7 @@ class abstractLatexWriter():
         path = os.path.join(self.LATEX_EXPORT_PATH, filename)
         with open(path, "w", encoding="utf8") as f:
             f.write(barelatex)
+        logging.info(f"Latex table write in {path}")
         cwd = os.path.abspath(os.getcwd())
         os.chdir(self.LATEX_BUILD_DIR)
         with open(filename, "w", encoding="utf8") as f:
@@ -304,7 +308,7 @@ class abstractLatexWriter():
         if rep.stderr:
             logging.error(rep.stderr)
         else:
-            logging.info("Latex compilation done.")
+            logging.info(f"Standalone pdf wrote in {filename}")
         os.chdir(cwd)
 
 
@@ -335,15 +339,17 @@ class GenerationMeasure(abstractMeasures):
         dic = {}
         dic['sobol'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # sobol
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic['latin'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "latin", t, t,Xtest=Xtest,Ytest=Ytest)  # latin
-        dic['random'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "random", t, t,Xtest=Xtest,Ytest=Ytest)  # random
+        dic['latin'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "latin", False, t, Xtest=Xtest,
+                                         Ytest=Ytest)  # latin
+        dic['random'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "random", False, t, Xtest=Xtest,
+                                          Ytest=Ytest)  # random
         return dic
 
 class DimensionMeasure(abstractMeasures):
     METHODES = ["gllim"]
     experiences = DIMENSION_exps
 
-    def _dic_mesures(self, i, exp: SecondLearning, exp_params, t):
+    def _dic_mesures(self, i, exp: Experience, exp_params, t):
         dic = {"gllim": _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
         return dic
 
@@ -353,7 +359,9 @@ class ModalMeasure(abstractMeasures):
     experiences = MODAL_exps
 
     def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)}
+        if isinstance(exp.context, context.abstractExpFunction):
+            exp.context.PREFERED_MODAL_PRED = 1
+        dic = {"gllim": _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
         return dic
 
 
@@ -400,7 +408,7 @@ class RelationCMeasure(abstractMeasures):
     experiences = RELATIONC_exps
 
     def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"dgllim": _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "latin", t, t)}
+        dic = {"dgllim": _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
         return dic
 
 
@@ -522,25 +530,25 @@ class DoubleLearningWriter(abstractLatexWriter):
 
 
 def main():
-    # AlgosMeasure.run(True, True)
-    # GenerationMeasure.run(True, True)
-    DimensionMeasure.run(True, True)
-    # ModalMeasure.run(True, True)
-    # LogistiqueMeasure.run(True, True)
-    # NoisesMeasure.run(True, True)
-    # LocalMeasure.run(True, True)
-    # RelationCMeasure.run(True, True)
-    # #
-    # AlgosLatexWriter.render()
-    # AlgosTimeLatexWriter.render()
-    # GenerationLatexWriter.render()
-    # DimensionLatexWriter.render()
-    # ModalLatexWriter.render()
-    # LogistiqueLatexWriter.render()
-    # NoisesLatexWriter.render()
-    # LocalLatexWriter.render()
-    # RelationCLatexWriter.render()
-    # DoubleLearningWriter.render()
+    AlgosMeasure.run(False, True)
+    GenerationMeasure.run(False, True)
+    DimensionMeasure.run(False, True)
+    ModalMeasure.run(False, True)
+    LogistiqueMeasure.run(False, True)
+    NoisesMeasure.run(False, True)
+    LocalMeasure.run(False, True)
+    RelationCMeasure.run(False, True)
+    #
+    AlgosLatexWriter.render()
+    AlgosTimeLatexWriter.render()
+    GenerationLatexWriter.render()
+    DimensionLatexWriter.render()
+    ModalLatexWriter.render()
+    LogistiqueLatexWriter.render()
+    NoisesLatexWriter.render()
+    LocalLatexWriter.render()
+    RelationCLatexWriter.render()
+    DoubleLearningWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",

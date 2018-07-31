@@ -722,8 +722,6 @@ class GLLiM():
         If given, limits to components values.
         If threshold is given, gets rid of components with weight <= threshold
         Priority on components"""
-        if self.verbose:
-            logging.debug("Modal prediction...")
         proj, alpha = self._helper_forward_conditionnal_density(Y)
         covs = self.SigmakListS
         chols = np.linalg.cholesky(covs)

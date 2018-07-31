@@ -12,7 +12,7 @@ import numpy as np
 from Core.gllim import GLLiM
 
 """Number of iterations to choose rnk. Small"""
-NB_ITER_RNK = 10
+NB_ITER_RNK = 20
 
 """Number of instances to use when choosing rnk."""
 NB_INSTANCES_RNK = 6
@@ -51,7 +51,7 @@ def _best_rnk(Ttrain,Ytrain,K, Lw, sigma_type, gamma_type,
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])
     minll = min(g[0] for g in r)
-    logging.debug("Likelihood over differents processes : min : {}, max: {}".format(minll, maxll))
+    logging.debug("\tLikelihood over differents processes : min : {}, max: {}".format(minll, maxll))
     return rnk, gllim
 
 
@@ -90,7 +90,7 @@ def _best_rnk_precisions(Xtrain,Ytrain,K,ck_init_function,precision_rate,
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])
     minll = min(g[0] for g in r)
-    logging.debug("Likelihood over differents processes : min : {}, max: {}".format(minll, maxll))
+    logging.debug("\tLikelihood over differents processes : min : {}, max: {}".format(minll, maxll))
     return rnk, gllim
 
 
@@ -138,7 +138,7 @@ def job_second_learning(listXYK, params, process_index) -> [GLLiM]:
     maxi = len(listXYK)
     for i , (X,Y,K) in enumerate(listXYK):
         K = min(K, len(X))  # In case of degenerate sampling
-        logging.debug(f"Second learning {i+1}/{maxi} in process {process_index}... ({len(X)} data, {K} clusters)")
+        logging.debug(f"\tSecond learning {i+1}/{maxi} in process {process_index}... ({len(X)} data, {K} clusters)")
         rho = np.ones(K) / K
         m = X[0:K,:]
         precisions = K * np.array([np.eye(X.shape[1])] * K)

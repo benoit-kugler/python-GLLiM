@@ -9,28 +9,28 @@
 
 (# macro FMT_NUMBER(n) #)
     (# if n is number #)
-(# if n < 0.0001 #)
-(! n | round(5) !)
-(# elif n < 0.001 #)
-(! n | round(4) !)
-(# elif n < 0.01 #)
-(! n | round(3) !)
-(# elif n < 0.1 #)
-(! n | round(2) !)
+(# if (n  * FACTOR_NUMBERS) < 0.01 #)
+(! (n  * FACTOR_NUMBERS) | round(4) !)
+(# elif (n  * FACTOR_NUMBERS) < 0.1 #)
+(! (n  * FACTOR_NUMBERS) | round(3) !)
+(# elif (n  * FACTOR_NUMBERS) < 1 #)
+(! (n  * FACTOR_NUMBERS) | round(2) !)
+(# elif (n  * FACTOR_NUMBERS) < 10 #)
+(! (n  * FACTOR_NUMBERS) | round(1) !)
 (# else #)
-(! n | round(1) !)
+(! (n  * FACTOR_NUMBERS) | round(1) !)
 (# endif #)
     (# else #)
-(# if n[0] < 0.0001 #)
-\textbf{ (! n[0] | round(5) !)}
-(# elif n[0] < 0.001 #)
-\textbf{ (! n[0] | round(3) !)}
-(# elif n[0] < 0.01 #)
-\textbf{ (! n[0] | round(3) !)}
-(# elif n[0] < 0.1 #)
-\textbf{ (! n[0] | round(2) !)}
+(# if (n[0] * FACTOR_NUMBERS) < 0.01 #)
+\textbf{ (! (n[0] * FACTOR_NUMBERS) | round(4) !)}
+(# elif (n[0] * FACTOR_NUMBERS) < 0.1 #)
+\textbf{ (! (n[0] * FACTOR_NUMBERS) | round(3) !)}
+(# elif (n[0] * FACTOR_NUMBERS) < 1 #)
+\textbf{ (! (n[0] * FACTOR_NUMBERS) | round(2) !)}
+(# elif (n[0] * FACTOR_NUMBERS) < 10 #)
+\textbf{ (! (n[0] * FACTOR_NUMBERS) | round(1) !)}
 (# else #)
-\textbf{ (! n[0] | round(1) !)}
+\textbf{ (! (n[0] * FACTOR_NUMBERS) | round(1) !)}
 (# endif #)
     (# endif #)
 (# endmacro #)

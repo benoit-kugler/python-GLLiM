@@ -1,6 +1,8 @@
 import logging
+import pickle
 
 import PIL
+import dill
 import matplotlib
 import numpy as np
 from cartopy import crs
@@ -41,6 +43,13 @@ def overlap_colors(rnk, with_base=False):
     return c
 
 
+def load_interactive_fig(savepath):
+    with open(savepath + ".dill", "rb") as f:
+        fig = dill.load(f)
+    fig.show()
+    # pyplot.show()
+
+
 class abstractDrawerMPL():
     FIGURE_TITLE_BOX = dict(boxstyle="round", facecolor='#D8D8D8',
                             ec="0.5", pad=0.5, alpha=1)
@@ -53,7 +62,7 @@ class abstractDrawerMPL():
 
     def __init__(self, *args, title="", savepath=None, context=None, draw_context=False, write_context=False):
         self.create_figure(*args)
-        logging.info("Drawing...")
+        logging.debug("Drawing...")
 
         self.set_title(title, context, draw_context)
         self.main_draw(*args)
@@ -668,15 +677,13 @@ class Density2DSequence(abstractGridSequence):
                                with_colorbar=False)
             logging.debug(f"Drawing of page {i+1}/{N}")
         self.axes_seq.show_first()
-        # self.fig.show()
         pyplot.show()
 
-        # if len(fsbefore[0])
-        #     handles, labels = axe.get_legend_handles_labels()
-        #     self.fig.legend(handles, labels, loc="center left")
-
-        # self.fig.text(0.5, -0.1, var_description, horizontalalignment='center',
-        #               fontsize=12, bbox=self.FIGURE_TITLE_BOX, fontweight='bold')
+    def save(self, savepath):
+        s = savepath + ".dill"
+        with open(s, 'wb') as f:
+            pickle.dump(self.fig, f)
+        logging.info(f"Dumps of interactive figure in {s}")
 
 
 ######  ------------------------------------ Maps ---------------------------------- #####
