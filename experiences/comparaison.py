@@ -12,6 +12,7 @@ import coloredlogs
 import jinja2
 import numpy as np
 
+from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM, WrongContextError
 from experiences import logistic
@@ -29,9 +30,9 @@ ALGOS_exps = [
      "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 200, "N": 20000,
+     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 200, "N": 20000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
 ]
 
@@ -87,12 +88,18 @@ LOCAL_exps = [
 ]
 
 RELATIONC_exps = [
-    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": relation_C.HapkeCRelationContext, "partiel": (0, 1, 2), "K": 1000, "N": 10000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"}
+    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 50000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": relation_C.HapkeCRelationContext, "partiel": (0, 1, 2), "K": 100, "N": 50000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
 ]
 
+PARCOMPONENTS_exps = [
+    {"context": context.HapkeContext, "partiel": None, "K": 10, "N": 500,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 10, "N": 500,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
+]
 
 def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain, Xtest=None, Ytest=None):
     """If Xtest and Ytest are given, use instead of exp data.
@@ -186,7 +193,7 @@ class abstractLatexWriter():
     FACTOR_NUMBERS = 100
     """Multiply errors by this factor"""
 
-    LATEX_BUILD_DIR = "latex_build"
+    LATEX_BUILD_DIR = "/scratch/WORK/_LATEX"
 
     latex_jinja_env = jinja2.Environment(
         block_start_string='(#',
@@ -238,6 +245,9 @@ class abstractLatexWriter():
         self.methodes = self.METHODES or self.MEASURE_class.METHODES
         self.matrix = self._mesures_to_matrix(mesures)
         self.matrix = self._find_best()
+        if not os.path.exists(self.LATEX_BUILD_DIR):
+            os.makedirs(self.LATEX_BUILD_DIR)
+            logging.warning(f"Latex build directory created : {self.LATEX_BUILD_DIR}")
 
     def _find_best(self):
         """Find best value for each CRITERE, line per line"""
@@ -274,6 +284,7 @@ class abstractLatexWriter():
             cc = exp["context"](exp["partiel"])
             exp["D"] = cc.D
             exp["L"] = cc.L
+            exp["variables"] = cc.variables_names
         return self.experiences
 
     def render_latex(self):
@@ -308,7 +319,7 @@ class abstractLatexWriter():
         if rep.stderr:
             logging.error(rep.stderr)
         else:
-            logging.info(f"Standalone pdf wrote in {filename}")
+            logging.info(f"Standalone pdf wrote in {os.path.abspath(filename)}")
         os.chdir(cwd)
 
 
@@ -319,16 +330,12 @@ class AlgosMeasure(abstractMeasures):
 
     def _dic_mesures(self,i,exp,exp_params,t):
         dic = {}
-        # dic['nNG'] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)  # no noise GLLiM
-        # Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        # dic["nNdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, None, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # no noise dGLLiM
-        # dic["nNjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", False, t, Xtest=Xtest,
-        #                                 Ytest=Ytest)  # no noise joint GLLiM
         dic["NG"] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # noisy GLLiM
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic["NdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t,Xtest=Xtest,Ytest=Ytest)  # noisy dGLLiM
         dic["NjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
                                        Ytest=Ytest)  # noisy joint GLLiM
+        dic["NdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
+                                       Ytest=Ytest)  # noisy dGLLiM
         return dic
 
 class GenerationMeasure(abstractMeasures):
@@ -404,13 +411,21 @@ class LocalMeasure(abstractMeasures):
 
 
 class RelationCMeasure(abstractMeasures):
-    METHODES = ["dgllim"]
+    METHODES = ["jgllim"]
     experiences = RELATIONC_exps
 
     def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"dgllim": _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        dic = {"jgllim": _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
         return dic
 
+
+class PerComponentsMeasure(abstractMeasures):
+    experiences = PARCOMPONENTS_exps
+    METHODES = ["jgllim"]
+
+    def _dic_mesures(self, i, exp, exp_params, t):
+        dic = {"jgllim": _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        return dic
 
 ### ----------------------------- LATEX WRTIERS ------------------------------- ###
 
@@ -495,11 +510,6 @@ class LocalLatexWriter(abstractLatexWriter):
     TITLE = "Initialisation locale"
     DESCRIPTION = "Comparaison pour différentes valeurs de la précision initiale."
 
-# run_self.mesures(train=[False] *  13 + [True] * 2 ,
-#             run_mesure=[False] * 13 + [True] * 2 )
-# mesuresAlgos(train=False,run_mesure=False)
-# GenerationMeasure.run(train=False,run_mesure=True)
-
 
 class RelationCLatexWriter(abstractLatexWriter):
     MEASURE_class = RelationCMeasure
@@ -511,7 +521,7 @@ class RelationCLatexWriter(abstractLatexWriter):
 class DoubleLearningWriter(abstractLatexWriter):
     template = "doublelearning.tex"
     TITLE = "Double apprentissage"
-    DESCRIPTION = "Test sur les mêmes données: apprentissage standard (gauche) " \
+    DESCRIPTION = "Test sur les mêmes {Ntest} données : apprentissage standard (gauche) " \
                   "contre double apprentissage (droite)"
     METHODES = ["first", "second"]
 
@@ -523,21 +533,29 @@ class DoubleLearningWriter(abstractLatexWriter):
         self.methodes = self.METHODES
         self.matrix = self._mesures_to_matrix(mesures)
         self.matrix = self._find_best()
+        self.DESCRIPTION = self.DESCRIPTION.format(Ntest=mesures["Ntest"])
 
     def _mesures_to_matrix(self, mesures):
         return [[mesures[m] for m in self.methodes]]
 
 
+class ErrorPerComponentsWriter(abstractLatexWriter):
+    MEASURE_class = PerComponentsMeasure
+    template = "table_per_components.tex"
+    TITLE = "Erreur variable par variable"
+    DESCRIPTION = "Erreur (en valeur absolue) pour la prédiction par la moyenne"
+
 
 def main():
-    AlgosMeasure.run(False, True)
-    GenerationMeasure.run(False, True)
-    DimensionMeasure.run(False, True)
-    ModalMeasure.run(False, True)
-    LogistiqueMeasure.run(False, True)
-    NoisesMeasure.run(False, True)
-    LocalMeasure.run(False, True)
-    RelationCMeasure.run(False, True)
+    AlgosMeasure.run(True, True)
+    GenerationMeasure.run(True, True)
+    DimensionMeasure.run(True, True)
+    ModalMeasure.run(True, True)
+    LogistiqueMeasure.run(True, True)
+    NoisesMeasure.run(True, True)
+    LocalMeasure.run(True, True)
+    RelationCMeasure.run(True, True)
+    PerComponentsMeasure.run(True, True)
     #
     AlgosLatexWriter.render()
     AlgosTimeLatexWriter.render()
@@ -549,6 +567,7 @@ def main():
     LocalLatexWriter.render()
     RelationCLatexWriter.render()
     DoubleLearningWriter.render()
+    ErrorPerComponentsWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",

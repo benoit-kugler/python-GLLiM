@@ -330,17 +330,17 @@ def double_learning(Ntest=200):
     exp.centre_data_test()
     exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]
 
-    # d1 = exp.mesures.run_mesures(gllim)
+    d1 = exp.mesures.run_mesures(gllim)
 
     exp = SecondLearning.from_experience(exp, with_plot=True)
-    # exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
     Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
-    # d2 = exp.mesures.run_mesures(gllims, Y, X)
-    # exp.archive.save_mesures({"first": d1, "second": d2}, "SecondLearning")
+    d2 = exp.mesures.run_mesures(gllims, Y, X)
+    exp.archive.save_mesures({"first": d1, "second": d2, "Ntest": Ntest}, "SecondLearning")
 
-    savepath = "/scratch/WORK/sequence2D"
-    exp.mesures.compare_density2D_parallel(Y[0:2], gllim, gllims[0:2], X=X[0:2], savepath=savepath)
+    # savepath = "/scratch/WORK/sequence2D"
+    # exp.mesures.compare_density2D_parallel(Y[0:2], gllim, gllims[0:2], X=X[0:2], savepath=savepath)
     # exp.mesures.G.load_interactive_fig(savepath)
     index = 3
     # X0 = exp.Xtest[56]
@@ -351,7 +351,7 @@ def double_learning(Ntest=200):
     # Xw_clus = clustered_mean(modals,[w for p in weights for h,w in p])
     # Xh_clus = clustered_mean(modals,[h for p in weights for h,w in p])
 
-    MCMC_X, Std = exp.context.get_result()
+    # MCMC_X, Std = exp.context.get_result()
 
     # exp.mesures.plot_density_sequence(gllim,exp.context.get_observations(), exp.context.wave_lengths,
     #                                   index=index,Xref=MCMC_X,StdRef=Std,with_pdf_images=True,varlims=(-0.2,1.2),regul="exclu")

@@ -167,15 +167,16 @@ class Mesures():
         else:
             method = exp.context.PREFERED_MODAL_PRED
         errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim)
-        errorsMe, _, _, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
+        errorsMe, errorsMecomponents, _, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
         errorsMo, labelmodal, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllim, method)
+        errorsMecomponents = [sumup(x) for x in errorsMecomponents]
 
         logging.debug(f'\tModal prediction mode for {exp.context.__class__.__name__} : {labelmodal}')
         return dict(compareF=sumup(errorsF), meanPred=sumup(errorsMe),
                     modalPred=sumup(errorsMo), retrouveY=sumup(errorsY),
                     compareF_clean=sumup(errorsF_clean), retrouveYbest=sumup(errorsY_best),
-                    validPreds=(validMe, validMo), retrouveYmean=sumup(meanretrouveY)
-                    )
+                    validPreds=(validMe, validMo), retrouveYmean=sumup(meanretrouveY),
+                    errorsMecomponents=errorsMecomponents)
 
     def compare_sorting(self, G: GLLiM):
         """Returns the proportion of Y such as

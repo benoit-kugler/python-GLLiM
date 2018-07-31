@@ -1,0 +1,41 @@
+(# extends 'base_table.tex' #)
+
+(# import 'macros.tex' as macros #)
+
+
+(# block header_table #)
+(# endblock #)
+
+
+(# block line #)
+
+    (# for var in headercell.variables #)
+    (# set rowloop = loop #)
+    (# if loop.first #)
+
+    \multirowcell{  (! headercell.variables | length !)  }{
+    (# block line_first_cell scoped #)
+     \textbf{ (! headercell.context.LABEL !) } \\
+    { \small L,D = (! headercell.L !),(! headercell.D !) } \\
+    {\small K = (! headercell.K !) } \\
+    {\small N = (! headercell.N !) } \\
+    {\small  (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) } \\
+    {\small Modal pred. = (! headercell.context.PREFERED_MODAL_PRED !) }
+    (# endblock #)
+    }
+
+    (# endif #)
+    & (! var !)
+        (# for m in line #)
+        &
+            (# block cell scoped #)
+            (! macros.MEAN_MEDIAN_STD_FREQ(m.errorsMecomponents[rowloop.index0]) !)
+            (# endblock #)
+        (# endfor #)
+
+    (# set height = 1 / (headercell.variables | length)  #)
+    (# if rowloop.last #) \\[(! height !)cm]    (# else #) \\*[(! height !)cm] (# endif #)
+
+    (# endfor #)
+
+(# endblock  #)

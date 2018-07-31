@@ -214,11 +214,10 @@ def regularization():
 
 
 def comparaison_MCMC():
-    # Using comparaison trained model
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
-    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
+    exp.load_data(regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(200, mode="l", track_theta=False, init_local=200,
+    gllim = exp.load_model(150, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
     MCMC_X, Std = exp.context.get_result()
     exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wave_lengths,
@@ -231,11 +230,11 @@ def comparaison_MCMC():
 
 
 def main():
-    plot_estimeF()
-    plot_evo_LL()
-    plusieurs_K_N(50)
-    init_cos()
-    regularization()
+    # plot_estimeF()
+    # plot_evo_LL()
+    # plusieurs_K_N(50)
+    # init_cos()
+    # regularization()
     comparaison_MCMC()
 
 
