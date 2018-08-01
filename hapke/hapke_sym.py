@@ -2,11 +2,14 @@
 Les paramètres géométriques sont importés et évalués. Les autres paramètres sont des symbols.
 """
 import time
+from timeit import timeit
 
 import dill
 import numpy as np
 import sympy as sp
 from sympy.printing.theanocode import theano_function
+
+from tools.context import HapkeContext
 
 DEFAULT_SAVEPATH = "__dF.dill"
 
@@ -20,6 +23,33 @@ def import_geometries(context):
     CTHETA = np.cos(theta0r) * np.cos(thetar) + np.sin(thetar) * np.sin(theta0r) * np.cos(phir)
     THETA = np.arccos(CTHETA)
     return theta0r, thetar, phi, CTHETA,THETA
+
+
+theta0, theta, phi = sp.symbols("theta0 theta phi")
+
+
+def import_geometries_as_expr():
+    # En radian
+    theta0r = theta0 * np.pi / 180.
+    thetar = theta * np.pi / 180.
+    phir = phi * np.pi / 180.
+    CTHETA = sp.cos(theta0r) * sp.cos(thetar) + sp.sin(thetar) * sp.sin(theta0r) * sp.cos(phir)
+    THETA = sp.acos(CTHETA)
+    return theta0r, thetar, phi, CTHETA, THETA
+
+
+def dF_expr():
+    i, e, dphi, ctheta, theta = import_geometries_as_expr()
+    F = Fi(i, e, dphi, ctheta, theta)
+    dw = sp.diff(F, w)
+    dtheta_b = sp.diff(F, theta_b)
+    db = sp.diff(F, b)
+    dc = sp.diff(F, c)
+    dHH = sp.diff(F, HH)
+    dB0 = sp.diff(F, B0)
+    diff = sp.Matrix([[*dw], [*dtheta_b], [*db], [*dc], [*dHH], [*dB0]]).T
+    print(diff)
+
 
 
 w, theta_b, b, c, HH, B0 = sp.symbols("w theta_b b c H B_0")
@@ -74,13 +104,11 @@ def roughness(theta0,theta,phi):
     mu0_b = xidz * (cosi + sini * sp.tan(theta_br) * e2(theta0) / (2 - e1(theta0)))
 
     if phi == 180: # tan infinity
-        print("f0")
         f = sp.Integer(0)
     else:
         f = np.exp( -2 * np.tan(phir/2))
 
     if theta0 <= theta:
-        print("cas1")
         mu0_e = xidz * (cosi + sini * sp.tan(theta_br) * (np.cos(phir) * e2(theta) + (np.sin(phir / 2) ** 2) * e2(theta0)) / (
                     2 - e1(theta) - (phir/ sp.pi) * e1(theta0)))
         mu_e = xidz * (cose + sine * sp.tan(theta_br) * (e2(theta) - (np.sin(phir / 2) ** 2) * e2(theta0)) / (
@@ -88,7 +116,6 @@ def roughness(theta0,theta,phi):
 
         S = mu_e * cosi * xidz / mu_b / mu0_b / (1 - f + f * xidz * cosi / mu0_b)
     else:
-        print("cas2")
         mu0_e = xidz * (cosi + sini * sp.tan(theta_br) * (e2(theta0) - np.sin(phir / 2) ** 2 * e2(theta)) / (
                     2 - e1(theta0) - (phir / sp.pi) * e1(theta)))
         mu_e = xidz * (cose + sine * sp.tan(theta_br) * (np.cos(phir) * e2(theta0) + np.sin(phir / 2) ** 2 * e2(theta)) / (
@@ -103,68 +130,73 @@ def lambdify_F(context):
     F = sp.Matrix([Fi(*t) for t in zip(*import_geometries(context))])
     return sp.lambdify([w, theta_b, b, c, HH, B0],F,"np")
 
-# def lambdify_dF(context):
-#     print("Computing F and dF expression...")
-#     ti = time.time()
-#     F = sp.Matrix([Fi(*t) for t in zip(*import_geometries(context))])
-#     dw = sp.diff(F,w)
-#     dtheta_b = sp.diff(F,theta_b)
-#     db = sp.diff(F,b)
-#     dc = sp.diff(F,c)
-#     dHH = sp.diff(F,HH)
-#     dB0 = sp.diff(F,B0)
-#     diff = sp.Matrix([[*dw],[*dtheta_b],[*db],[*dc],[*dHH],[*dB0]]).T
-#     print("Done in {:.3f} s".format(time.time() - ti))
-#     print("Computing dF function (not vectorized)...")
-#     ti = time.time()
-#     dF_func = sp.lambdify([w, theta_b, b, c, HH, B0],diff)
-#
-#     inputs = [w, theta_b, b, c, HH, B0]
-#     # dF_func = theano_function(inputs,[diff],{x:'float64' for x in inputs})
-#
-#     print("Done in {:.3f} s".format(time.time() - ti))
-#     return dF_func
+
+def _diff_expr(context):
+    print("Computing F and dF expression...")
+    ti = time.time()
+    F = sp.Matrix([Fi(*t) for t in zip(*import_geometries(context))])
+    dw = sp.diff(F, w)
+    dtheta_b = sp.diff(F, theta_b)
+    db = sp.diff(F, b)
+    dc = sp.diff(F, c)
+    dHH = sp.diff(F, HH)
+    dB0 = sp.diff(F, B0)
+    diff = sp.Matrix([[*dw], [*dtheta_b], [*db], [*dc], [*dHH], [*dB0]]).T
+    print("Done in {:.3f} s".format(time.time() - ti))
+    return diff
+
 
 def lambdify_dF(context):
-    print("Computing dF one geometrie at a time...")
+    diff = _diff_expr(context)
+    print("Computing dF function (not vectorized)...")
+    ti = time.time()
     inputs = [w, theta_b, b, c, HH, B0]
-    components = []
-    for i , t in enumerate( zip(*import_geometries(context)) ):
-        print("Component {} ...".format(i+1))
-        if not i == 7:
-            continue
-        ti = time.time()
-        F = Fi(*t)
-        dw = sp.diff(F,w)
-        dtheta_b = sp.diff(F,theta_b)
-        db = sp.diff(F,b)
-        dc = sp.diff(F,c)
-        dHH = sp.diff(F,HH)
-        dB0 = sp.diff(F,B0)
-        diff = sp.Matrix([[dw,dtheta_b,db,dc,dHH,dB0]])
-        print("\tF and dF expression computed in {:.3f} s".format(time.time() - ti))
-        print(diff.shape)
-        print("\tComputing dF function with Theano...")
-        ti = time.time()
 
-        dF_func = theano_function(inputs,[dw],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        dF_func = theano_function(inputs,[dtheta_b],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        dF_func = theano_function(inputs,[db],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        dF_func = theano_function(inputs,[dc],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        dF_func = theano_function(inputs,[dHH],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        dF_func = theano_function(inputs,[dB0],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        print("ok")
-        dF_func = theano_function(inputs,[dw,dtheta_b,db,dc,dHH,dB0],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
-        components.append(dF_func)
-        print("\tDone in {:.3f} s".format(time.time() - ti))
+    dF_func = sp.lambdify(inputs, diff, "numpy")
 
-    def dF(X):
-        DFs = np.empty((X.shape[0],len(components),X.shape[1]))   # N , D , L
-        for i, df in enumerate(components):
-            DFs[:,i,:] = df(*X.T)[0].T
-        return DFs
+    # dF_func = theano_function(inputs,[diff],{x:'float64' for x in inputs})
 
-    return dF
+    print("Done in {:.3f} s".format(time.time() - ti))
+    return dF_func
+
+# def lambdify_dF(context):
+#     print("Computing dF one geometrie at a time...")
+#     inputs = [w, theta_b, b, c, HH, B0]
+#     components = []
+#     for i , t in enumerate( zip(*import_geometries(context)) ):
+#         print("Component {} ...".format(i+1))
+#         ti = time.time()
+#         F = Fi(*t)
+#         dw = sp.diff(F,w)
+#         dtheta_b = sp.diff(F,theta_b)
+#         db = sp.diff(F,b)
+#         dc = sp.diff(F,c)
+#         dHH = sp.diff(F,HH)
+#         dB0 = sp.diff(F,B0)
+#         diff = sp.Matrix([[dw,dtheta_b,db,dc,dHH,dB0]])
+#         print("\tF and dF expression computed in {:.3f} s".format(time.time() - ti))
+#         print(diff.shape)
+#         print("\tComputing dF function with Theano...")
+#         ti = time.time()
+#
+#         dF_func = theano_function(inputs,[dw],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         dF_func = theano_function(inputs,[dtheta_b],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         dF_func = theano_function(inputs,[db],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         dF_func = theano_function(inputs,[dc],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         dF_func = theano_function(inputs,[dHH],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         dF_func = theano_function(inputs,[dB0],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         print("ok")
+#         dF_func = theano_function(inputs,[dw,dtheta_b,db,dc,dHH,dB0],{x:'float64' for x in inputs}, dims={x:1 for x in inputs})
+#         components.append(dF_func)
+#         print("\tDone in {:.3f} s".format(time.time() - ti))
+#
+#     def dF(X):
+#         DFs = np.empty((X.shape[0],len(components),X.shape[1]))   # N , D , L
+#         for i, df in enumerate(components):
+#             DFs[:,i,:] = df(*X.T)[0].T
+#         return DFs
+#
+#     return dF
 
 
 def calcule_rang(context):
@@ -195,10 +227,22 @@ def load_dF(savepath=DEFAULT_SAVEPATH):
     return dF
 
 
+if __name__ == '__main__':
+    h = HapkeContext(None)
+    X0 = h.get_X_sampling(5000)
 
+    # dF = lambdify_dF(h)
 
+    # expr = _diff_expr(h)
+    # print(expr)
+    np = sp
+    dF_expr()
 
-
-
-
-
+    # save_dF(h)
+    # dF = load_dF()
+    #
+    # print(dF(*X0.T).transpose(2,0,1) - h.dF(X0))
+    #
+    #
+    # print(timeit("dF(*X0.T)",number=5,globals=globals()))
+    # print(timeit("h.dF(X0)",number=5,globals=globals()))

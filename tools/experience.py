@@ -324,8 +324,8 @@ def double_learning(Ntest=200):
     exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(200, mode="l", track_theta=False, init_local=200,
-                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
+                           sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
     exp.centre_data_test()
     exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]

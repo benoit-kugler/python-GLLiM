@@ -30,9 +30,11 @@ ALGOS_exps = [
      "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 200, "N": 20000,
+    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 200, "N": 20000,
+    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
 ]
 
@@ -287,18 +289,19 @@ class abstractLatexWriter():
             exp["variables"] = cc.variables_names
         return self.experiences
 
-    def render_latex(self):
+    def render_latex(self, label=None):
         template = self.latex_jinja_env.get_template(self.template)
         CRITERES = self.CRITERES + ["validPreds"]
+        label = label or self.CATEGORIE
         baretable = template.render(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
                                     hHeader=self._horizontal_header(), vHeader=self._vertical_header(),
-                                    label=self.CATEGORIE, CRITERES=CRITERES,
+                                    label=label, CRITERES=CRITERES,
                                     FACTOR_NUMBERS=self.FACTOR_NUMBERS)
         standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
         return baretable, standalone_template.render(TABLE=baretable)
 
-    def render_pdf(self, show_latex=False, verbose=False, filename=None):
-        barelatex, latex = self.render_latex()
+    def render_pdf(self, show_latex=False, verbose=False, filename=None, **kwargs):
+        barelatex, latex = self.render_latex(**kwargs)
         if show_latex:
             print(latex)
 
@@ -446,6 +449,7 @@ class AlgosTimeLatexWriter(abstractLatexWriter):
     @classmethod
     def render(cls, **kwargs):
         kwargs["filename"] = "AlgosTime"
+        kwargs["label"] = "AlgosTime"
         super().render(**kwargs)
 
 
@@ -548,26 +552,26 @@ class ErrorPerComponentsWriter(abstractLatexWriter):
 
 def main():
     AlgosMeasure.run(True, True)
-    GenerationMeasure.run(True, True)
-    DimensionMeasure.run(True, True)
-    ModalMeasure.run(True, True)
-    LogistiqueMeasure.run(True, True)
-    NoisesMeasure.run(True, True)
-    LocalMeasure.run(True, True)
-    RelationCMeasure.run(True, True)
-    PerComponentsMeasure.run(True, True)
+    # GenerationMeasure.run(True, True)
+    # DimensionMeasure.run(True, True)
+    # ModalMeasure.run(True, True)
+    # LogistiqueMeasure.run(True, True)
+    # NoisesMeasure.run(True, True)
+    # LocalMeasure.run(True, True)
+    # RelationCMeasure.run(True, True)
+    # PerComponentsMeasure.run(True, True)
     #
     AlgosLatexWriter.render()
     AlgosTimeLatexWriter.render()
-    GenerationLatexWriter.render()
-    DimensionLatexWriter.render()
-    ModalLatexWriter.render()
-    LogistiqueLatexWriter.render()
-    NoisesLatexWriter.render()
-    LocalLatexWriter.render()
-    RelationCLatexWriter.render()
-    DoubleLearningWriter.render()
-    ErrorPerComponentsWriter.render()
+    # GenerationLatexWriter.render()
+    # DimensionLatexWriter.render()
+    # ModalLatexWriter.render()
+    # LogistiqueLatexWriter.render()
+    # NoisesLatexWriter.render()
+    # LocalLatexWriter.render()
+    # RelationCLatexWriter.render()
+    # DoubleLearningWriter.render()
+    # ErrorPerComponentsWriter.render()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",

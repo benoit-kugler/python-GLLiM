@@ -5,10 +5,15 @@
 
 (# block header_table #)
 (! super() !)
-& &  \multicolumn{3}{c | }{ GLLiM }  & \multicolumn{3}{c | }{ jGLLiM } & \multicolumn{3}{c | }{ dGLLiM }\\
+& &  \multicolumn{3}{c | }{ GLLiM }  & \multicolumn{3}{c | }{ jGLLiM } & \multicolumn{3}{c | }{ dGLLiM } \\
 
 (# endblock #)
 
-
-
-
+(# block line_first_cell #)
+\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+{ \small L,D = (! headercell.L !),(! headercell.D !) } \\
+{\small K = (! headercell.K !) } \\
+{\small N = (! headercell.N !) } \\ {\small (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) } \\
+{\small Modal pred. = (! headercell.context.PREFERED_MODAL_PRED !) } \\
+{\small Contrainte $\Sigma$ : (! headercell.sigma_type !)  }}
+(# endblock #)
