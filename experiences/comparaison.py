@@ -32,9 +32,9 @@ ALGOS_exps = [
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 50000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 50000,
      "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
 ]
 
@@ -128,6 +128,9 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retr
     except np.linalg.LinAlgError as e:
         logging.error("\tTraining failed ! {}".format(e))
         return None
+    except MemoryError:
+        logging.critical("\t Memory Error ! Training failed")
+        return {"__memory_error__": True}
     except AssertionError as e:
         logging.error("\tTraining failed ! {}".format(e))
         return None

@@ -22,9 +22,10 @@ from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from plotting import graphiques
-from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext
-from tools.experience import SecondLearning, Experience
+from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, InjectiveFunction
+from tools.experience import SecondLearning, Experience, _train_K_N
 from tools.interface_R import is_egal
+from tools.measures import Mesures
 
 np.set_printoptions(precision=20,suppress=False)
 
@@ -218,13 +219,38 @@ def equivalence_jGLLiM_GLLIM():
     is_egal(theta, jtheta)
 
 
+def details_convergence(imax, RETRAIN):
+    exp = Experience(InjectiveFunction(1))
+    K_progression = np.arange(imax) * 3 + 2
+    coeffNK = 10
+    N_progression = K_progression * coeffNK
+    filename = "/scratch/WORK/tmp_KN.mat"
+    if RETRAIN:
+        l1 = _train_K_N(exp, N_progression, K_progression)
+        scipy.io.savemat(filename, {"l1": l1})
+    else:
+        m = scipy.io.loadmat(filename)
+        l1 = m["l1"]
+
+    labels = np.array(Mesures.LABELS_STUDY_ERROR)
+    choix = [0, 1, 2, 3, 4, 5]
+    labels = labels[choix]
+    data = l1.T[choix]
+    data = np.array(data <= 1000, dtype=float) * data + np.array(data > 1000, dtype=int)
+    title = "Evolution de l'erreur en fonction de K et N"
+    xlabels = K_progression
+    graphiques.plusieursKN(data, labels, xlabels, True, "K", "Erreur", savepath="../evoKN.png",
+                           title=title, write_context=False)
+
+
+
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # cA()
     # graphiques.plot_Y(Y)qw
-    simple_function()
+    # simple_function()
     # evolu_cluster()
     # equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
@@ -232,4 +258,4 @@ if __name__ == '__main__':
     # test_map()
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
-
+    details_convergence(30, True)

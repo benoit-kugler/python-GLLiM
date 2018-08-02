@@ -1,26 +1,23 @@
-import time
 import logging
+import time
 
 import numpy as np
 
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import dominant_components
 from tools.archive import Archive
-from tools.regularization import step_by_step, global_regularization_exclusion
 
 
 class Mesures():
 
     LABELS_STUDY_ERROR =  ('$|| x - x_{est}||$',
-              "$\max\limits_{k} \gamma_{k}^{*}(y)|| x - (A_{k}^{*} y + b_{k}^{*} )||$",
-              "$\max\limits_{k} e_{k}^{(1)}$",
-              "$\max\limits_{k} e_{k}^{(2)}$",
-              "$\max\limits_{k} majoration(e_{k}^{(2)} )$",
+                           r"$\sum\limits_{k} \frac{ \pi_{k} h_{k}}{ \sqrt{(2 \pi)^{D} \det{\Gamma_{k}^{*}}} } $",
+                           "$\sum\limits_{k} \gamma_{k}^{*}(y) || A_{k}^{*}(y - c_{k}^{*}) ||$",
               "$\max\limits_{k} \delta_{k}$",
               "Max $||\Sigma_{k}^{*} \Gamma_{k}^{-1}||$",
               "$ \max\limits_{k} \Sigma_{k}$",
               "$\max\limits_{k} \pi_{k} $",
-              "$\max\limits_{k} \\frac{\Sigma_{k}}{A_{k}\Gamma_{k}}$",
+                           r"$\max\limits_{k} \frac{A_{k}\Gamma_{k}}{\Sigma_{k}}$",
               "$\max\limits_{k} \Gamma_{k}$",
               "$\max\limits_{k} \min Sp(\Gamma_{k}^{*-1})$")
 
@@ -198,11 +195,11 @@ class Mesures():
         ti = time.time()
         context = self.experience.context
         Y = context.F(X)
-        _, gammas = gllim._helper_forward_conditionnal_density(Y)
+        modals, gammas = gllim._helper_forward_conditionnal_density(Y)
         N, L = X.shape
         _, D = Y.shape
-        diff, term1, term2 = np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L))
-        maj_e2 = np.empty((N, gllim.K))
+        diff, term2 = np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L))
+
 
         fck = np.matmul(gllim.AkList, gllim.ckList[:, :, None])[:, :, 0] + gllim.bkList
         delta = np.linalg.norm(fck - context.F(gllim.ckList), axis=1)
@@ -210,57 +207,33 @@ class Mesures():
         vp_gs = np.linalg.eigvalsh(gllim.GammakListS)
         alpha = 1 / vp_gs.max(axis=1)
         det_gs = vp_gs.prod(axis=1)
-        nSG = gllim.norm2_SigmaSGammaInv
-        for k, pik, Aks, bks, Ak, bk, ck, Sigmaks, Gammak, Sigmak in zip(range(gllim.K), gllim.pikList, gllim.AkListS,
-                                                                         gllim.bkListS,
-                                                                         gllim.AkList, gllim.bkList, gllim.ckList,
-                                                                         gllim.SigmakListS,
-                                                                         gllim.GammakList, gllim.SigmakList):
-            ay = Aks.dot(Y.T).T
 
-            diff[:, k, :] = ay + bks - X
+        M, Mp = context.COERCIVITE_F, context.LIPSCHITZ_F
+        tk = (delta * Mp + np.sqrt(delta ** 2 * (Mp ** 2) + (M / alpha))) / M
+        hk = np.exp(- 0.5 + delta * alpha * Mp * tk) * tk
+        e1k = gllim.pikList * hk / np.sqrt((2 * np.pi) ** D * det_gs)
 
-            fx = Ak.dot(X.T).T + bk
+        xck = np.empty((N, gllim.K, L))
+        for k, Aks, ck, cks in zip(range(gllim.K), gllim.AkListS, gllim.ckList, gllim.ckListS):
+            ay = Aks.dot(Y.T - cks).T
+            term2[:, k, :] = ay
+            xck[:, k, :] = X - ck
 
-            aa = Aks.dot(fx.T).T
-            mat = Sigmaks.dot(np.linalg.inv(Gammak))
-
-            term1[:, k, :] = ay - aa
-            term2[:, k, :] = mat.dot((ck - X).T).T
-
-            ncx = np.linalg.norm(ck - X, axis=1)
-
-            neg = -0.5 * (context.COERCIVITE_F * ncx ** 2 + delta[k] ** 2)
-            pos = 1 * delta[k] * context.LIPSCHITZ_F * ncx
-            arg_exp = alpha[k] * (neg + pos)
-
-            d = np.linalg.norm(fck[k] - Y, axis=1)
-            arg_exp2 = -0.5 * alpha[k] * d ** 2
-            ex = np.exp(arg_exp2)
-            assert np.all(~np.isinf(ex))
-            ex = ex * pik / np.sqrt(det_gs[k]) / (2 * np.pi) ** (D / 2)
-
-            maj_e2[:, k] = ex * nSG[k] * ncx
-
-        # assert np.all(gammas <= maj_e2) #attention renormalisation
-
-        diff = gammas[:, :, None] * diff
-        term1 = gammas[:, :, None] * term1
+        mean_pred = np.sum(gammas[:, :, None] * modals.transpose(1, 2, 0), axis=1)
         term2 = gammas[:, :, None] * term2
-        assert np.allclose(diff, term1 + term2)  # decomposition
 
-        ecart_sum = np.linalg.norm(np.sum(diff, axis=1), axis=1).mean()
-        er_cluster = np.linalg.norm(diff, axis=2).max(axis=1).mean()
-        er1 = np.linalg.norm(term1, axis=2).max(axis=1).mean()
-        er2 = np.linalg.norm(term2, axis=2).max(axis=1).mean()
-        maj_er2 = maj_e2.max(axis=1).mean()
+        ecart_sum = np.linalg.norm(mean_pred - X, axis=1).mean()
+        er1 = e1k.sum(axis=0)
+        er2 = np.linalg.norm(term2, axis=2).sum(axis=1).mean()
 
-        s = gllim.norm2_SigmaSGammaInv.max()
-        u = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
+        print((np.linalg.norm(xck, axis=2) - tk).mean())
+
+        sigSGInv = gllim.norm2_SigmaSGammaInv.max()
+        AGSInv = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
         sig = gllim.SigmakList.max()
         max_pi = gllim.pikList.max()
         logging.debug("{:.2f} s for average error estimation over {} samples".format(time.time() - ti, N))
-        return ecart_sum, er_cluster, er1, er2, maj_er2, delta.max(), s, sig, max_pi, u, gllim.GammakList.max(), alpha.min()
+        return ecart_sum, er1, er2, delta.max(), sigSGInv, sig, max_pi, AGSInv, gllim.GammakList.max(), alpha.min()
 
 
 class MesuresSecondLearning(Mesures):

@@ -254,9 +254,9 @@ class abstractExpFunction(abstractSimpleFunctionModel):
 
     MAX_F = np.exp(2)
 
-    COERCIVITE_F = np.exp(-1)
+    COERCIVITE_F = 1
 
-    LIPSCHITZ_F = np.exp(2)
+    LIPSCHITZ_F = np.exp(1)
 
     LABEL = r"$(x_{i}) \mapsto (\exp(x_{i}) )$"
 

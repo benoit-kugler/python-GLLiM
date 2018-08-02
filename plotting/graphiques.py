@@ -127,9 +127,9 @@ class clusters(abstractDrawerMPL):
 
 class simple_plot(abstractDrawerMPL):
 
-    def main_draw(self, values, labels, xlabels, ylog):
+    def main_draw(self, values, labels, xlabels, ylog, xtitle, ytitle):
         rc("text", usetex=True)
-        xlabels = xlabels or list(range(len(values[0])))
+        xlabels = xlabels if xlabels is not None else list(range(len(values[0])))
         axe = self.fig.gca()
         for v, lab, m in zip(values, labels, [".", "+", "+", "+", "+", "+", "o", "o", "o", ",", ",", ",", "."]):
             axe.scatter(xlabels, v, marker=m, label=lab)
@@ -137,6 +137,10 @@ class simple_plot(abstractDrawerMPL):
             axe.set_yscale("log")
         axe.set_ylim(np.array(values).min(), np.array(values).max())
         axe.tick_params(axis="x", labelsize=7)
+        if xtitle:
+            axe.set_xlabel(xtitle)
+        if ytitle:
+            axe.set_ylabel(ytitle)
         axe.legend()
 
     def save(self, savepath):

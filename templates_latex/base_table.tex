@@ -22,11 +22,13 @@
     \endlastfoot
 
     (#for headercell, line in zip(vHeader,MATRIX) #)
+
     (# if line #)
     \hline
     (# block line scoped #)
 
     (# for critere in CRITERES #)
+    (# set rowloop = loop #)
     (# if loop.first #)
 
     \multirow{6}{*}{
@@ -44,9 +46,13 @@
     & (! macros.LABEL_CRITERE(critere) !)
     (# for m in line #)
     &
+    (# if '__memory_error__' in m #)
+    (# if rowloop.first #) \multicolumn{3}{c}{\multirow{6}{*}{ Mémoire vive insuffisante }} (# endif #)
+    (# else #)
     (# block cell scoped #)
     (! macros.MESURES(m,critere) !)
     (# endblock #)
+    (# endif #)
     (# endfor #)
 
     (# if loop.last #) \\ (# else #) \\* (# endif #)

@@ -69,6 +69,19 @@ class Archive():
         logging.debug(f"1D evolution loaded from {path}")
         return d["cks"], d["ckSs"], d["Aks"], d["bks"]
 
+    @classmethod
+    def save_evoKN(cls, dic):
+        filename = "plusieursKN.mat"
+        filename = os.path.join(Archive.BASE_PATH, filename)
+        scipy.io.savemat(filename, dic)
+        logging.debug(f"KN evolution measures saved in {filename}")
+
+    @classmethod
+    def load_evoKN(cls):
+        filename = "plusieursKN.mat"
+        filename = os.path.join(Archive.BASE_PATH, filename)
+        return scipy.io.loadmat(filename)
+
 
     def __init__(self,experience):
         self.experience = experience

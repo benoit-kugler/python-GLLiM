@@ -1,7 +1,7 @@
 """Runs severals real tests on GLLiM, sGLLiM etc... """
-import time
 import logging
 import logging.config
+import time
 
 import coloredlogs
 import numpy as np
@@ -13,6 +13,7 @@ from Core.riemannian import RiemannianjGLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context
 from tools.archive import Archive
+from tools.context import InjectiveFunction
 from tools.measures import Mesures, VisualisationMesures, MesuresSecondLearning, VisualisationSecondLearning
 from tools.results import Results, VisualisationResults
 
@@ -321,10 +322,10 @@ class SecondLearning(Experience):
 
 def double_learning(Ntest=200):
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
-    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
+    exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
+    gllim = exp.load_model(100, mode="r", track_theta=False, init_local=200,
                            sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
     exp.centre_data_test()
@@ -453,6 +454,50 @@ def RTLS():
                       "b_mean": Xmean[:, 2], "b_var": Covs[:, 2, 2],
                       "c_mean": Xmean[:, 3], "c_var": Covs[:, 3, 3],
                       })
+
+
+def _train_K_N(exp, N_progression, K_progression):
+    imax = len(N_progression)
+    c = InjectiveFunction(1)(None)
+    Xtest = c.get_X_sampling(10000)
+    l = []
+    X, Y = c.get_data_training(N_progression[-1])
+    for i in range(imax):
+        K = K_progression[i]
+        N = N_progression[i]
+        Xtrain = X[0:N, :]
+        Ytrain = Y[0:N, :]
+        # def ck_init_function():
+        #     return c.get_X_uniform(K)
+        logging.debug("\tFit {i}/{imax} for K={K}, N={N}".format(i=i + 1, imax=imax, K=K, N=Xtrain.shape[0]))
+        gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None)
+        gllim.inversion()
+        l.append(exp.mesures.error_estimation(gllim, Xtest))
+    return np.array(l)
+
+
+def mesure_convergence(imax, RETRAIN):
+    exp = Experience(InjectiveFunction(1))
+    coeffNK = 10
+    coeffmaxN1 = 10
+    coeffmaxN2 = 2
+    # k = 10 n
+    K_progression = np.arange(imax) * 3 + 4
+    N_progression = K_progression * coeffNK
+    # N fixed
+    N_progression1 = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN1)
+    N_progression2 = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN2)
+    if RETRAIN:
+        l1 = _train_K_N(exp, N_progression, K_progression)
+        l2 = _train_K_N(exp, N_progression1, K_progression)
+        l3 = _train_K_N(exp, N_progression2, K_progression)
+
+        Archive.save_evoKN({"l1": l1, "l2": l2, "l3": l3})
+    else:
+        m = Archive.load_evoKN()
+        l1, l2, l3 = m["l1"], m["l2"], m["l3"]
+    return l1, l2, l3, K_progression, coeffNK, coeffmaxN1, coeffmaxN2
+
 
 
 def job():

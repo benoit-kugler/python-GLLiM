@@ -14,7 +14,8 @@ from plotting import graphiques
 from tools import context
 from tools.archive import Archive
 from tools.context import WaveFunction, InjectiveFunction, HapkeContext
-from tools.experience import Experience
+from tools.experience import Experience, mesure_convergence
+from tools.measures import Mesures
 
 LATEX_IMAGES_PATH = "../latex/images/plots"
 
@@ -106,60 +107,19 @@ def plot_evo_LL():
     values.append(LLs)
     labels.append(exp.context.LABEL)
 
-    graphiques.simple_plot(values, labels, None, True, title="Evolution de la log-vraisemblance",
+    graphiques.simple_plot(values, labels, None, True, "Itérations", "Log-vraisemblance",
+                           title="Evolution de la log-vraisemblance",
                            savepath=PATHS[2])
     training.NB_MAX_ITER = old_MAXITER
 
 
-def _train_K_N(exp, N_progression, K_progression):
-    imax = len(N_progression)
-    c = InjectiveFunction(1)(None)
-    Xtest = c.get_X_sampling(10000)
-    l = []
-    X, Y = c.get_data_training(N_progression[-1])
-    for i in range(imax):
-        K = K_progression[i]
-        N = N_progression[i]
-        Xtrain = X[0:N, :]
-        Ytrain = Y[0:N, :]
-        # def ck_init_function():
-        #     return c.get_X_uniform(K)
-        logging.debug("\nFit {i}/{imax} for K={K}, N={N}".format(i=i + 1, imax=imax, K=K, N=Xtrain.shape[0]))
-        gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None)
-        gllim.inversion()
 
-        l.append(exp.mesures.error_estimation(gllim, Xtest))
-    return np.array(l)
 
 
 def plusieurs_K_N(imax):
-    filename = "plusieursKN.mat"
-    filename = os.path.join(Archive.BASE_PATH, filename)
-    exp = Experience(InjectiveFunction(1))
-    coeffNK = 10
-    coeffmaxN1 = 10
-    coeffmaxN2 = 2
-    if RETRAIN:
-        # k = 10 n
-        K_progression = np.arange(imax) * 3 + 2
-        N_progression = K_progression * coeffNK
-        l1 = _train_K_N(exp, N_progression, K_progression)
+    l1, l2, l3, K_progression, coeffNK, coeffmaxN1, coeffmaxN2 = mesure_convergence(imax, RETRAIN)
 
-        # N fixed
-        K_progression = np.arange(imax) * 3 + 2
-        N_progression1 = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN1)
-
-        N_progression2 = np.ones(imax, dtype=int) * (K_progression[-1] * coeffmaxN2)
-
-        l2 = _train_K_N(exp, N_progression1, K_progression)
-        l3 = _train_K_N(exp, N_progression2, K_progression)
-
-        scipy.io.savemat(filename + ".mat", {"l1": l1, "l2": l2, "l3": l3})
-    else:
-        m = scipy.io.loadmat(filename + ".mat")
-        l1, l2, l3 = m["l1"], m["l2"], m["l3"]
-
-    labels = exp.mesures.LABELS_STUDY_ERROR
+    labels = Mesures.LABELS_STUDY_ERROR
     l1 = l1[:, 0]
     l2 = l2[:, 0]
     l3 = l3[:, 0]
@@ -168,8 +128,8 @@ def plusieurs_K_N(imax):
     label3 = labels[0] + f" - $N = {coeffmaxN2} * Kmax$"
 
     title = "Evolution de l'erreur en fonction de K et N"
-
-    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], None, True, savepath=PATHS[3],
+    xlabels = K_progression
+    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], xlabels, True, "K", "Erreur", savepath=PATHS[3],
                            title=title, write_context=True,
                            context={"coeffNK": coeffNK, "coeffmaxN1": coeffmaxN1, "coeffmaxN2": coeffmaxN2})
 
@@ -232,15 +192,15 @@ def comparaison_MCMC():
 def main():
     # plot_estimeF()
     # plot_evo_LL()
-    # plusieurs_K_N(50)
+    plusieurs_K_N(20)
     # init_cos()
     # regularization()
-    comparaison_MCMC()
+    # comparaison_MCMC()
 
 
-RETRAIN = True
+RETRAIN = False
 
 if __name__ == '__main__':
-    coloredlogs.install(level=logging.INFO, fmt="%(asctime)s : %(levelname)s : %(message)s",
+    coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     main()
