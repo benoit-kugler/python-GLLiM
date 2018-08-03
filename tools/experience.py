@@ -7,7 +7,7 @@ import coloredlogs
 import numpy as np
 
 from Core import training
-from Core.dgllim import dGLLiM
+from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.riemannian import RiemannianjGLLiM
 from experiences.rtls import RtlsCO2Context
@@ -456,9 +456,11 @@ def RTLS():
                       })
 
 
-def _train_K_N(exp, N_progression, K_progression):
+def _train_K_N(exp, N_progression, K_progression, with_null_sigma=False):
     imax = len(N_progression)
     c = InjectiveFunction(1)(None)
+    dGLLiM.dF_hook = c.dF
+    ZeroDeltadGLLiM.F_hook = c.F
     Xtest = c.get_X_sampling(10000)
     l = []
     X, Y = c.get_data_training(N_progression[-1])
@@ -470,9 +472,15 @@ def _train_K_N(exp, N_progression, K_progression):
         # def ck_init_function():
         #     return c.get_X_uniform(K)
         logging.debug("\tFit {i}/{imax} for K={K}, N={N}".format(i=i + 1, imax=imax, K=K, N=Xtrain.shape[0]))
-        gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None)
+        gllim = training.multi_init(Xtrain, Ytrain, K, verbose=None, gllim_cls=ZeroDeltadGLLiM)
         gllim.inversion()
-        l.append(exp.mesures.error_estimation(gllim, Xtest))
+        m = exp.mesures.error_estimation(gllim, Xtest)
+        if with_null_sigma:
+            gllim.inversion_with_null_sigma()
+            m2 = exp.mesures.error_estimation(gllim, Xtest)
+            print(m[0] - m2[0])
+            m = [m, m2]
+        l.append(m)
     return np.array(l)
 
 

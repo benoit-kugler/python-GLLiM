@@ -515,7 +515,6 @@ class HapkeGonio1468_30(HapkeGonio1468):
     GEOMETRIES = (np.arange(105) % 3) == 0
 
 
-
 class HapkeGonio1468_50(HapkeGonio1468):
     GEOMETRIES = (np.arange(105) % 2) == 0
 
@@ -710,15 +709,13 @@ if __name__ == '__main__':
     # # print(h.get_spatial_co(xord()[mask])1
     # h = HapkeGonio1468_30(partiel=(0,1,2,3))
     # print(h.geometries.shape)
-    h = InjectiveFunction(10)(None)
-    print(h.D,h.L)
+    # h = InjectiveFunction(10)(None)
+    # print(h.D,h.L)
     # h.compute_dF()
     # h._test_dF()
     #
     # X = h.get_X_sampling(300)
-
-
-
-
-
-
+    h = HapkeGonioJSC1(None)
+    print(h.geometries.shape)
+    h = HapkeGonio1521(None)
+    print(h.geometries.shape)

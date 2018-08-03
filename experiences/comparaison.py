@@ -29,13 +29,13 @@ ALGOS_exps = [
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
      "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+     "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 70000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_30, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+    {"context": context.HapkeGonio1468, "partiel": (0, 1, 2, 3), "K": 100, "N": 70000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 50000,
-     "init_local": None, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 50000,
-     "init_local": None, "sigma_type": "iso", "gamma_type": "full"},
+    {"context": context.HapkeGonio1468, "partiel": (0, 1, 2, 3), "K": 100, "N": 70000,
+     "init_local": None, "sigma_type": "iso", "gamma_type": "full"}
 ]
 
 
@@ -215,7 +215,7 @@ class abstractLatexWriter():
 
     )
     latex_jinja_env.globals.update(zip=zip)
-    latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%M m %S s", time.gmtime(s))
+    latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%H h %M m %S s", time.gmtime(s))
 
     CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean", "retrouveY", "retrouveYbest"]
 
@@ -554,7 +554,7 @@ class ErrorPerComponentsWriter(abstractLatexWriter):
 
 
 def main():
-    AlgosMeasure.run(True, True)
+    # AlgosMeasure.run(True, True)
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)

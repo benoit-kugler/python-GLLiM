@@ -126,13 +126,17 @@ class clusters(abstractDrawerMPL):
 
 
 class simple_plot(abstractDrawerMPL):
+    MARKERS = ("." for x in iter(int, 1))
+
+    def get_colors(self, nb):
+        return cm.rainbow(np.arange(nb) / nb)
 
     def main_draw(self, values, labels, xlabels, ylog, xtitle, ytitle):
         rc("text", usetex=True)
         xlabels = xlabels if xlabels is not None else list(range(len(values[0])))
         axe = self.fig.gca()
-        for v, lab, m in zip(values, labels, [".", "+", "+", "+", "+", "+", "o", "o", "o", ",", ",", ",", "."]):
-            axe.scatter(xlabels, v, marker=m, label=lab)
+        for v, lab, m, c in zip(values, labels, self.MARKERS, self.get_colors(len(values))):
+            axe.scatter(xlabels, v, marker=m, label=lab, color=c)
         if ylog:
             axe.set_yscale("log")
         axe.set_ylim(np.array(values).min(), np.array(values).max())
@@ -155,6 +159,15 @@ class plusieursKN(simple_plot):
         return f"""Courbe 1: $K$ évolue linéairement et $N = {context['coeffNK']} K$. 
                 Courbe 2: idem pour $K$ mais $N = {context['coeffmaxN1']}  K_{{max}}$.
                 Courbe 3: item pour $K$ mais $N = {context['coeffmaxN2']}  K_{{max}}$."""
+
+
+class doubleplusieursKN(plusieursKN):
+    MARKERS = (s for x in iter(int, 1) for s in [".", "+"])
+
+    def get_colors(self, nb):
+        return [c for i in np.linspace(0, 1, nb // 2) for c in [cm.rainbow(i), cm.rainbow(i)]]
+
+
 
 
 def _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims):

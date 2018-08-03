@@ -484,6 +484,10 @@ class GLLiM():
 
         return AkList
 
+    def _compute_bk(self, Y, Xnk, AkList):
+        return np.array([np.sum(self.rnk[:, k].T * (Y - (Ak.dot(Xnk[:, k, :].T)).T).T, axis=1) / rk for k, Ak, rk in
+                         zip(range(self.K), AkList, self.rkList)])  # (37)
+
     def compute_next_theta(self, T, Y):
         """Compute M steps. Return the result. Usefull to implement SAEM algorithm"""
         N = T.shape[0]
@@ -503,8 +507,7 @@ class GLLiM():
         SkList_X = self._get_SkList_X(SkList_W)
         AkList = self._compute_Ak(Xnk, Y, SkList_X)
 
-        bkList = np.array([np.sum(self.rnk[:, k].T * (Y - (Ak.dot(Xnk[:, k, :].T)).T).T, axis=1) / rk for k, Ak, rk in
-                           zip(range(self.K), AkList, self.rkList)])  # (37)
+        bkList = self._compute_bk(Y, Xnk, AkList)
 
         SigmakList = self._compute_Sigma(Xnk, Y, AkList, bkList, SkList_W)
         SigmakList = self._add_numerical_stability(SigmakList, self.sigma_type)
@@ -610,6 +613,16 @@ class GLLiM():
         if self.verbose is not None:
             logging.debug("--- %s seconds for inversion ---" % (time.time() - start_time_inversion))
 
+    def inversion_with_null_sigma(self):
+        # Inversion step
+        if self.sigma_type == "iso":
+            self.SigmakList = np.ones(self.K) * 1e-12
+        else:
+            self.SigmakList = np.array([np.eye(self.D) * 1e-12] * self.K)
+        self.inversion()
+
+
+
     @property
     def norm2_SigmaSGammaInv(self):
         return np.array([np.linalg.norm(x, 2) for x in
@@ -634,14 +647,14 @@ class GLLiM():
 
         log_density = logsumexp(logalpha, axis=1, keepdims=True)
         logalpha -= log_density
-        alpha = np.exp(logalpha)
-        return proj, alpha
+        alpha, normalisation = np.exp(logalpha), np.exp(log_density)
+        return proj, alpha, normalisation
 
     def predict_high_low(self, Y, with_covariance=False):
         """Forward prediction.
         If with_covariance, returns covariance matrix of the mixture, shape (len(Y),L,L)"""
         N = Y.shape[0]
-        proj, alpha = self._helper_forward_conditionnal_density(Y)
+        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
         Xpred = np.sum(alpha.reshape((1, N, self.K)) * proj, axis=2)  # (16)
         if with_covariance:
             covs = np.empty((N, self.Lt, self.Lt))
@@ -692,7 +705,7 @@ class GLLiM():
 
         if (not marginals) and not X_points.shape[1] == self.L:
             raise WrongContextError("Dimension of X samples doesn't match the choosen Lw")
-        proj, alpha = self._helper_forward_conditionnal_density(Y)
+        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
 
 
         NX, D = X_points.shape
@@ -722,7 +735,7 @@ class GLLiM():
         If given, limits to components values.
         If threshold is given, gets rid of components with weight <= threshold
         Priority on components"""
-        proj, alpha = self._helper_forward_conditionnal_density(Y)
+        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
         covs = self.SigmakListS
         chols = np.linalg.cholesky(covs)
         det_covs = np.prod(np.array([np.diag(c) for c in chols]),axis=1)
@@ -747,7 +760,7 @@ class GLLiM():
 
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
-        proj, alpha = self._helper_forward_conditionnal_density(Y)
+        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
         N, _ = Y.shape
         out = np.empty((N, nb_per_Y, self.L))
         alea = np.random.multivariate_normal(np.zeros(self.L), np.eye(self.L), (N, nb_per_Y))

@@ -13,6 +13,7 @@ class Mesures():
     LABELS_STUDY_ERROR =  ('$|| x - x_{est}||$',
                            r"$\sum\limits_{k} \frac{ \pi_{k} h_{k}}{ \sqrt{(2 \pi)^{D} \det{\Gamma_{k}^{*}}} } $",
                            "$\sum\limits_{k} \gamma_{k}^{*}(y) || A_{k}^{*}(y - c_{k}^{*}) ||$",
+                           "$\sum\limits_{k} \gamma_{k}^{*}(y) || x - c_{k} || $",
               "$\max\limits_{k} \delta_{k}$",
               "Max $||\Sigma_{k}^{*} \Gamma_{k}^{-1}||$",
               "$ \max\limits_{k} \Sigma_{k}$",
@@ -195,14 +196,15 @@ class Mesures():
         ti = time.time()
         context = self.experience.context
         Y = context.F(X)
-        modals, gammas = gllim._helper_forward_conditionnal_density(Y)
+        modals, gammas, normalisation = gllim._helper_forward_conditionnal_density(Y)
         N, L = X.shape
         _, D = Y.shape
         diff, term2 = np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L))
 
 
         fck = np.matmul(gllim.AkList, gllim.ckList[:, :, None])[:, :, 0] + gllim.bkList
-        delta = np.linalg.norm(fck - context.F(gllim.ckList), axis=1)
+        d = fck - context.F(gllim.ckList)
+        delta = np.linalg.norm(d, axis=1)
 
         vp_gs = np.linalg.eigvalsh(gllim.GammakListS)
         alpha = 1 / vp_gs.max(axis=1)
@@ -213,27 +215,35 @@ class Mesures():
         hk = np.exp(- 0.5 + delta * alpha * Mp * tk) * tk
         e1k = gllim.pikList * hk / np.sqrt((2 * np.pi) ** D * det_gs)
 
-        xck = np.empty((N, gllim.K, L))
-        for k, Aks, ck, cks in zip(range(gllim.K), gllim.AkListS, gllim.ckList, gllim.ckListS):
+        dGInvd = -0.5 * (delta.T).dot(np.matmul(
+            np.linalg.inv(gllim.GammakListS), d[:, :, None])[:, :, 0])
+        e1k *= np.exp(dGInvd)
+
+        xck, maj_x = np.empty((N, gllim.K, L)), np.empty((N, gllim.K))
+        for k, Aks, ck, cks, alphak, deltak in zip(range(gllim.K), gllim.AkListS, gllim.ckList, gllim.ckListS, alpha,
+                                                   delta):
             ay = Aks.dot(Y.T - cks).T
             term2[:, k, :] = ay
             xck[:, k, :] = X - ck
+            ntx = np.linalg.norm(X - ck, axis=1)
+            maj_x[:, k] = np.exp(-0.5 * alphak * M * ntx ** 2 + 2 * deltak * alphak * ntx * Mp) * ntx
 
         mean_pred = np.sum(gammas[:, :, None] * modals.transpose(1, 2, 0), axis=1)
         term2 = gammas[:, :, None] * term2
 
         ecart_sum = np.linalg.norm(mean_pred - X, axis=1).mean()
-        er1 = e1k.sum(axis=0)
+        er1 = (e1k.sum(axis=0) / normalisation).mean()
         er2 = np.linalg.norm(term2, axis=2).sum(axis=1).mean()
-
-        print((np.linalg.norm(xck, axis=2) - tk).mean())
+        er3 = ((gllim.pikList * maj_x / np.sqrt((2 * np.pi) ** D * det_gs) * np.exp(dGInvd)).sum(
+            axis=1) / normalisation).mean()
+        print("Distance au maximum de h : ", (np.linalg.norm(xck, axis=2) - tk).mean())
 
         sigSGInv = gllim.norm2_SigmaSGammaInv.max()
         AGSInv = np.abs(gllim.AkList[:, 0, 0] * gllim.GammakList[:, 0, 0] / gllim.full_SigmakList[:, 0, 0]).max()
         sig = gllim.SigmakList.max()
         max_pi = gllim.pikList.max()
         logging.debug("{:.2f} s for average error estimation over {} samples".format(time.time() - ti, N))
-        return ecart_sum, er1, er2, delta.max(), sigSGInv, sig, max_pi, AGSInv, gllim.GammakList.max(), alpha.min()
+        return ecart_sum, er1, er2, er3, delta.max(), sigSGInv, sig, max_pi, AGSInv, gllim.GammakList.max(), alpha.min()
 
 
 class MesuresSecondLearning(Mesures):

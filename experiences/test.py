@@ -220,27 +220,33 @@ def equivalence_jGLLiM_GLLIM():
 
 
 def details_convergence(imax, RETRAIN):
-    exp = Experience(InjectiveFunction(1))
+    exp = Experience(InjectiveFunction(2))
     K_progression = np.arange(imax) * 3 + 2
     coeffNK = 10
     N_progression = K_progression * coeffNK
     filename = "/scratch/WORK/tmp_KN.mat"
     if RETRAIN:
-        l1 = _train_K_N(exp, N_progression, K_progression)
-        scipy.io.savemat(filename, {"l1": l1})
+        r = _train_K_N(exp, N_progression, K_progression,
+                       with_null_sigma=True)
+        l1, l2 = r.transpose(1, 0, 2)
+        scipy.io.savemat(filename, {"l1": l1, "l2": l2})
     else:
         m = scipy.io.loadmat(filename)
-        l1 = m["l1"]
+        l1, l2 = m["l1"], m["l2"]
 
     labels = np.array(Mesures.LABELS_STUDY_ERROR)
-    choix = [0, 1, 2, 3, 4, 5]
+    choix = [0, 1, 2, 3, 4]
     labels = labels[choix]
+    labels2 = [x + " - 0-$\Sigma$" for x in labels]
+    labels = [l for l1, l2 in zip(labels, labels2) for l in [l1, l2]]
     data = l1.T[choix]
+    data2 = l2.T[choix]
+    data = np.array([v for d1, d2 in zip(data, data2) for v in [d1, d2]])
     data = np.array(data <= 1000, dtype=float) * data + np.array(data > 1000, dtype=int)
     title = "Evolution de l'erreur en fonction de K et N"
     xlabels = K_progression
-    graphiques.plusieursKN(data, labels, xlabels, True, "K", "Erreur", savepath="../evoKN.png",
-                           title=title, write_context=False)
+    graphiques.doubleplusieursKN(data, labels, xlabels, True, "K", "Erreur", savepath="../evoKN.png",
+                                 title=title, write_context=False)
 
 
 
@@ -258,4 +264,4 @@ if __name__ == '__main__':
     # test_map()
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
-    details_convergence(30, True)
+    details_convergence(60, True)

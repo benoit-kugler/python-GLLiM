@@ -20,8 +20,7 @@
 \makecell{ \textbf{ (! headercell.context.LABEL !) } \\
 { \small L,D = (! headercell.L !),(! headercell.D !) } \\
 {\small K = (! headercell.K !) } \\
-{\small N = (! headercell.N !) } \\ {\small (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) } \\
-{\small Modal pred. = (! headercell.context.PREFERED_MODAL_PRED !) } \\
+{\small N = (! headercell.N !) } \\
 {\small Contrainte $\Sigma$ : (! headercell.sigma_type !)  }}
 (# for m in line #)
 &  (# if m #) (! m.training_time | timespent !) (# endif #)
