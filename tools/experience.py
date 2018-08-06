@@ -338,7 +338,28 @@ def double_learning(Ntest=200):
     Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
     d2 = exp.mesures.run_mesures(gllims, Y, X)
-    exp.archive.save_mesures({"first": d1, "second": d2, "Ntest": Ntest}, "SecondLearning")
+    mexp1 = {"first": d1, "second": d2, "Ntest": Ntest}
+
+    exp = Experience(context.InjectiveFunction(4), partiel=None, with_plot=False)
+    exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
+    dGLLiM.dF_hook = exp.context.dF
+    # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
+    gllim = exp.load_model(100, mode="r", track_theta=False, init_local=200,
+                           sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
+
+    exp.centre_data_test()
+    exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]
+
+    d1 = exp.mesures.run_mesures(gllim)
+
+    exp = SecondLearning.from_experience(exp, with_plot=True)
+    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
+
+    d2 = exp.mesures.run_mesures(gllims, Y, X)
+    mexp2 = {"first": d1, "second": d2, "Ntest": Ntest}
+
+    exp.archive.save_mesures([mexp1, mexp2], "SecondLearning")
 
     # savepath = "/scratch/WORK/sequence2D"
     # exp.mesures.compare_density2D_parallel(Y[0:2], gllim, gllims[0:2], X=X[0:2], savepath=savepath)

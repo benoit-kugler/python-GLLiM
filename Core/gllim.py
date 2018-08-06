@@ -555,7 +555,7 @@ class GLLiM():
 
         if self.verbose:
             logging.debug("Final log-likelihood : " + str(self.LLs_[self.current_iter - 1]))
-            logging.debug(" Converged in %s iterations" % (self.current_iter))
+            logging.debug(f" Converged in {self.current_iter} iterations")
 
         if self.verbose is not None:
             t = int(time.time() - start_time_EM)
@@ -563,7 +563,7 @@ class GLLiM():
 
     def end_iter_callback(self, loglikelihood):
         if self.verbose is not None:
-            logging.debug("Iteration", self.current_iter)
+            logging.debug(f"Iteration {self.current_iter}")
         elif self.verbose:
             logging.debug("Log-likelihood = " + str(loglikelihood) + " at iteration nb :" + str(self.current_iter))
 

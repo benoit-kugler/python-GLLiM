@@ -174,7 +174,7 @@ class abstractMeasures():
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
                 logging.info(f"Tests {self.CATEGORIE}, exp. {i+1}/{imax}")
-                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
+                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=True)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
                 if dic is not None:
@@ -554,7 +554,7 @@ class ErrorPerComponentsWriter(abstractLatexWriter):
 
 
 def main():
-    # AlgosMeasure.run(True, True)
+    AlgosMeasure.run(True, True)
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -564,8 +564,8 @@ def main():
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
     #
-    AlgosLatexWriter.render()
-    AlgosTimeLatexWriter.render()
+    # AlgosLatexWriter.render()
+    # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()
     # DimensionLatexWriter.render()
     # ModalLatexWriter.render()
