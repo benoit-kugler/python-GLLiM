@@ -1,4 +1,4 @@
-# pyGLLIM
+# python-GLLIM
 
 Python version of *GLLiM* algorithm, written during an internship at Inria (Grenoble, 2018).
 
