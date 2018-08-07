@@ -81,7 +81,8 @@ class Attractor():
         base_inertie -= s/200
         return base_inertie
 
-class WeightedKMeans():
+
+class WeightedKMeans:
 
     PENALIZATION_CLUSTER = 10
 
@@ -93,7 +94,6 @@ class WeightedKMeans():
             self.ukList = X[0:self.K,:]
         else:
             self.ukList = init
-        print(self.ukList)
         self.x_squared_norms = row_norms(X,squared=True)
         self.X = X
         self.weights = weights
@@ -105,29 +105,39 @@ class WeightedKMeans():
     def _m_step(self):
         ar = self.rkn * self.weights # shape K , N
         Xw = np.array([self.X * ck[:,None] for ck in ar]) # shape (K ,N ,L)
-        print(ar.sum(axis=1))
         self.ukList = Xw.sum(axis=1) / ar.sum(axis=1)[:,None]
 
-    def fit_predict_score(self,X,weights,init,maxIter=50):
+    def fit_predict_score(self, X, weights, init, maxIter=1000):
         self.init_fit(X,weights,init)
         for i in range(maxIter):
-            print(i)
             self._e_step()
             self._m_step()
         labels , base_inertia = _labels_inertia(self.X,self.x_squared_norms,self.ukList)
-        inertia =  base_inertia + len(self.X) * self.K * self.X.shape[1] * self.PENALIZATION_CLUSTER
-        return labels , - inertia
+        # inertia =  base_inertia + len(self.X) * self.K * self.X.shape[1] * self.PENALIZATION_CLUSTER
+        inertia = 2 * np.log(base_inertia) - np.log(len(self.X)) * self.K
+        return labels, - inertia, self.ukList
 
-def best_K(X,weights):
+
+# def best_K(X,weights,KMax=4):
+#     res = []
+#     for K in range(1,KMax + 1):
+#         w = Attractor(K,X,weights)
+#         labels , score , uk = w.main()
+#         res.append((labels,score,uk))
+#     res = sorted(res,key = lambda d : d[1])
+#     best_label, best_score, best_uk = res[0]
+#     return  best_uk ,best_label
+
+def best_K(X, weights, KMax=4):
     res = []
-    for K in range(1,4):
-        w = Attractor(K,X,weights)
-        labels , score , uk = w.main()
-        res.append((labels,score,uk))
-    res = sorted(res,key = lambda d : d[1])
-    best_label, best_score, best_uk = res[0]
-    return  best_uk ,best_label
-
+    for K in range(1, KMax + 1):
+        w = WeightedKMeans(K)
+        labels, score, uklist = w.fit_predict_score(X, weights, None)
+        print(f"K = {K} score = {score}")
+        res.append((labels, score, uklist))
+    res = sorted(res, key=lambda d: d[1], reverse=True)
+    best_label, best_score, best_uklist = res[0]
+    return best_label, best_uklist
 
 def clustered_mean(Xs,weightss):
     """Returns the weighted center cluster by cluster"""

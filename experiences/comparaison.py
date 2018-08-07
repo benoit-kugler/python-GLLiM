@@ -554,7 +554,7 @@ class ErrorPerComponentsWriter(abstractLatexWriter):
 
 
 def main():
-    AlgosMeasure.run(True, True)
+    AlgosMeasure.run([False, False, False, True, True], [False, False, False, True, True])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)

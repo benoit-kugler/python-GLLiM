@@ -11,7 +11,7 @@ from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.riemannian import RiemannianjGLLiM
 from experiences.rtls import RtlsCO2Context
-from tools import context
+from tools import context, regularization
 from tools.archive import Archive
 from tools.context import InjectiveFunction
 from tools.measures import Mesures, VisualisationMesures, MesuresSecondLearning, VisualisationSecondLearning
@@ -417,6 +417,20 @@ def main():
                                       varlims=(-0.2, 1.2), regul=True, xtitle="wavelength (microns)")
 
 
+def clustered_prediction():
+    exp = Experience(context.InjectiveFunction(2), partiel=(0, 1), with_plot=True)
+
+    exp.load_data(regenere_data=False, with_noise=None, N=10000, method="sobol")
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+
+    Y = exp.Ytest[0:10]
+    X, _, weights = gllim.modal_prediction(Y, components=None)
+
+    labels, uks = regularization.best_K(X[0], weights[0], 3)
+    print(labels)
+    exp.mesures.G.Projections(X[0], labels, exp.variables_names, weights[0])
+
 
 def glace():
     exp = SecondLearning(context.VoieS, partiel=(0, 1, 2, 3))
@@ -541,6 +555,7 @@ if __name__ == '__main__':
     # main()
     # monolearning()
     # test_map()
-    double_learning()
+    # double_learning()
+    clustered_prediction()
     # glace()
     # test_map()

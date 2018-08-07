@@ -249,6 +249,40 @@ class abstractGridDrawerMPL(abstractDrawerMPL):
                 yield a
 
 
+class Projections(abstractGridDrawerMPL):
+    """Plot X, 2 per 2 coordinates."""
+
+    def _get_nb_subplot(self, X, labels, varnames, weights):
+        L = X.shape[1]
+        return L * (L - 1) // 2
+
+    def main_draw(self, X, labels, varnames, weights):
+        L = X.shape[1]
+        varnames = varnames if varnames is not None else [f"x{i + 1}" for i in range(L)]
+
+        if labels is not None:
+            colors = cm.rainbow(np.linspace(0.2, 0.8, max(labels) + 1))
+            colors = [colors[c] for c in labels]
+        else:
+            colors = [cm.rainbow(0.5)] * X.shape[0]
+
+        if weights is not None:
+            weights += 0.1
+            colors = [(*c[0:3], w) for c, w in zip(colors, weights)]
+            print(colors)
+
+        axes_iter = self.get_axes()
+        for i in range(L):
+            for j in range(i + 1, L):
+                a = next(axes_iter)
+                x = X[:, i]
+                y = X[:, j]
+                a.scatter(x, y, color=colors)
+                a.set_xlabel(varnames[i])
+                a.set_ylabel(varnames[j])
+        pyplot.show()
+
+
 class estimated_F(abstractGridDrawerMPL):
     AXES_3D = True
 
@@ -733,6 +767,30 @@ class MapValues(abstractDrawerMPL):
             self.fig.colorbar(s2, cax=cbar_ax)
 
 
+def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
+                   varnames, modal_preds, truex, title, with_colorbar=True):
+    if colorplot:
+        pc = axe.pcolormesh(x, y, z)
+        axe.set_xlim(*xlims)
+        axe.set_ylim(*ylims)
+        if with_colorbar:
+            pyplot.colorbar(pc, ax=axe)
+    else:
+        levels = np.linspace(0, z.max(), 20)
+        levels = [0.001] + list(levels)
+        axe.contour(x, y, z, levels=levels, alpha=0.5)
+    axe.set_xlabel(varnames[0])
+    axe.set_ylabel(varnames[1])
+
+    colors = cm.coolwarm(np.arange(len(modal_preds)) / len(modal_preds))
+    for i, (X, height, weight) in enumerate(modal_preds):
+        axe.scatter(X[0], X[1], color=colors[i], marker=".", label="X modal {0:.2e} - {1:.3f}".format(height, weight))
+        axe.annotate(str(i), (X[0], X[1]))
+
+    if truex is not None:
+        axe.scatter(truex[0], truex[1], color="r", marker="+", label="True value", s=50, zorder=10)
+
+    axe.set_title(title)
 
 
 ##### ----------------- TODO A refactor en classe  --------------- #################
@@ -775,30 +833,7 @@ def plot_density1D(fs,contexte,xlims=((0,1),),resolution=200,main_title="Density
         pyplot.close(fig)
 
 
-def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
-                   varnames, modal_preds, truex, title, with_colorbar=True):
-    if colorplot:
-        pc = axe.pcolormesh(x,y,z)
-        axe.set_xlim(*xlims)
-        axe.set_ylim(*ylims)
-        if with_colorbar:
-            pyplot.colorbar(pc, ax=axe)
-    else:
-        levels = np.linspace(0,z.max(),20)
-        levels = [0.001] + list(levels)
-        axe.contour(x,y,z,levels=levels,alpha=0.5)
-    axe.set_xlabel(varnames[0])
-    axe.set_ylabel(varnames[1])
 
-    colors = cm.coolwarm(np.arange(len(modal_preds)) / len(modal_preds))
-    for i, (X,height,weight) in enumerate(modal_preds):
-        axe.scatter(X[0],X[1], color=colors[i],marker=".",label="X modal {0:.2e} - {1:.3f}".format(height,weight))
-        axe.annotate(str(i),(X[0],X[1]))
-
-    if truex is not None:
-        axe.scatter(truex[0], truex[1], color="r", marker="+", label="True value",s = 50,zorder=10)
-
-    axe.set_title(title)
 
 
 
@@ -837,27 +872,6 @@ def influence_theta(B0,H):
     pyplot.plot(thetas,1+b)
     pyplot.xlabel(r"$\theta$ en radian")
     pyplot.ylabel(r"$1 + B$")
-    pyplot.show()
-
-
-def show_projections(X,labels=None,varnames=("x1","x2","x3","x4")):
-    """Plot 4 first dims of X, 2 per 2"""
-    f = pyplot.figure()
-    n = 1
-    if labels is not None:
-        colors = cm.coolwarm(np.arange(max(labels) + 1 ) / max(labels) )
-        colors =  [colors[c] for c in labels]
-    else:
-        colors = None
-    for i in range(4):
-        for j in range(i+1,4):
-            a = f.add_subplot(3,2,n)
-            n += 1
-            x = X[:,i]
-            y = X[:,j]
-            a.scatter(x,y,color=colors)
-            a.set_xlabel("$" + varnames[i] + "$")
-            a.set_ylabel("$" +varnames[j] + "$")
     pyplot.show()
 
 
