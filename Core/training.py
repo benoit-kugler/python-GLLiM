@@ -15,7 +15,7 @@ from Core.gllim import GLLiM
 NB_ITER_RNK = 20
 
 """Number of instances to use when choosing rnk."""
-NB_INSTANCES_RNK = 6
+NB_INSTANCES_RNK = 9
 
 """Number of iterations to fit """
 NB_MAX_ITER = 100
@@ -24,14 +24,21 @@ NB_MAX_ITER = 100
 NB_MAX_ITER_SECOND = 20
 
 """Number of used processes"""
-PROCESSES = 6
+PROCESSES = 3
 
 warnings.filterwarnings("ignore")
 
-def run_gllim(process_index, gllim : GLLiM, Xtrain, Ytrain):
+
+def initialize_process(_Ttrain, _Ytrain):
+    global PTtrain, PYtrain
+    PTtrain = _Ttrain
+    PYtrain = _Ytrain
+
+
+def run_gllim(process_index, gllim: GLLiM):
     np.random.seed(process_index * 100)  # Differents seed for different process
     try:
-        gllim.fit(Xtrain, Ytrain, 'random', maxIter=NB_ITER_RNK)
+        gllim.fit(PTtrain, PYtrain, 'random', maxIter=NB_ITER_RNK)
     except AssertionError as e: # numerical issu
         logging.warning(f"Init {process_index} interrupted due to numerical issues. Details \n {e}")
     ll = gllim.current_ll
@@ -43,10 +50,10 @@ def _best_rnk(Ttrain,Ytrain,K, Lw, sigma_type, gamma_type,
     """Performs NB_ITER_RNK on NB_INSTANCES_RNK GLLiM instance, after GMM random init.
     Then chooses best rnk (from log-likelihood point of view) and returns it.
     Uses multiprocessing."""
-    gllims = [(i,gllim_cls(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=verbose),
-               Ttrain, Ytrain) for i in range(NB_INSTANCES_RNK)]
+    gllims = [(i, gllim_cls(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=verbose)) for i in
+              range(NB_INSTANCES_RNK)]
 
-    with Pool(processes=PROCESSES) as p:
+    with Pool(processes=PROCESSES, initializer=initialize_process, initargs=(Ttrain, Ytrain)) as p:
         r = p.starmap(run_gllim, gllims)
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])
@@ -55,24 +62,24 @@ def _best_rnk(Ttrain,Ytrain,K, Lw, sigma_type, gamma_type,
     return rnk, gllim
 
 
-def run_gllim_precisions(process_index, gllim : GLLiM, Xtrain, Ytrain, ck_init, precision_factor):
+def run_gllim_precisions(process_index, gllim: GLLiM, ck_init, precision_factor):
     """Precisions in K ** precision_rate. ck_init_function may be random."""
     np.random.seed(process_index * 100)  # Differents seed for different process
     rho = np.ones(gllim.K) / gllim.K
     m = ck_init
-    precisions = precision_factor * np.array([np.eye(Xtrain.shape[1])] * gllim.K)
-    rnk = gllim._T_GMM_init(Xtrain,'random',
+    precisions = precision_factor * np.array([np.eye(PTtrain.shape[1])] * gllim.K)
+    rnk = gllim._T_GMM_init(PTtrain, 'random',
                             weights_init=rho,means_init=m,precisions_init=precisions)
     try:
-        gllim.fit(Xtrain,Ytrain,{"rnk":rnk},maxIter=NB_ITER_RNK)
+        gllim.fit(PTtrain, PYtrain, {"rnk": rnk}, maxIter=NB_ITER_RNK)
     except AssertionError as e:  # numerical issu
         logging.warning(f"Init {process_index} interrupted due to numerical issues. Details \n {e}")
     ll = gllim.current_ll
     return (ll, gllim.rnk, gllim)
 
 
-def _best_rnk_precisions(Xtrain,Ytrain,K,ck_init_function,precision_rate,
-                         Lw,sigma_type,gamma_type,gllim_cls,verbose) -> (np.array, GLLiM):
+def _best_rnk_precisions(Ttrain, Ytrain, K, ck_init_function, precision_rate,
+                         Lw, sigma_type, gamma_type, gllim_cls, verbose) -> (np.array, GLLiM):
     """Performs NB_ITER_RNK on NB_INSTANCES_RNK GLLiM instance, after GMM init with given precisions.
     Then chooses best rnk (from log-likelihood point of view) and returns it.
     Uses multiprocessing."""
@@ -82,10 +89,11 @@ def _best_rnk_precisions(Xtrain,Ytrain,K,ck_init_function,precision_rate,
         np.random.seed(i * 100)
         ck_inits.append(ck_init_function())
 
-    gllims =[ (i,gllim_cls(K,Lw,sigma_type=sigma_type,gamma_type=gamma_type,verbose=verbose),
-               Xtrain,Ytrain,ck_init,precision_rate) for i , ck_init in enumerate(ck_inits)]
+    gllims = [
+        (i, gllim_cls(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=verbose), ck_init, precision_rate)
+        for i, ck_init in enumerate(ck_inits)]
 
-    with Pool(processes=PROCESSES) as p:
+    with Pool(processes=PROCESSES, initializer=initialize_process, initargs=(Ttrain, Ytrain)) as p:
         r = p.starmap(run_gllim_precisions,gllims)
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])

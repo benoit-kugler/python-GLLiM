@@ -46,7 +46,7 @@ class InverseGLLiM(GLLiM):
         Ypred = np.sum(alpha.reshape((1, N, self.K)) * proj, axis=2)  # (16)
         if with_covariance:
             covs = np.empty((N, self.D, self.D))
-            for n, meann, alphan in zip(range(N), proj.transpose((1, 2, 0)), alpha):
+            for n, meann, alphan in zip(range(N), proj, alpha):
                 covs[n] = covariance_melange(alphan, meann, self.SigmakList)
             return Ypred.T, covs
         return Ypred.T  # N x L

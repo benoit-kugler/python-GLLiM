@@ -144,6 +144,7 @@ def clustered_mean(Xs,weightss):
     return [ best_K(X,weights)[0] for X, weights in zip(Xs,weightss)]
 
 
+### ------------- REGULARIZATION ------ ###
 
 ## Regularization by penalization of gradient over wave length
 def step_by_step(Xs):

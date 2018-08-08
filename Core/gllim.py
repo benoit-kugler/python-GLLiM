@@ -19,6 +19,7 @@ from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
 
 from Core.log_gauss_densities import chol_loggausspdf, densite_melange, dominant_components, covariance_melange, \
     chol_loggausspdf_iso
+from tools import regularization
 
 
 class CovarianceTypeError(NotImplementedError):
@@ -539,8 +540,14 @@ class GLLiM():
         while (not converged) and (self.current_iter < maxIter):
             self._remove_empty_cluster()
 
+            if self.verbose:
+                logging.debug("M - Step...")
+
             self.pikList, self.ckList_T, self.GammakList_T, self.AkList, self.bkList, self.SigmakList = \
                 self.compute_next_theta(T, Y)
+
+            if self.verbose:
+                logging.debug("E - Step...")
 
             lognormrnk, logrnk = self._compute_rnk(Y, T)
 
@@ -554,7 +561,7 @@ class GLLiM():
             self.current_iter += 1
 
         if self.verbose:
-            logging.debug("Final log-likelihood : " + str(self.LLs_[self.current_iter - 1]))
+            logging.debug(f"Final log-likelihood : {self.LLs_[self.current_iter - 1]}")
             logging.debug(f" Converged in {self.current_iter} iterations")
 
         if self.verbose is not None:
@@ -565,7 +572,7 @@ class GLLiM():
         if self.verbose is not None:
             logging.debug(f"Iteration {self.current_iter}")
         elif self.verbose:
-            logging.debug("Log-likelihood = " + str(loglikelihood) + " at iteration nb :" + str(self.current_iter))
+            logging.debug(f"Log-likelihood = {loglikelihood} at iteration nb : {self.current_iter}")
 
         self.LLs_.append(loglikelihood)
         if self.track_theta:  # Save parameters history
@@ -611,7 +618,7 @@ class GLLiM():
             self.bkListS[k] = bS
 
         if self.verbose is not None:
-            logging.debug("--- %s seconds for inversion ---" % (time.time() - start_time_inversion))
+            logging.debug(f"--- {time.time() - start_time_inversion} seconds for inversion ---")
 
     def inversion_with_null_sigma(self):
         # Inversion step
@@ -632,7 +639,7 @@ class GLLiM():
         """
         Compute the mean Ak*Y + Bk and the quantities alpha depending of Y in (7)
         :param Y: shape (N,D)
-        :return: mean shape(L,N,K) alpha shape (N,K)
+        :return: mean shape(N,K,L) alpha shape (N,K)
         """
         N = Y.shape[0]
         Y = Y.reshape((N, self.D))
@@ -648,17 +655,21 @@ class GLLiM():
         log_density = logsumexp(logalpha, axis=1, keepdims=True)
         logalpha -= log_density
         alpha, normalisation = np.exp(logalpha), np.exp(log_density)
-        return proj, alpha, normalisation
+        return proj.transpose((1, 2, 0)), alpha, normalisation
+
+    @staticmethod
+    def _mean_melange(meanss, weightss):
+        return np.sum(weightss.reshape((1, *weightss.shape)) * meanss.transpose((2, 0, 1)), axis=2).T
 
     def predict_high_low(self, Y, with_covariance=False):
         """Forward prediction.
         If with_covariance, returns covariance matrix of the mixture, shape (len(Y),L,L)"""
         N = Y.shape[0]
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
-        Xpred = np.sum(alpha.reshape((1, N, self.K)) * proj, axis=2)  # (16)
+        Xpred = self._mean_melange(proj, alpha)  # (16)
         if with_covariance:
             covs = np.empty((N, self.Lt, self.Lt))
-            for n, meann, alphan in zip(range(N), proj.transpose((1, 2, 0)), alpha):
+            for n, meann, alphan in zip(range(N), proj, alpha):
                 covs[n] = covariance_melange(alphan, meann, self.SigmakListS)
             return Xpred.T, covs
         return Xpred.T  # N x L
@@ -711,7 +722,7 @@ class GLLiM():
         NX, D = X_points.shape
         N = Y.shape[0]
         if marginals:
-            proj = proj[marginals, :, :]  # len(marginals) , N , K
+            proj = proj[:, :, marginals]  # len(marginals) , N , K
             covs = self.SigmakListS[:, marginals, :][:, :, marginals]  # K, len(marginals), len(marginals)
         else:
             covs = self.SigmakListS
@@ -719,7 +730,7 @@ class GLLiM():
         densites = np.empty((N, NX))
         sub_dens = np.empty((sub_densities, N, NX))
         t = time.time()
-        for n, meann, alphan in zip(range(N), proj.transpose((1, 2, 0)), alpha):
+        for n, meann, alphan in zip(range(N), proj, alpha):
             densites[n] = densite_melange(X_points, alphan, meann, covs)
             if sub_densities:
                 dominants = dominant_components(alphan, meann, covs)[0:sub_densities]
@@ -743,7 +754,7 @@ class GLLiM():
         lc = components or self.K
         threshold = threshold if (components is None) else None
         X, heights, weights = [], [], []
-        for n, meann, alphan in zip(range(N), proj.transpose((1, 2, 0)), alpha):
+        for n, meann, alphan in zip(range(N), proj, alpha):
             dominants = dominant_components(alphan, meann, covs, threshold=threshold,
                                             sort_by=sort_by, dets=det_covs)[0:lc]
             if len(dominants) == 0:
@@ -757,19 +768,63 @@ class GLLiM():
             X.append(np.array(xs))
         return X, heights, weights
 
-
-    def predict_sample(self, Y, nb_per_Y=10):
-        """Compute law of X knowing Y and nb_per_Y points following this law"""
-        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
-        N, _ = Y.shape
-        out = np.empty((N, nb_per_Y, self.L))
-        alea = np.random.multivariate_normal(np.zeros(self.L), np.eye(self.L), (N, nb_per_Y))
-        for weights, means, Xs, n in zip(alpha, proj.transpose((1, 2, 0)), alea, range(N)):
-            clusters = np.random.multinomial(1, weights, size=nb_per_Y).argmax(axis=1)
+    def _sample_from_mixture(self, means, weights, size):
+        """means shape N,K,L weights shape N,K"""
+        N, K, L = means.shape
+        out = np.empty((N, size, L))
+        alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), (N, size))
+        for weights, means, Xs, n in zip(weights, means, alea, range(N)):
+            clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
             means = np.array([means[k] for k in clusters])
             covs = np.array([self.SigmakListS[k] for k in clusters])
             out[n] = np.matmul(covs, Xs[:, :, None])[:, :, 0] + means
         return out
+
+    def predict_sample(self, Y, nb_per_Y=10):
+        """Compute law of X knowing Y and nb_per_Y points following this law"""
+        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
+        return self._sample_from_mixture(proj, alpha, nb_per_Y)
+
+    @staticmethod
+    def monte_carlo_esperance(samples, centres):
+        """Compute approximate E[X | X proche de ck] / E[X proche de ck]
+        samples shape : (N,L) centres shape (K,L)
+        """
+        choix = np.square(samples[:, None] - centres[None, :]).sum(axis=2).argmin(axis=1)
+        crible = (choix[:, None] == np.arange(len(centres)))
+        denom = crible.sum(axis=0)[:, None]
+        esp_rapp = (samples[:, None, :] * crible[:, :, None]).sum(axis=0) / denom
+        return esp_rapp, choix
+
+    def clustered_prediction(self, Y, F, nb_predsMax=3, size=50000):
+        """Compute prediction of several x per y.
+        Number of x to predict is choosen according to F criteria."""
+        meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
+        sampless = self._sample_from_mixture(meanss, weightss, size)
+        Xmeans = GLLiM._mean_melange(meanss, weightss)  # avoid recomp
+        preds = []
+        for X, weights, y, samples, xmean in zip(meanss, weightss, Y, sampless, Xmeans):
+            y_accuracy, xs = [np.square(F(xmean[None, :])[0] - y).sum()], [xmean[None, :]]
+            for nb_preds in range(2, nb_predsMax + 1):
+                w = regularization.WeightedKMeans(nb_preds)
+                try:
+                    labels, score, centers = w.fit_predict_score(X, weights, None)
+                except ValueError:
+                    logging.warning(f"Clustering on modals into {nb_preds} groups failed !")
+                    err, Xpreds = np.inf, None
+                else:
+                    Xpreds, choix = self.monte_carlo_esperance(samples, centers)
+                    if not np.isfinite(Xpreds).all():
+                        logging.warning(f"One of {nb_preds} clusters with no points in monte-carlo integration !")
+                        err, Xpreds = np.inf, None
+                    else:
+                        ys = F(Xpreds)
+                        err = np.square(ys - y).sum(axis=1).max()
+                y_accuracy.append(err)
+                xs.append(Xpreds)
+            best_K = np.argmin(y_accuracy)
+            preds.append(xs[best_K])
+        return preds
 
 
 class jGLLiM(GLLiM):

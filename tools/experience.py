@@ -408,7 +408,7 @@ def main():
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
     exp.load_data(regenere_data=False, with_noise=50, N=1000, method="sobol")
-    gllim = exp.load_model(10, mode="l", track_theta=False, init_local=200,
+    gllim = exp.load_model(10, mode="r", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     MCMC_X, Std = exp.context.get_result()
@@ -418,18 +418,15 @@ def main():
 
 
 def clustered_prediction():
-    exp = Experience(context.InjectiveFunction(2), partiel=(0, 1), with_plot=True)
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
-    exp.load_data(regenere_data=False, with_noise=None, N=10000, method="sobol")
-    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
+    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
+    gllim = exp.load_model(200, mode="l", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    Y = exp.Ytest[0:10]
-    X, _, weights = gllim.modal_prediction(Y, components=None)
-
-    labels, uks = regularization.best_K(X[0], weights[0], 3)
-    print(labels)
-    exp.mesures.G.Projections(X[0], labels, exp.variables_names, weights[0])
+    Y = exp.Ytest[0:20]
+    regularization.clustered_prediction(gllim, Y, exp.context.F)
+    # exp.mesures.G.Projections(X[0], labels, exp.variables_names, weights[0])
 
 
 def glace():
