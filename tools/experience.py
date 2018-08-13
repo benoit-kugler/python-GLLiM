@@ -1,4 +1,5 @@
 """Runs severals real tests on GLLiM, sGLLiM etc... """
+import json
 import logging
 import logging.config
 import time
@@ -320,12 +321,12 @@ class SecondLearning(Experience):
 #     exp.mesures.correlations2D(gllim, exp.context.get_observations(), exp.context.wave_lengths, 1, method="mean")
 
 
-def double_learning(Ntest=200):
+def double_learning(Ntest=200, retrain=True):
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
-    exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
+    exp.load_data(regenere_data=retrain, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100, mode="r", track_theta=False, init_local=200,
+    gllim = exp.load_model(100, mode=retrain and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
     exp.centre_data_test()
@@ -339,6 +340,8 @@ def double_learning(Ntest=200):
 
     d2 = exp.mesures.run_mesures(gllims, Y, X)
     mexp1 = {"first": d1, "second": d2, "Ntest": Ntest}
+
+    ### ---------------------------------------------------------------------------- ###
 
     exp = Experience(context.InjectiveFunction(4), partiel=None, with_plot=False)
     exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
@@ -408,25 +411,16 @@ def main():
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
     exp.load_data(regenere_data=False, with_noise=50, N=1000, method="sobol")
-    gllim = exp.load_model(10, mode="r", track_theta=False, init_local=200,
+    gllim = exp.load_model(10, mode="l", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    MCMC_X, Std = exp.context.get_result()
-    exp.results.plot_density_sequence(gllim, exp.context.get_observations(), exp.context.wave_lengths,
-                                      index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=True,
-                                      varlims=(-0.2, 1.2), regul=True, xtitle="wavelength (microns)")
+    exp.mesures._nrmse_mean_prediction(gllim)
 
+    # MCMC_X, Std = exp.context.get_result()
+    # exp.results.plot_density_sequence(gllim, exp.context.get_observations(), exp.context.wave_lengths,
+    #                                   index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=True,
+    #                                   varlims=(-0.2, 1.2), regul=True, xtitle="wavelength (microns)")
 
-def clustered_prediction():
-    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
-
-    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
-    gllim = exp.load_model(200, mode="l", track_theta=False, init_local=200,
-                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
-
-    Y = exp.Ytest[0:20]
-    regularization.clustered_prediction(gllim, Y, exp.context.F)
-    # exp.mesures.G.Projections(X[0], labels, exp.variables_names, weights[0])
 
 
 def glace():
@@ -552,7 +546,6 @@ if __name__ == '__main__':
     # main()
     # monolearning()
     # test_map()
-    # double_learning()
-    clustered_prediction()
+    double_learning(Ntest=1000, retrain=False)
     # glace()
     # test_map()

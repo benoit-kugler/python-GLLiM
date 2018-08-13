@@ -671,8 +671,8 @@ class GLLiM():
             covs = np.empty((N, self.Lt, self.Lt))
             for n, meann, alphan in zip(range(N), proj, alpha):
                 covs[n] = covariance_melange(alphan, meann, self.SigmakListS)
-            return Xpred.T, covs
-        return Xpred.T  # N x L
+            return Xpred, covs
+        return Xpred  # N x L
 
     def predict_cluster(self, X, with_covariance=False):
         """Backward prediction
@@ -768,12 +768,12 @@ class GLLiM():
             X.append(np.array(xs))
         return X, heights, weights
 
-    def _sample_from_mixture(self, means, weights, size):
+    def _sample_from_mixture(self, meanss, weightss, size):
         """means shape N,K,L weights shape N,K"""
-        N, K, L = means.shape
+        N, K, L = meanss.shape
         out = np.empty((N, size, L))
         alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), (N, size))
-        for weights, means, Xs, n in zip(weights, means, alea, range(N)):
+        for weights, means, Xs, n in zip(weightss, meanss, alea, range(N)):
             clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
             means = np.array([means[k] for k in clusters])
             covs = np.array([self.SigmakListS[k] for k in clusters])
@@ -796,14 +796,15 @@ class GLLiM():
         esp_rapp = (samples[:, None, :] * crible[:, :, None]).sum(axis=0) / denom
         return esp_rapp, choix
 
-    def clustered_prediction(self, Y, F, nb_predsMax=3, size=50000):
+    def clustered_prediction(self, Y, F, nb_predsMax=3, size=100):
         """Compute prediction of several x per y.
         Number of x to predict is choosen according to F criteria."""
         meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
-        sampless = self._sample_from_mixture(meanss, weightss, size)
+        # sampless = self._sample_from_mixture(meanss, weightss, size)  # too large when N is big
         Xmeans = GLLiM._mean_melange(meanss, weightss)  # avoid recomp
         preds = []
-        for X, weights, y, samples, xmean in zip(meanss, weightss, Y, sampless, Xmeans):
+        for X, weights, y, xmean, means in zip(meanss, weightss, Y, Xmeans, meanss):
+            samples = self._sample_from_mixture(means[None, :], weights[None, :], size)[0]
             y_accuracy, xs = [np.square(F(xmean[None, :])[0] - y).sum()], [xmean[None, :]]
             for nb_preds in range(2, nb_predsMax + 1):
                 w = regularization.WeightedKMeans(nb_preds)

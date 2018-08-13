@@ -46,8 +46,8 @@
     & (! macros.LABEL_CRITERE(critere) !)
     (# for m in line #)
     &
-    (# if m and '__memory_error__' in m #)
-    (# if rowloop.first #) \multicolumn{3}{c}{\multirow{6}{*}{ Mémoire vive insuffisante }} (# endif #)
+    (# if m and '__error__' in m #)
+    (# if rowloop.first #) \multicolumn{3}{c}{\multirow{6}{*}{ (! m.__error__ !) }} (# endif #)
     (# else #)
     (# block cell scoped #)
     (! macros.MESURES(m,critere) !)

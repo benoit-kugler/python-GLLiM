@@ -250,6 +250,19 @@ class MixedFunction(abstractSimpleFunctionModel):
         return (X >= 1) * np.cos(X * 10) + (X <= 1) * X
 
 
+class TwoSolutionsFunction(abstractSimpleFunctionModel):
+    D = 4
+    DEFAULT_VALUES = np.array([0.5] * 4)
+    XLIMS = np.array([[0, 1]] * 4)
+    YLIMS = np.exp([[-1, 2]] * 4)
+    PARAMETERS = np.array(["x{}".format(i + 1) for i in range(4)])
+
+    def F(self, X):
+        out = np.empty(X.shape)
+        out[:, 0] = (X[:, 0] - 0.5) ** 2
+        out[:, 1:-1] = X[:, 1:-1]
+        return out
+
 class abstractExpFunction(abstractSimpleFunctionModel):
 
     MAX_F = np.exp(2)

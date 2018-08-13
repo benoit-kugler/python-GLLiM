@@ -39,6 +39,11 @@ class Mesures():
             return norm, diff.T
         return norm
 
+    @staticmethod
+    def sumup_errors(l):
+        """Return a dict containing mean, median and std of values"""
+        return {"mean": np.mean(l), "median": np.median(l), "std": np.std(l)}
+
 
     def _collect_infos_density(self,density_full,title,X0_obs,i,j=None,modal_pred_full=None):
         exp = self.experience
@@ -154,11 +159,19 @@ class Mesures():
 
         return nrmse, label, worstX, nb_valid, nrmseY, nrmseY_best
 
+    def _nrmse_clustered_prediction(self, gllim):
+        exp = self.experience
+        logging.info("Starting clustered prediction...")
+        Xs = gllim.clustered_prediction(exp.Ytest, exp.context.F)
+        Xs, mask = exp.clean_X(Xs)
+        mask = [(m is not None and sum(m, 0) > 0) for m in mask]  # only X,Y for which at least one prediction is clean
+        Y, Xtrue = exp.Ytest[mask], exp.Xtest[mask]
+        nrmse, _, _, nrmseY, nrmseY_best = exp.mesures._nrmse_multiXperY(Xs, Xtrue, Y, None)
+        return nrmse, nrmseY, nrmseY_best
+
     def run_mesures(self, gllim):
         """Runs severals tests. It's advised to center data before. Returns results (mean, median, std)"""
         exp = self.experience
-
-        sumup = lambda l  = None : {"mean":np.mean(l),"median":np.median(l), "std":np.std(l)}
 
         if exp.context.PREFERED_MODAL_PRED == "prop":
             method = 1 / gllim.K
@@ -167,13 +180,13 @@ class Mesures():
         errorsF, errorsF_clean, validF = self._nrmse_compare_F(gllim)
         errorsMe, errorsMecomponents, _, validMe, meanretrouveY = self._nrmse_mean_prediction(gllim)
         errorsMo, labelmodal, _, validMo, errorsY, errorsY_best = self._nrmse_modal_prediction(gllim, method)
-        errorsMecomponents = [sumup(x) for x in errorsMecomponents]
+        errorsMecomponents = [self.sumup_errors(x) for x in errorsMecomponents]
 
         logging.debug(f'\tModal prediction mode for {exp.context.__class__.__name__} : {labelmodal}')
-        return dict(compareF=sumup(errorsF), meanPred=sumup(errorsMe),
-                    modalPred=sumup(errorsMo), retrouveY=sumup(errorsY),
-                    compareF_clean=sumup(errorsF_clean), retrouveYbest=sumup(errorsY_best),
-                    validPreds=(validMe, validMo), retrouveYmean=sumup(meanretrouveY),
+        return dict(compareF=self.sumup_errors(errorsF), meanPred=self.sumup_errors(errorsMe),
+                    modalPred=self.sumup_errors(errorsMo), retrouveY=self.sumup_errors(errorsY),
+                    compareF_clean=self.sumup_errors(errorsF_clean), retrouveYbest=self.sumup_errors(errorsY_best),
+                    validPreds=(validMe, validMo), retrouveYmean=self.sumup_errors(meanretrouveY),
                     errorsMecomponents=errorsMecomponents)
 
     def compare_sorting(self, G: GLLiM):

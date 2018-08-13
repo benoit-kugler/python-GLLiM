@@ -15,7 +15,7 @@ from Core.gllim import GLLiM
 NB_ITER_RNK = 20
 
 """Number of instances to use when choosing rnk."""
-NB_INSTANCES_RNK = 9
+NB_INSTANCES_RNK = 8
 
 """Number of iterations to fit """
 NB_MAX_ITER = 100
@@ -24,7 +24,7 @@ NB_MAX_ITER = 100
 NB_MAX_ITER_SECOND = 20
 
 """Number of used processes"""
-PROCESSES = 3
+PROCESSES = 4
 
 warnings.filterwarnings("ignore")
 

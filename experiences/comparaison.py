@@ -17,7 +17,7 @@ from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM, WrongContextError
 from experiences import logistic
 from hapke import relation_C
-from tools import context
+from tools import context, experience
 from tools.archive import Archive
 from tools.experience import SecondLearning, Experience
 
@@ -97,50 +97,68 @@ RELATIONC_exps = [
 ]
 
 PARCOMPONENTS_exps = [
-    {"context": context.HapkeContext, "partiel": None, "K": 10, "N": 500,
+    {"context": context.HapkeContext, "partiel": None, "K": 100, "N": 100000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 10, "N": 500,
+    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"}
 ]
 
-def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain, Xtest=None, Ytest=None):
-    """If Xtest and Ytest are given, use instead of exp data.
-    Useful to fix data across severals exp"""
+CLUSTERED_PREDICTION_exps = [
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.TwoSolutionsFunction, "partiel": None, "K": 100, "N": 100000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+]
+
+
+def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method,
+                      redata, retrain):
     logging.info("  Starting {name} (K = {K}, N = {N})  ...".format(name=gllim_cls.__name__, **exp_params))
     ti = time.time()
     try:
         exp.load_data(regenere_data=redata, with_noise=noise, N=exp_params["N"], method=method)
-        gllim1, training_time = exp.load_model(exp_params["K"], mode=retrain and "r" or "l",
-                                               init_local=exp_params["init_local"],
-                                               sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
-                                               gllim_cls=gllim_cls, with_time=True)
+        gllim, training_time = exp.load_model(exp_params["K"], mode=retrain and "r" or "l",
+                                              init_local=exp_params["init_local"],
+                                              sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
+                                              gllim_cls=gllim_cls, with_time=True)
     except FileNotFoundError as e:
         logging.warning(
             "--- No model or data found for experience {}, version {} - noise : {} ---".format(i + 1,
                                                                                                gllim_cls.__name__,
                                                                                                noise))
         logging.debug(e)
-        return None
+        return {"__error__": "Données ou model indisponibles"}
     except WrongContextError as e:
         logging.warning("\t{} method is not appropriate for the parameters ! "
-              "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
-        return None
+                        "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
+        return {"__error__": " - "}
     except np.linalg.LinAlgError as e:
         logging.error("\tTraining failed ! {}".format(e))
-        return None
+        return {"__error__": "Instabilité numérique"}
     except MemoryError:
         logging.critical("\t Memory Error ! Training failed")
-        return {"__memory_error__": True}
+        return {"__error__": "Mémoire vive insuffisante"}
     except AssertionError as e:
         logging.error("\tTraining failed ! {}".format(e))
-        return None
+        return {"__error__": str(e)}
     logging.info("  Model fitted or loaded in {}".format(timedelta(seconds=time.time() - ti)))
+    return gllim, training_time
+
+
+def _load_train_measure_gllim(i, gllim_cls, exp, exp_params, noise, method,
+                              redata, retrain, Xtest=None, Ytest=None):
+    """If Xtest and Ytest are given, use instead of exp data.
+    Useful to fix data across severals exp"""
+    r = _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method, redata, retrain)
+    if type(r) is dict:
+        return r
+    gllim, training_time = r
     ti = time.time()
     if Xtest is not None:
         exp.Xtest, exp.Ytest = Xtest, Ytest
     else:
         exp.centre_data_test()
-    m = exp.mesures.run_mesures(gllim1)
+    m = exp.mesures.run_mesures(gllim)
     m["training_time"] = training_time
     logging.info("  Mesures done in {}".format(timedelta(seconds=time.time() - ti)))
     return m
@@ -217,7 +235,8 @@ class abstractLatexWriter():
     latex_jinja_env.globals.update(zip=zip)
     latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%H h %M m %S s", time.gmtime(s))
 
-    CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean", "retrouveY", "retrouveYbest"]
+    CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean",
+                "retrouveY", "retrouveYbest", "validPreds"]
 
     LATEX_EXPORT_PATH = "../latex/tables"
     """Saving directory for bare latex table"""
@@ -266,7 +285,7 @@ class abstractLatexWriter():
             return b, b2
 
         for line in self.matrix:
-            for key in self.CRITERES:
+            for key in set(self.CRITERES) - {"validPreds"}:
                 values = [case[key] if case else None for case in line]
                 bmean, bmedian = best(values)
                 if bmean is not None:  # adding indicator of best
@@ -294,11 +313,10 @@ class abstractLatexWriter():
 
     def render_latex(self, label=None):
         template = self.latex_jinja_env.get_template(self.template)
-        CRITERES = self.CRITERES + ["validPreds"]
         label = label or self.CATEGORIE
         baretable = template.render(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
                                     hHeader=self._horizontal_header(), vHeader=self._vertical_header(),
-                                    label=label, CRITERES=CRITERES,
+                                    label=label, CRITERES=self.CRITERES,
                                     FACTOR_NUMBERS=self.FACTOR_NUMBERS)
         standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
         return baretable, standalone_template.render(TABLE=baretable)
@@ -336,12 +354,12 @@ class AlgosMeasure(abstractMeasures):
 
     def _dic_mesures(self,i,exp,exp_params,t):
         dic = {}
-        dic["NG"] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # noisy GLLiM
+        dic["NG"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # noisy GLLiM
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic["NjG"] = _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
-                                       Ytest=Ytest)  # noisy joint GLLiM
-        dic["NdG"] = _load_train_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
-                                       Ytest=Ytest)  # noisy dGLLiM
+        dic["NjG"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
+                                               Ytest=Ytest)  # noisy joint GLLiM
+        dic["NdG"] = _load_train_measure_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
+                                               Ytest=Ytest)  # noisy dGLLiM
         return dic
 
 class GenerationMeasure(abstractMeasures):
@@ -350,12 +368,12 @@ class GenerationMeasure(abstractMeasures):
 
     def _dic_mesures(self,i,exp,exp_params,t):
         dic = {}
-        dic['sobol'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # sobol
+        dic['sobol'] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # sobol
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
-        dic['latin'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "latin", False, t, Xtest=Xtest,
-                                         Ytest=Ytest)  # latin
-        dic['random'] = _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "random", False, t, Xtest=Xtest,
-                                          Ytest=Ytest)  # random
+        dic['latin'] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, NOISE, "latin", False, t, Xtest=Xtest,
+                                                 Ytest=Ytest)  # latin
+        dic['random'] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, NOISE, "random", False, t, Xtest=Xtest,
+                                                  Ytest=Ytest)  # random
         return dic
 
 class DimensionMeasure(abstractMeasures):
@@ -363,7 +381,7 @@ class DimensionMeasure(abstractMeasures):
     experiences = DIMENSION_exps
 
     def _dic_mesures(self, i, exp: Experience, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
+        dic = {"gllim": _load_train_measure_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
         return dic
 
 
@@ -374,7 +392,7 @@ class ModalMeasure(abstractMeasures):
     def _dic_mesures(self, i, exp, exp_params, t):
         if isinstance(exp.context, context.abstractExpFunction):
             exp.context.PREFERED_MODAL_PRED = 1
-        dic = {"gllim": _load_train_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
+        dic = {"gllim": _load_train_measure_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t)}
         return dic
 
 
@@ -383,7 +401,7 @@ class LogistiqueMeasure(abstractMeasures):
     experiences = LOGISTIQUE_exps
 
     def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"gllim": _load_train_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        dic = {"gllim": _load_train_measure_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)}
         return dic
 
 
@@ -393,9 +411,9 @@ class NoisesMeasure(abstractMeasures):
 
     def _dic_mesures(self, i, exp, exp_params, t):
         dic = {}
-        dic["no"] = _load_train_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)
-        dic["10"] = _load_train_gllim(i, GLLiM, exp, exp_params, 10, "sobol", t, t)
-        dic["50"] = _load_train_gllim(i, GLLiM, exp, exp_params, 50, "sobol", t, t)
+        dic["no"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)
+        dic["10"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, 10, "sobol", t, t)
+        dic["50"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, 50, "sobol", t, t)
         return dic
 
 
@@ -405,14 +423,16 @@ class LocalMeasure(abstractMeasures):
 
     def _dic_mesures(self, i, exp, exp_params, t):
         dic = {}
-        dic["no"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=None), NOISE, "sobol", t, t)
+        dic["no"] = _load_train_measure_gllim(i, dGLLiM, exp, dict(exp_params, init_local=None), NOISE, "sobol", t, t)
         Xtest, Ytest = exp.Xtest, exp.Ytest
-        dic["10"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=10), NOISE, "sobol", False, t,
-                                      Xtest=Xtest, Ytest=Ytest)
-        dic["100"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=100), NOISE, "sobol", False, t,
-                                       Xtest=Xtest, Ytest=Ytest)
-        dic["1000"] = _load_train_gllim(i, dGLLiM, exp, dict(exp_params, init_local=1000), NOISE, "sobol", False, t,
-                                        Xtest=Xtest, Ytest=Ytest)
+        dic["10"] = _load_train_measure_gllim(i, dGLLiM, exp, dict(exp_params, init_local=10), NOISE, "sobol", False, t,
+                                              Xtest=Xtest, Ytest=Ytest)
+        dic["100"] = _load_train_measure_gllim(i, dGLLiM, exp, dict(exp_params, init_local=100), NOISE, "sobol", False,
+                                               t,
+                                               Xtest=Xtest, Ytest=Ytest)
+        dic["1000"] = _load_train_measure_gllim(i, dGLLiM, exp, dict(exp_params, init_local=1000), NOISE, "sobol",
+                                                False, t,
+                                                Xtest=Xtest, Ytest=Ytest)
         return dic
 
 
@@ -421,7 +441,7 @@ class RelationCMeasure(abstractMeasures):
     experiences = RELATIONC_exps
 
     def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"jgllim": _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        dic = {"jgllim": _load_train_measure_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
         return dic
 
 
@@ -430,8 +450,29 @@ class PerComponentsMeasure(abstractMeasures):
     METHODES = ["jgllim"]
 
     def _dic_mesures(self, i, exp, exp_params, t):
-        dic = {"jgllim": _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
+        dic = {"jgllim": _load_train_measure_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)}
         return dic
+
+
+class ClusteredPredictionMeasure(abstractMeasures):
+    experiences = CLUSTERED_PREDICTION_exps
+    METHODES = ["jGLLiM"]
+
+    def _dic_mesures(self, i, exp: Experience, exp_params, t):
+        r = _load_train_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", t, t)
+        if type(r) is dict:  # error
+            return r
+        gllim, training_time = r
+        mo_c, y_c, ybest_c = exp.mesures._nrmse_clustered_prediction(gllim)
+        dic = dict(exp.mesures.run_mesures(gllim),
+                   clusteredPred=exp.mesures.sumup_errors(mo_c),
+                   retrouveYclustered=exp.mesures.sumup_errors(y_c),
+                   retrouveYbestclustered=exp.mesures.sumup_errors(ybest_c),
+                   training_time=training_time)
+        return {"jGLLiM": dic}
+
+
+
 
 ### ----------------------------- LATEX WRTIERS ------------------------------- ###
 
@@ -553,8 +594,18 @@ class ErrorPerComponentsWriter(abstractLatexWriter):
     DESCRIPTION = "Erreur (en valeur absolue) pour la prédiction par la moyenne"
 
 
+class ClusteredPredictionWriter(abstractLatexWriter):
+    MEASURE_class = ClusteredPredictionMeasure
+    template = "clustered_pred.tex"
+    TITLE = "Prédiction par moyenne locale"
+    DESCRIPTION = "Etude la prédiction par la moyenne restreinte localement."
+    CRITERES = ["meanPred", "modalPred", "retrouveYmean",
+                "retrouveY", "retrouveYbest"] + ["clusteredPred", "retrouveYclustered",
+                                                 "retrouveYbestclustered"]
+
 def main():
-    AlgosMeasure.run([False, False, False, True, True], [False, False, False, True, True])
+    """Run test"""
+    # AlgosMeasure.run(True, True)
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -563,6 +614,7 @@ def main():
     # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
+    # ClusteredPredictionMeasure.run(True,True)
     #
     # AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
@@ -575,6 +627,8 @@ def main():
     # RelationCLatexWriter.render()
     # DoubleLearningWriter.render()
     # ErrorPerComponentsWriter.render()
+    ClusteredPredictionWriter.render()
+
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",
