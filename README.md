@@ -14,11 +14,11 @@ Three variantes are provided : [dGLLiM](Core/dgllim.py), [jGLLiM](Core/gllim.py)
 
 - The package [tools](tools) provides ways to generate data (via [`tools.context.abstractContext`](tools/context.py)), 
 save and load data and models ([`tools.archive`](tools/archive.py)),
-and measure quality of estimation made ([`tools.measures`](tools/measures.py)). 
+and measure quality of estimation ([`tools.measures`](tools/measures.py)). 
 The visualization of the results is facilitated by [`tools.results`](tools/results.py).
 The class [`tools.experience.Experience`](tools/experience.py) wraps all theses helpers.
 
-- The package [plotting](plotting) draws severals graphs and animations, accessed by [`Experience`](tools/experience.py).
+- The package [plotting](plotting) draws severals graphs and animations (used by [`Experience`](tools/experience.py)).
 
 - The main application of the internship was to invert the Hapke model, which is implemented in [hapke](hapke) package.
 
