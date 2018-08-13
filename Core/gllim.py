@@ -1,11 +1,10 @@
 """
 Gllim model in python
 
-__author__ = R.Juge & S.Lathuiliere
+__author__ = R.Juge & S.Lathuiliere & B. Kugler
 
 The equation numbers refer to _High-Dimensional Regression with Gaussian Mixtures and Partially-Latent Response Variables_A. Deleforge 2015
 
-Reprise : B. KUGLER (April 2018) On vectorise au maximum !
 """
 import logging
 import time
