@@ -291,7 +291,17 @@ def InjectiveFunction(d, **kwargs):
     return type("InjectiveFunction{}".format(d), (abstractExpFunction,), attrs)
 
 
+class ExampleFunction(abstractSimpleFunctionModel):
+    D = 1
+    DEFAULT_VALUES = np.array([0.5] * 2)
+    XLIMS = np.array([[0, 1]] * 2)
+    YLIMS = np.exp([[-1, 2]] * 4)
+    PARAMETERS = np.array(["x", "y"])
 
+    LABEL = "$(x,y) \mapsto x^{2} + y^{3}$"
+
+    def F(self, X):
+        return X[:, 0:1] ** 2 + X[:, 1:2] ** 3
 
 
 class abstractHapkeModel(abstractFunctionModel):
@@ -573,7 +583,7 @@ class abstractLabContext(abstractHapkeModel):
     def _load_context_data(self):
         d = scipy.io.readsav(self.data_path)
         self.geometries = np.array([d["inc"][None,:], d["eme"][None,:], d["azi"][None,:]])
-        self.wave_lengths = d["wave_value"]
+        self.wavelengths = d["wave_value"]
 
     def _prepare_X(self, X):
         """Changes X variable order to match Hapke_vect"""

@@ -323,26 +323,28 @@ class VisualisationMesures(Mesures):
         """Add contexte class name"""
         return self.experience.context.__class__.__name__ + " - " + title
 
-    def plot_clusters(self, gllim, details_clusters=False, indexes=(0, 1)):
+    def plot_clusters(self, gllim, details_clusters=False, indexes=(0, 1), savepath=None, **kwargs):
         """If details_clusters plots a sequence of K clusters. Else shows the superposition.
         Uses indexes of X"""
         exp = self.experience
-        varnames = exp.variables_names[indexes]
-        varlims = exp.variables_lims[indexes]
+        varnames = exp.variables_names[list(indexes)]
+        varlims = exp.variables_lims[list(indexes)]
         _, rnk = gllim.predict_cluster(exp.Xtrain)
-        X = exp.Xtrain[indexes]
+        X = exp.Xtrain[:, indexes]
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="clusters")
 
         if details_clusters:
             self.G.clusters_one_by_one(X, rnk, gllim.ckList, varnames, varlims, context=exp.get_infos(),
                                        draw_context=True,
-                                       savepath=exp.archive.get_path("figures", filecategorie="clusters"))
+                                       savepath=savepath)
         else:
-            self.G.clusters(X, rnk, gllim.ckList, varnames, varlims, context=exp.get_infos(), draw_context=True,
-                            savepath=exp.archive.get_path("figures", filecategorie="clusters"))
+            self.G.clusters(X, rnk, gllim.ckList, varnames, varlims, context=exp.get_infos(),
+                            savepath=savepath, **kwargs)
+
 
     def plot_estimatedF(self, gllim, components, savepath=None, title=None, **kwargs):
         exp = self.experience
-        assert len(exp.partiel) == 2
+        assert len(exp.variables_lims) == 2
 
         Yest, rnk = exp.reconstruct_F(gllim, exp.Xtrain)
 
@@ -353,7 +355,7 @@ class VisualisationMesures(Mesures):
 
         data_trueF = (x, y, H)
 
-        savepath = savepath or exp.archive.get_path("figures", filecategorie="estimatedF:weight")
+        savepath = savepath or exp.archive.get_path("figures", filecategorie="estimatedF:mean")
         title = title or self.get_title("Estimated F - Method : mean")
         self.G.estimated_F(exp.Xtrain, Yest, components, data_trueF, rnk, exp.variables_names, exp.variables_lims,
                            title=title,

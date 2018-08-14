@@ -19,21 +19,19 @@ from tools.measures import Mesures
 
 LATEX_IMAGES_PATH = "../latex/images/plots"
 
-names = ["estimF1.png", "estimF2.png", "evoLL1.png", "evoKN.png",
-         "init_cos1.png", "init_cos2.png",
-         "modalPred1.png", "modalPred2.png", "modalPred3.png",
-         "results1.png", "results2.png"]
-PATHS = [os.path.join(LATEX_IMAGES_PATH, i) for i in names]
+
+def PATHS(s):
+    return os.path.join(LATEX_IMAGES_PATH, s)
 
 
-
-def _merge_image_byside(paths, savepath):
+def _merge_image_byside(paths, savepath, remove=False):
+    """If remove is given, remove images in paths after merging"""
     widths, heights = zip(*(i.size for i in map(Image.open, paths)))
 
     total_width = sum(widths)
     max_height = max(heights)
 
-    new_im = Image.new('RGB', (total_width, max_height))
+    new_im = Image.new('RGB', (total_width, max_height), color="white")
 
     x_offset = 0
     for im in map(Image.open, paths):
@@ -41,6 +39,40 @@ def _merge_image_byside(paths, savepath):
         x_offset += im.size[0]
 
     new_im.save(savepath)
+
+    if remove:
+        for path in paths: os.remove(path)
+
+
+def exemple_pre_lissage():
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+
+    exp.load_data(regenere_data=False, with_noise=50, N=100000, method="sobol")
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+
+    exp.results.prediction_by_components(gllim, exp.context.get_observations(),
+                                         exp.context.wavelengths, with_modal=3, indexes=(0,),
+                                         with_regu=False, xtitle="longeur d'onde ($\mu$m)",
+                                         savepath=PATHS("pre-lissage.png"))
+
+
+def plot_estimeF_simple():
+    exp = Experience(context.ExampleFunction, partiel=None, with_plot=True, verbose=None)
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000, method="sobol")
+
+    gllim = exp.load_model(30, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+
+    p1 = PATHS("estimFsimple_tmp1.png")
+    p2 = PATHS("estimFsimple_tmp2.png")
+    exp.mesures.plot_estimatedF(gllim, [0], savepath=p1,
+                                title=f"Estimation de F : {exp.context.LABEL}",
+                                write_context=False)
+    exp.mesures.plot_clusters(gllim, savepath=p2, draw_context=False, write_context=False,
+                              title="Découpage de l'espace de départ")
+    p = PATHS("estimFsimple.png")
+    _merge_image_byside((p2, p1), p, remove=True)
 
 
 def plot_estimeF():
@@ -51,9 +83,10 @@ def plot_estimeF():
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    p1 = PATHS[0]
-    var = f"$({exp.variables_names[0]} , {exp.variables_names[1]})$"
-    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 8], savepath=p1, title=f"Estimation de F - variables {var}",
+    p1 = PATHS("estimF1.png")
+    var = f"({exp.variables_names[0]} , {exp.variables_names[1]})"
+    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 8], savepath=p1,
+                                title=f"Estimation de $F_{{hapke}}$ - variables {var}",
                                 write_context=True)
     #
     #
@@ -64,9 +97,10 @@ def plot_estimeF():
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    p2 = PATHS[1]
-    var = f"$({exp.variables_names[0]} , {exp.variables_names[1]})$"
-    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 8], savepath=p2, title=f"Estimation de F - variables {var}",
+    p2 = PATHS("estimF2.png")
+    var = f"({exp.variables_names[0]} , {exp.variables_names[1]})"
+    exp.mesures.plot_estimatedF(gllim, [0, 2, 4, 8], savepath=p2,
+                                title=f"Estimation de $F_{{hapke}}$ - variables {var}",
                                 write_context=True)
 
     # merging both
@@ -109,7 +143,7 @@ def plot_evo_LL():
 
     graphiques.simple_plot(values, labels, None, True, "Itérations", "Log-vraisemblance",
                            title="Evolution de la log-vraisemblance",
-                           savepath=PATHS[2])
+                           savepath=PATHS("evoLL1.png"))
     training.NB_MAX_ITER = old_MAXITER
 
 
@@ -129,7 +163,8 @@ def plusieurs_K_N(imax):
 
     title = "Evolution de l'erreur en fonction de K et N"
     xlabels = K_progression
-    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], xlabels, True, "K", "Erreur", savepath=PATHS[3],
+    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], xlabels, True, "K", "Erreur",
+                           savepath=PATHS("evoKN.png"),
                            title=title, write_context=True,
                            context={"coeffNK": coeffNK, "coeffmaxN1": coeffmaxN1, "coeffmaxN2": coeffmaxN2})
 
@@ -145,12 +180,12 @@ def init_cos():
 
     x = np.array([0.55])
     y = exp.context.F(x[None, :])
-    exp.mesures.illustration(gllim, x, y, savepath=PATHS[4])
+    exp.mesures.illustration(gllim, x, y, savepath=PATHS("init_cos1.png"))
 
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
                            gamma_type="full", gllim_cls=GLLiM)
 
-    exp.mesures.illustration(gllim, x, y, savepath=PATHS[5])
+    exp.mesures.illustration(gllim, x, y, savepath=PATHS("init_cos2.png"))
 
 
 def regularization():
@@ -161,9 +196,9 @@ def regularization():
     gllim = exp.load_model(1000, mode=RETRAIN and "r" or "l", track_theta=False, init_local=500,
                            sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
-    filenames = [PATHS[6], None, None, None]
-    filenames_regu = [PATHS[7], None, None, None]
-    filenames_regu2 = [PATHS[8], None, None, None]
+    filenames = [PATHS("modalPred1.png"), None, None, None]
+    filenames_regu = [PATHS("modalPred2.png"), None, None, None]
+    filenames_regu2 = [PATHS("modalPred3.png"), None, None, None]
     exp.results.plot_modal_preds_1D(gllim, exp.context.get_observations(), exp.context.wave_lengths,
                                     varlims=[(0, 1), (-0.5, 0.5), (0, 30), (0.5, 1.2)],
                                     filenames=filenames, filenames_regu=filenames_regu,
@@ -181,18 +216,20 @@ def comparaison_MCMC():
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
     MCMC_X, Std = exp.context.get_result()
     exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wave_lengths,
-                                         xtitle="wavelength (microns)", savepath=PATHS[9],
+                                         xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
                                          Xref=MCMC_X, StdRef=Std, with_modal=2)
 
     exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wave_lengths,
-                              Xref=MCMC_X, savepath=PATHS[10], xtitle="wavelength (microns)",
+                              Xref=MCMC_X, savepath=PATHS("results2.png"), xtitle="wavelength (microns)",
                               varlims=None, method="mean")
 
 
 def main():
-    # plot_estimeF()
+    # exemple_pre_lissage()
+    # plot_estimeF_simple()
+    plot_estimeF()
     # plot_evo_LL()
-    plusieurs_K_N(20)
+    # plusieurs_K_N(20)
     # init_cos()
     # regularization()
     # comparaison_MCMC()

@@ -90,14 +90,23 @@ class VisualisationResults(Results):
                                savepath=savepath2)
 
     def prediction_by_components(self, gllim: GLLiM, Y, labels, xtitle="observations", varlims=None, with_modal=False,
-                                 savepath=None, Xref=None, StdRef=None):
+                                 savepath=None, Xref=None, StdRef=None, with_regu=True, indexes=None):
         """Draw one axe by variable, with optionnal reference, standard deviation,
         and modal predictions (with exlu regularization). Return mean predictions with covariances"""
         exp = self.experience
         savepath = savepath or exp.archive.get_path("figures", filecategorie="synthese1D")
-        Xmean, Covs, Xweight, _, _ = self.full_prediction(gllim, Y, with_modal=with_modal)
+        Xmean, Covs, Xweight, _, _ = self.full_prediction(gllim, Y, with_modal=with_modal, with_regu=with_regu)
         varlims = exp.variables_lims if (varlims == "context") else varlims
-        self.G.Results_1D(Xmean, Covs, Xweight, labels, xtitle, exp.variables_names,
+        varnames = exp.variables_names
+        if indexes is not None:
+            Xmean = Xmean[:, indexes]
+            Covs = Covs[:, indexes][:, :, indexes]
+            Xweight = Xweight[:, :, indexes]
+            Xref = Xref[:, indexes] if Xref is not None else None
+            StdRef = StdRef[:, indexes] if StdRef is not None else None
+            varlims = varlims[list(indexes)] if varlims is not None else None
+            varnames = varnames[list(indexes)]
+        self.G.Results_1D(Xmean, Covs, Xweight, labels, xtitle, varnames,
                           varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
                           title="Prédiction - Vue par composants",
                           savepath=savepath, write_context=True)

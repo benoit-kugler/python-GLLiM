@@ -15,7 +15,7 @@ from experiences.rtls import RtlsCO2Context
 from tools import context, regularization
 from tools.archive import Archive
 from tools.context import InjectiveFunction
-from tools.measures import Mesures, VisualisationMesures, MesuresSecondLearning, VisualisationSecondLearning
+import tools.measures
 from tools.results import Results, VisualisationResults
 
 Ntest = 50000
@@ -23,7 +23,7 @@ Ntest = 50000
 class Experience():
     context: context.abstractFunctionModel
     archive: Archive
-    mesures: VisualisationMesures
+    mesures: 'tools.measures.VisualisationMesures'
     results: VisualisationResults
 
     def __init__(self, context_class, partiel=None, verbose=True, with_plot=False, **kwargs):
@@ -39,10 +39,10 @@ class Experience():
 
         self.archive = Archive(self)
         if with_plot:
-            self.mesures = VisualisationMesures(self)
+            self.mesures = tools.measures.VisualisationMesures(self)
             self.results = VisualisationResults(self)
         else:
-            self.mesures = Mesures(self)
+            self.mesures = tools.measures.Mesures(self)
             self.results = Results(self)
 
     def load_data(self, regenere_data=False, with_noise=None, N=1000, method="sobol"):
@@ -247,14 +247,15 @@ class Experience():
 class SecondLearning(Experience):
     """Implements double learning methods"""
 
-    mesures: MesuresSecondLearning
+    mesures: 'tools.measures.MesuresSecondLearning'
 
     @classmethod
     def from_experience(cls, exp: Experience, number=1, with_plot=False):
         """Promote exp to SecondLearning"""
         exp.__class__ = cls
         exp.number = number
-        exp.mesures = VisualisationSecondLearning(exp) if with_plot else MesuresSecondLearning(exp)
+        exp.mesures = tools.measures.VisualisationSecondLearning(
+            exp) if with_plot else tools.measures.MesuresSecondLearning(exp)
 
         return exp
 
@@ -262,7 +263,7 @@ class SecondLearning(Experience):
         """number allows several second learning with the same first learning."""
         super().__init__(context_class, partiel=partiel, verbose=verbose, with_plot=with_plot, **kwargs)
         self.number = number
-        self.mesures = MesuresSecondLearning(self)
+        self.mesures = tools.measures.MesuresSecondLearning(self)
 
     def _predict_sample_parallel(self, gllim: GLLiM, Y, nb_per_Y, K):
         Xs = gllim.predict_sample(Y,nb_per_Y=nb_per_Y)
@@ -426,11 +427,13 @@ def test_map():
 def main():
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
-    exp.load_data(regenere_data=False, with_noise=50, N=1000, method="sobol")
-    gllim = exp.load_model(10, mode="l", track_theta=False, init_local=200,
+    exp.load_data(regenere_data=False, with_noise=50, N=100000, method="sobol")
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    exp.mesures._nrmse_mean_prediction(gllim)
+    exp.results.prediction_by_components(gllim, exp.context.get_observations(),
+                                         exp.context.wavelengths, with_modal=3, indexes=(0,),
+                                         with_regu=False, xtitle="longeur d'onde ($\mu$m)")
 
     # MCMC_X, Std = exp.context.get_result()
     # exp.results.plot_density_sequence(gllim, exp.context.get_observations(), exp.context.wave_lengths,
@@ -559,9 +562,9 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # RTLS()
-    # main()
+    main()
     # monolearning()
     # test_map()
-    double_learning(Ntest=10, retrain_base=False)
+    # double_learning(Ntest=10, retrain_base=False)
     # glace()
     # test_map()

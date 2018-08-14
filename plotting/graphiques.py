@@ -269,7 +269,6 @@ class Projections(abstractGridDrawerMPL):
         if weights is not None:
             weights += 0.1
             colors = [(*c[0:3], w) for c, w in zip(colors, weights)]
-            print(colors)
 
         axes_iter = self.get_axes()
         for i in range(L):
@@ -297,10 +296,11 @@ class estimated_F(abstractGridDrawerMPL):
 
         x, y, zs_true = data_trueF
         for g, axe in zip(Y_components, self.get_axes()):
-            axe.set_title("Component {}".format(g))
+            if len(Y_components) > 1:
+                axe.set_title("Component {}".format(g))
             axe.scatter(*X.T, Y[:, g], c=colors, marker="o", s=1, alpha=0.6)
             z = zs_true[g]
-            axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
+            strueF = axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
             axe.set_xlim(*xlim)
             axe.set_ylim(*ylim)
             axe.set_xlabel(varx)
@@ -565,7 +565,6 @@ class Results_1D(abstractGridDrawerMPL):
         self.fig = pyplot.figure(figsize=(15, self.nb_row * self.ROW_SIZE))
 
     def main_draw(self, Xmean, StdMean, Xweight, xlabels, xtitle, varnames, varlims, Xref, StdRef):
-        print(StdMean.shape)
         for i, axe in zip(range(self.nb_row), self.get_axes()):
             Xw = Xweight[:, :, i] if Xweight is not None else None
             xlim = varlims[i] if varlims is not None else None
