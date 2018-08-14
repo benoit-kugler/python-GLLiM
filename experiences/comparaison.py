@@ -28,7 +28,7 @@ NOISE = 50
 ALGOS_exps = [
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 1000, "N": 10000,
      "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 70000,
      "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.HapkeGonio1468_50, "partiel": (0, 1, 2, 3), "K": 100, "N": 70000,
      "init_local": None, "sigma_type": "full", "gamma_type": "full"},
@@ -228,12 +228,13 @@ class abstractLatexWriter():
         line_statement_prefix='%%',
         line_comment_prefix='%#',
         trim_blocks=True,
+        lstrip_blocks=True,
         autoescape=False,
-        loader=jinja2.FileSystemLoader("templates_latex"),
-
+        loader=jinja2.FileSystemLoader("templates_latex")
     )
     latex_jinja_env.globals.update(zip=zip)
     latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%H h %M m %S s", time.gmtime(s))
+    latex_jinja_env.filters["truncate01"] = lambda f: 1 if f > 1 else (0 if f < 0 else f)
 
     CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean",
                 "retrouveY", "retrouveYbest", "validPreds"]
@@ -311,13 +312,14 @@ class abstractLatexWriter():
             exp["variables"] = cc.variables_names
         return self.experiences
 
-    def render_latex(self, label=None):
+    def render_latex(self, label=None, WITH_STD=False):
         template = self.latex_jinja_env.get_template(self.template)
         label = label or self.CATEGORIE
         baretable = template.render(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
                                     hHeader=self._horizontal_header(), vHeader=self._vertical_header(),
                                     label=label, CRITERES=self.CRITERES,
-                                    FACTOR_NUMBERS=self.FACTOR_NUMBERS)
+                                    FACTOR_NUMBERS=self.FACTOR_NUMBERS, WITH_STD=WITH_STD,
+                                    NB_COL_CELL=3 if WITH_STD else 2)
         standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
         return baretable, standalone_template.render(TABLE=baretable)
 
@@ -577,14 +579,17 @@ class DoubleLearningWriter(abstractLatexWriter):
         self.CATEGORIE = "SecondLearning"
         mesures = Archive.load_mesures(self.CATEGORIE)
         self.experiences = [{"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 200, "N": 10000,
-                             "init_local": 200, "sigma_type": "full", "gamma_type": "full"}]
+                             "init_local": 200, "sigma_type": "full", "gamma_type": "full"},
+                            {"context": context.InjectiveFunction(4), "partiel": None, "K": 100, "N": 10000,
+                             "init_local": 200, "sigma_type": "iso", "gamma_type": "full"}
+                            ]
         self.methodes = self.METHODES
         self.matrix = self._mesures_to_matrix(mesures)
         self.matrix = self._find_best()
-        self.DESCRIPTION = self.DESCRIPTION.format(Ntest=mesures["Ntest"])
+        self.DESCRIPTION = self.DESCRIPTION.format(Ntest=mesures[0]["Ntest"])
 
     def _mesures_to_matrix(self, mesures):
-        return [[mesures[m] for m in self.methodes]]
+        return [[exp[m] for m in self.methodes] for exp in mesures]
 
 
 class ErrorPerComponentsWriter(abstractLatexWriter):
@@ -616,7 +621,7 @@ def main():
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run(True,True)
     #
-    # AlgosLatexWriter.render()
+    AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()
     # DimensionLatexWriter.render()
@@ -627,7 +632,7 @@ def main():
     # RelationCLatexWriter.render()
     # DoubleLearningWriter.render()
     # ErrorPerComponentsWriter.render()
-    ClusteredPredictionWriter.render()
+    # ClusteredPredictionWriter.render()
 
 
 if __name__ == '__main__':

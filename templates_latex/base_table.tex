@@ -5,9 +5,13 @@
 
 
 \setlength\tabcolsep{0.07cm}
-\begin{longtable}
-    (# block table_def #){ l c | (! (['c c c |'] *  (hHeader | length )) | join(' ') !) }
-    \cline{3 -  (!  (hHeader | length ) * 3 + 2 !) }
+
+(# set cell_shape = 'c c c |' if WITH_STD else 'c c|' #)
+\begin{table}
+    \centering
+    \begin{tabular}
+        (# block table_def #){ | l c | (! ([cell_shape] *  (hHeader | length )) | join(' ') !) }
+        \cline{3 -  (!  (hHeader | length ) * NB_COL_CELL + 2 !) }
     (# endblock #)
 
 
@@ -16,10 +20,10 @@
     (# endblock #)
 
 
-    \endfirsthead
-    \endhead
-    \endfoot
-    \endlastfoot
+        %    \endfirsthead
+        %    \endhead
+        %    \endfoot
+        %    \endlastfoot
 
     (#for headercell, line in zip(vHeader,MATRIX) #)
 
@@ -47,7 +51,7 @@
     (# for m in line #)
     &
     (# if m and '__error__' in m #)
-    (# if rowloop.first #) \multicolumn{3}{c}{\multirow{6}{*}{ (! m.__error__ !) }} (# endif #)
+        (# if rowloop.first #) \multicolumn{ (! NB_COL_CELL !) }{c}{\multirow{6}{*}{ (! m.__error__ !) }} (# endif #)
     (# else #)
     (# block cell scoped #)
     (! macros.MESURES(m,critere) !)
@@ -62,10 +66,13 @@
     (# endif #)
     (# endfor #)
     \hline
+
+    \end{tabular}
+
     \caption{\textbf{(! title !)}. (! description !)}
     \label{tab:(! label !)}
-\end{longtable}
 
+\end{table}
 
 (# block footer #)
 (# endblock #)

@@ -1,59 +1,57 @@
-(# macro LABEL_CRITERE(key) #)
+(# macro LABEL_CRITERE(key) -#)
 {\small (! {"compareF":"F","meanPred":"Me","modalPred":"Mo","retrouveY":"Ymo",
 "validPreds":"V","retrouveYbest":"Yb", "retrouveYmean": "Yme", "clusteredPred": "Mc",
 "retrouveYclustered" : "Yc", "retrouveYbestclustered" : "Ybc"}[key] !)  }
-(# endmacro #)
+(#- endmacro #)
 
-(# macro COLOUR_FREQ(freq) #)
-\textcolor[rgb]{ (! 2 * (1.1 - freq)  | round(3) !) , (! (2 * freq - 1.3) | round(3)  !) , 0.1}{(! (freq * 100) | round(1) !)}
-(# endmacro #)
+(# macro COLOUR_FREQ(freq) -#)
+\textcolor[rgb]{ (! (2 * (1.1 - freq))  | round(3) | truncate01 !) , (! (2 * freq - 1.3) | round(3) | truncate01 !) , 0.1}{(! (freq * 100) | round(1) !)}
+(#- endmacro #)
 
-(# macro FMT_NUMBER(n) #)
-    (# if n is number #)
-(# if (n  * FACTOR_NUMBERS) < 0.01 #)
+(# macro FMT_NUMBER(n) -#)
+(# if n is number -#)
+(#- if (n  * FACTOR_NUMBERS) < 0.01 #)
 (! (n  * FACTOR_NUMBERS) | round(4) !)
-(# elif (n  * FACTOR_NUMBERS) < 0.1 #)
+(#- elif (n  * FACTOR_NUMBERS) < 0.1 #)
 (! (n  * FACTOR_NUMBERS) | round(3) !)
-(# elif (n  * FACTOR_NUMBERS) < 1 #)
+(#- elif (n  * FACTOR_NUMBERS) < 1 #)
 (! (n  * FACTOR_NUMBERS) | round(2) !)
-(# elif (n  * FACTOR_NUMBERS) < 10 #)
+(#- elif (n  * FACTOR_NUMBERS) < 10 #)
 (! (n  * FACTOR_NUMBERS) | round(1) !)
-(# else #)
+(#- else #)
 (! (n  * FACTOR_NUMBERS) | round(1) !)
-(# endif #)
-    (# else #)
-(# if (n[0] * FACTOR_NUMBERS) < 0.01 #)
+(#- endif #)
+(#- else #)
+(#- if (n[0] * FACTOR_NUMBERS) < 0.01 #)
 \textbf{ (! (n[0] * FACTOR_NUMBERS) | round(4) !)}
-(# elif (n[0] * FACTOR_NUMBERS) < 0.1 #)
+(#- elif (n[0] * FACTOR_NUMBERS) < 0.1 #)
 \textbf{ (! (n[0] * FACTOR_NUMBERS) | round(3) !)}
-(# elif (n[0] * FACTOR_NUMBERS) < 1 #)
+(#- elif (n[0] * FACTOR_NUMBERS) < 1 #)
 \textbf{ (! (n[0] * FACTOR_NUMBERS) | round(2) !)}
-(# elif (n[0] * FACTOR_NUMBERS) < 10 #)
+(#- elif (n[0] * FACTOR_NUMBERS) < 10 #)
 \textbf{ (! (n[0] * FACTOR_NUMBERS) | round(1) !)}
-(# else #)
+(#- else #)
 \textbf{ (! (n[0] * FACTOR_NUMBERS) | round(1) !)}
-(# endif #)
-    (# endif #)
-(# endmacro #)
+(#- endif #)
+(#- endif #)
+(#- endmacro #)
 
 
-(#  macro MEAN_MEDIAN_STD_FREQ(dic) #)
-    (# if dic #)
-    (! FMT_NUMBER(dic.mean) !) & {\footnotesize (! FMT_NUMBER(dic.median) !)} & {\footnotesize (! FMT_NUMBER(dic.std)  !) }
-    (# else #)
-    & &
-    (# endif #)
-(# endmacro #)
+(# macro MEAN_MEDIAN_STD_FREQ(dic) -#)
+(# if dic -#)
+(! FMT_NUMBER(dic.mean) !) & {\footnotesize (! FMT_NUMBER(dic.median)!) } (#- if not WITH_STD #) % (#- endif #) & {\footnotesize (! FMT_NUMBER(dic.std)  !) }
+(#- else #)
+& (#- if not WITH_STD #) % (#- endif #) &
+(#- endif #)
+(#- endmacro #)
 
 
-(#  macro MESURES(dic,critere) #)
-(# if dic #)
-    (# if critere == 'validPreds' #)
-\multicolumn{3}{ c | }{  (! COLOUR_FREQ(dic[critere][0]) !)  - (! COLOUR_FREQ(dic[critere][1]) !)  }
-    (# else #)
+(# macro MESURES(dic,critere) -#)
+(# if critere == 'validPreds' and dic #)
+\multicolumn{(! NB_COL_CELL!)}{ c | }{  (! COLOUR_FREQ(dic[critere][0]) !)  - (! COLOUR_FREQ(dic[critere][1]) !)  }
+(#- elif dic and critere in dic #)
     (!  MEAN_MEDIAN_STD_FREQ(dic[critere]) !)
-    (# endif #)
-(# else #)
-& &
-(# endif #)
-(# endmacro #)
+(#- else #)
+(! MEAN_MEDIAN_STD_FREQ(None) !)
+(#- endif #)
+(#- endmacro #)

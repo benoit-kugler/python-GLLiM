@@ -165,6 +165,7 @@ class Experience():
 
 
     def clean_X(self,X,as_np_array=False):
+        """Returns a version of X with only valid entries, and the mask used."""
         mask = self.context.is_X_valid(X)
         if type(X) is list:
             X = [x[m] for x, m in zip(X, mask) if (m is not None and len(x[m]) > 0)]  # at least one x is ok
@@ -176,7 +177,9 @@ class Experience():
 
     @staticmethod
     def get_nb_valid(mask):
+        """Returns the proportion of valid entry in the `mask`"""
         return sum(m.sum() if m is not None else 0 for m in mask) / sum(len(m) if m is not None else 1 for m in mask)
+
 
 
     def clean_modal_prediction(self, G:GLLiM, nb_component=None, threshold=None):
@@ -311,6 +314,17 @@ class SecondLearning(Experience):
         self.verbose = old_verbose
         return Y, X , gllims
 
+    def clean_modal_prediction(self, gllims: [GLLiM], Y, Xtest, nb_component=None, threshold=None):
+        Xspredicted = []
+        for n, (g, y, xtrue) in enumerate(zip(gllims, Y, Xtest)):
+            xpreds, _, _ = g.modal_prediction(y[None, :], components=nb_component, threshold=threshold)
+            Xspredicted.append(xpreds[0])
+
+        Xspredicted, mask = self.clean_X(Xspredicted)
+        nb_valid = self.get_nb_valid(mask)
+        mask = [(m is not None and sum(m, 0) > 0) for m in mask]  # only X,Y for which at least one prediction is clean
+        return Xspredicted, Y[mask], Xtest[mask], nb_valid
+
 
 # def monolearning():
 #     exp = SecondLearning(context.LabContextOlivine, partiel=(0, 1, 2, 3))
@@ -321,12 +335,12 @@ class SecondLearning(Experience):
 #     exp.mesures.correlations2D(gllim, exp.context.get_observations(), exp.context.wave_lengths, 1, method="mean")
 
 
-def double_learning(Ntest=200, retrain=True):
+def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
-    exp.load_data(regenere_data=retrain, with_noise=50, N=10000, method="sobol")
+    exp.load_data(regenere_data=retrain_base, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100, mode=retrain and "r" or "l", track_theta=False, init_local=200,
+    gllim = exp.load_model(100, mode=retrain_base and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
     exp.centre_data_test()
@@ -335,7 +349,8 @@ def double_learning(Ntest=200, retrain=True):
     d1 = exp.mesures.run_mesures(gllim)
 
     exp = SecondLearning.from_experience(exp, with_plot=True)
-    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    if retrain_second:
+        exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
     Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
     d2 = exp.mesures.run_mesures(gllims, Y, X)
@@ -344,10 +359,10 @@ def double_learning(Ntest=200, retrain=True):
     ### ---------------------------------------------------------------------------- ###
 
     exp = Experience(context.InjectiveFunction(4), partiel=None, with_plot=False)
-    exp.load_data(regenere_data=True, with_noise=50, N=10000, method="sobol")
+    exp.load_data(regenere_data=retrain_base, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
     # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100, mode="r", track_theta=False, init_local=200,
+    gllim = exp.load_model(100, mode=retrain_base and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
     exp.centre_data_test()
@@ -356,7 +371,8 @@ def double_learning(Ntest=200, retrain=True):
     d1 = exp.mesures.run_mesures(gllim)
 
     exp = SecondLearning.from_experience(exp, with_plot=True)
-    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    if retrain_second:
+        exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
     Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
     d2 = exp.mesures.run_mesures(gllims, Y, X)
@@ -546,6 +562,6 @@ if __name__ == '__main__':
     # main()
     # monolearning()
     # test_map()
-    double_learning(Ntest=1000, retrain=False)
+    double_learning(Ntest=10, retrain_base=False)
     # glace()
     # test_map()

@@ -802,7 +802,8 @@ class GLLiM():
         # sampless = self._sample_from_mixture(meanss, weightss, size)  # too large when N is big
         Xmeans = GLLiM._mean_melange(meanss, weightss)  # avoid recomp
         preds = []
-        for X, weights, y, xmean, means in zip(meanss, weightss, Y, Xmeans, meanss):
+        N = len(Y)
+        for n, X, weights, y, xmean, means in zip(range(N), meanss, weightss, Y, Xmeans, meanss):
             samples = self._sample_from_mixture(means[None, :], weights[None, :], size)[0]
             y_accuracy, xs = [np.square(F(xmean[None, :])[0] - y).sum()], [xmean[None, :]]
             for nb_preds in range(2, nb_predsMax + 1):
@@ -810,12 +811,10 @@ class GLLiM():
                 try:
                     labels, score, centers = w.fit_predict_score(X, weights, None)
                 except ValueError:
-                    logging.warning(f"Clustering on modals into {nb_preds} groups failed !")
                     err, Xpreds = np.inf, None
                 else:
                     Xpreds, choix = self.monte_carlo_esperance(samples, centers)
                     if not np.isfinite(Xpreds).all():
-                        logging.warning(f"One of {nb_preds} clusters with no points in monte-carlo integration !")
                         err, Xpreds = np.inf, None
                     else:
                         ys = F(Xpreds)
@@ -824,6 +823,8 @@ class GLLiM():
                 xs.append(Xpreds)
             best_K = np.argmin(y_accuracy)
             preds.append(xs[best_K])
+            if n % 100 == 0:
+                logging.debug(f"Prediction {n}/{N} done.")
         return preds
 
 

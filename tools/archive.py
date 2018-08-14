@@ -162,7 +162,6 @@ class Archive():
     def _save_data(self,data,savepath):
         with open(savepath,'w',encoding='utf8') as f:
             json.dump(data,f,indent=2)
-        logging.debug(f"\tModel parameters saved in {savepath}")
 
     def save_gllim(self,gllim,track_theta,training_time=None):
         """Saves current gllim parameters, in json format, to avoid model fitting computations.
@@ -174,11 +173,11 @@ class Archive():
         dic = dict(gllim.theta,datetime=datetime.datetime.now().strftime("%c"),
                    training_time=training_time)
         self._save_data(dic,savepath)
+        logging.debug(f"\tModel parameters saved in {savepath}")
         if track_theta:
             filename = self.get_path("model",with_track=True)
             d = {"thetas": gllim.track, "LLs": gllim.loglikelihoods}
-            with open(filename, 'w', encoding='utf8') as f:
-                json.dump(d, f, indent=2)
+            self._save_data(d, filename)
             logging.debug(f"\tModel parameters history save in {filename}")
 
     def load_gllim(self):
@@ -202,12 +201,13 @@ class Archive():
         for i, g in enumerate(gllims):
             savepath = path + "-" + str(i)
             self._save_data(dict(g.theta,datetime=dt),savepath)
+        logging.debug(f"\tSnd parameters saved in {path}-0 , -{len(gllims)-1}")
         d = {"Yadd": Y, "Nadd": len(gllims)}
         if X is not None:
             assert len(X) == len(Y)
             d["Xadd"] = X
         scipy.io.savemat(path + "add", d)
-        logging.debug(f"\tParameters and additional data saved in {path}")
+        logging.debug(f"\tAdditional data saved in {path}")
 
     def load_second_learned(self,withX):
         path = self.get_path("second_models")

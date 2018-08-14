@@ -6,9 +6,10 @@ import numpy as np
 from Core.gllim import GLLiM
 from Core.log_gauss_densities import dominant_components
 from tools.archive import Archive
-
+import tools.experience
 
 class Mesures():
+    experience: 'tools.experience.Experience'
 
     LABELS_STUDY_ERROR =  ('$|| x - x_{est}||$',
                            r"$\sum\limits_{k} \frac{ \pi_{k} h_{k}}{ \sqrt{(2 \pi)^{D} \det{\Gamma_{k}^{*}}} } $",
@@ -260,6 +261,7 @@ class Mesures():
 
 
 class MesuresSecondLearning(Mesures):
+    experience: 'tools.experience.SecondLearning'
 
     def _nrmse_mean_prediction(self, gllims: [GLLiM], Y, Xtest):
         """Mean prediction errors for each gllims and Y"""
@@ -269,20 +271,16 @@ class MesuresSecondLearning(Mesures):
     def _nrmse_modal_prediction(self, gllims: [GLLiM], Y, Xtest, method, ref_function=None):
         if type(method) is int:
             label = "Components : {}".format(method)
+            Xspredicted, Y, Xtest, nb_valid = self.experience.clean_modal_prediction(gllims, Y, Xtest,
+                                                                                     nb_component=method)
         elif type(method) is float:
             label = "Weight threshold : {}".format(method)
+            Xspredicted, Y, Xtest, nb_valid = self.experience.clean_modal_prediction(gllims, Y, Xtest,
+                                                                                     threshold=method)
+
         else:
             raise TypeError("Int or float required for method")
-        Xspredicted = []
-        for n, (g, y, xtrue) in enumerate(zip(gllims, Y, Xtest)):
-            if type(method) is int:
-                xpreds, _, _ = g.modal_prediction(y[None, :], components=method)
-            else:
-                xpreds, _, _ = g.modal_prediction(y[None, :], threshold=method)
-            Xspredicted.append(xpreds[0])
 
-        Xspredicted, mask = self.experience.clean_X(Xspredicted)
-        nb_valid = self.experience.get_nb_valid(mask)
         nrmse, nrmse_by_components, worstX, nrmseY, nrmseY_best = \
             self._nrmse_multiXperY(Xspredicted, Xtest, Y, ref_function)
 
