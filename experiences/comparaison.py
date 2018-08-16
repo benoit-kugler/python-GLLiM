@@ -126,7 +126,6 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method,
             "--- No model or data found for experience {}, version {} - noise : {} ---".format(i + 1,
                                                                                                gllim_cls.__name__,
                                                                                                noise))
-        logging.debug(e)
         return {"__error__": "Données ou model indisponibles"}
     except WrongContextError as e:
         logging.warning("\t{} method is not appropriate for the parameters ! "
@@ -198,8 +197,12 @@ class abstractMeasures():
                 if dic is not None:
                     assert set(self.METHODES) <= set(dic.keys()), f"Missing measures for {self.CATEGORIE}"
             else:
-                logging.info("Loaded mesures {}/{}".format(i + 1, imax))
-                dic = old_mesures[i]
+                try:
+                    dic = old_mesures[i]
+                    logging.info("Loaded mesures {}/{}".format(i + 1, imax))
+                except IndexError:
+                    logging.info("No mesure {}/{} found".format(i + 1, imax))
+                    dic = {"__error__": "Mesure non effectuée"}
             mesures.append(dic)
         Archive.save_mesures(mesures, self.CATEGORIE)
         logging.info("Study carried in {} \n".format(timedelta(seconds=time.time() - ti)))
@@ -610,7 +613,7 @@ class ClusteredPredictionWriter(abstractLatexWriter):
 
 def main():
     """Run test"""
-    # AlgosMeasure.run(True, True)
+    AlgosMeasure.run([True, True, True, False, False], [True, True, True, False, False])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -621,7 +624,7 @@ def main():
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run(True,True)
     #
-    AlgosLatexWriter.render()
+    # AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()
     # DimensionLatexWriter.render()

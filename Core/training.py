@@ -40,7 +40,7 @@ def run_gllim(process_index, gllim: GLLiM):
     try:
         gllim.fit(PTtrain, PYtrain, 'random', maxIter=NB_ITER_RNK)
     except AssertionError as e: # numerical issu
-        logging.warning(f"Init {process_index} interrupted due to numerical issues. Details \n {e}")
+        logging.exception(f"Init {process_index} interrupted due to numerical issues.")
     ll = gllim.current_ll
     return (ll, gllim.rnk, gllim)
 
@@ -73,7 +73,7 @@ def run_gllim_precisions(process_index, gllim: GLLiM, ck_init, precision_factor)
     try:
         gllim.fit(PTtrain, PYtrain, {"rnk": rnk}, maxIter=NB_ITER_RNK)
     except AssertionError as e:  # numerical issu
-        logging.warning(f"Init {process_index} interrupted due to numerical issues. Details \n {e}")
+        logging.exception(f"Init {process_index} interrupted due to numerical issues.")
     ll = gllim.current_ll
     return (ll, gllim.rnk, gllim)
 
