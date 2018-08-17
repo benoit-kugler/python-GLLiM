@@ -78,7 +78,7 @@ class Mesures():
     def _nrmse_compare_F(self, gllim):
         """if clean is given, remove theoritically absurd values and returns additional nrmse"""
         exp = self.experience
-        X = exp.context.get_X_sampling(exp.Ntest)
+        X = exp.Xtest
         Y_vrai = exp.context.F(X)
 
         Y_estmean, _ = exp.reconstruct_F(gllim, X)
@@ -521,12 +521,15 @@ class VisualisationMesures(Mesures):
         xlim = self.experience.context.XLIMS[0]
         x = np.linspace(*xlim, N)
         y = self.experience.context.F(x[:, None])
-        modals, _, weights = gllim.modal_prediction(ytest, components=10, sort_by="weight")
-        X = modals[0]
-        modals = list(zip(X, weights[0]))
+        modals = ()
+        if ytest is not None:
+            modals, _, weights = gllim.modal_prediction(ytest, components=10, sort_by="weight")
+            X = modals[0]
+            modals = list(zip(X, weights[0]))
+            ytest = ytest[0, 0]
         savepath = savepath or self.experience.archive.get_path("figures", filecategorie="schema")
         context = dict(**self.experience.get_infos(), max_Gamma=gllim.GammakList.max())
-        self.G.schema_1D((x, y), gllim.ckList, gllim.ckListS, gllim.AkList, gllim.bkList, xlim, xtrue[0], ytest[0, 0],
+        self.G.schema_1D((x, y), gllim.ckList, gllim.ckListS, gllim.AkList, gllim.bkList, xlim, xtrue[0], ytest,
                          modals,
                          context=context, write_context=True, draw_context=False,
                          title="", savepath=savepath)

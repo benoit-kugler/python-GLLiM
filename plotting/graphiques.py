@@ -168,19 +168,16 @@ class doubleplusieursKN(plusieursKN):
         return [c for i in np.linspace(0, 1, nb // 2) for c in [cm.rainbow(i), cm.rainbow(i)]]
 
 
-
-
-def _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims):
-    s = axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
+def _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims, labelcks=True):
 
     x_box = np.linspace(0, (xlims[1] - xlims[0]) / 50, 100)
-    artists = [s]
     for k, a, b in zip(range(len(bk)), Ak[:, 0, 0], bk[:, 0]):
         x = x_box + ck[k]
         y = a * x + b
-        p = axe.plot(x, y, color="g", alpha=0.7)
-        artists.extend(p)
-    return artists
+        label = "$a_{k}$" if k == 0 else None
+        axe.plot(x, y, color="g", alpha=0.7, label=label)
+
+    axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$" if labelcks else None)
 
 class schema_1D(abstractDrawerMPL):
     Y_TITLE_BOX_WITH_CONTEXT = 1.1
@@ -189,29 +186,34 @@ class schema_1D(abstractDrawerMPL):
     def _format_context(context):
         p = context["init_local"]
         if p is None:
-            return f"Initialisation usuelle. Après apprentissage, $\max\limits_{{k}} \Gamma_{{k}}$ = {context['max_Gamma']:.1e}"
+            return f"Initialisation usuelle (K = { context['K'] }). Après apprentissage, $\max\limits_{{k}} \Gamma_{{k}}$ = {context['max_Gamma']:.1e}"
         else:
-            return f"Initialisation avec précision = {p}. Après apprentissage, $\max\limits_{{k}} \Gamma_{{k}}$ = {context['max_Gamma']:.1e}"
+            return f"Initialisation avec précision = {p} (K = { context['K'] }). Après apprentissage, $\max\limits_{{k}} \Gamma_{{k}}$ = {context['max_Gamma']:.1e}"
 
     def main_draw(self, points_true_F, ck, ckS, Ak, bk, xlims, xtrue, ytest, modal_preds):
         axe = self.fig.add_subplot(2, 1, 1)
         axe.set_xlim(*xlims)
 
         axe.plot(*points_true_F, color="b", label="True F")
-        _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims)
-
+        _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims, labelcks=ytest is None)
+        lhl = axe.get_legend_handles_labels()
+        bbox = (0.95, 0.5)
         if ytest is not None:
             axe = self.fig.add_subplot(2, 1, 2)
             axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$")
             axe.plot(*points_true_F, color="b", label="True F")
 
-            axe.axhline(y=ytest)
             for i, (xpred, w) in enumerate(modal_preds):
                 axe.axvline(xpred[0], color="y", linewidth=0.5, label="{0:.4f} - {1:.2f}".format(xpred[0], w))
                 axe.annotate(str(i), (xpred[0], 0))
+
+            axe.axhline(y=ytest, label="$y_{obs}$")
             if xtrue is not None:
                 axe.axvline(xtrue, linestyle="--", color="g", alpha=0.5, label="$x_{initial}$")
-        self.fig.legend(*axe.get_legend_handles_labels(), bbox_to_anchor=(1.01, 0.8))
+            lh, ll = axe.get_legend_handles_labels()
+            lhl = [lhl[0][-1]] + lh, [lhl[1][-1]] + ll
+            bbox = (1.01, 0.8)
+        self.fig.legend(*lhl, bbox_to_anchor=bbox)
         self.fig.subplots_adjust(right=0.77)
 
 

@@ -80,10 +80,8 @@ class MyGMM(GaussianMixture):
 
     def _m_step(self, Y, log_resp):
         super()._m_step(Y, log_resp)
-        self._m_step_callback(Y)
-
-    def _m_step_callback(self, Y):
         self.current_iter_ll.append(self.log_likelihood(Y))
+
 
     def log_likelihood(self, Y):
         vec_log_prob, _ = self._estimate_log_prob_resp(Y)
@@ -92,10 +90,8 @@ class MyGMM(GaussianMixture):
     def _print_verbose_msg_iter_end(self, n_iter, diff_ll):
         if self.track:
             self.track_params.append((self.weights_, self.means_, self.full_covariances_))
-        if self.verbose == 1:
+        if self.verbose >= 0:
             logging.debug(f"Iteration {n_iter} : Log-likelihood = {self.current_iter_ll[-1]}")
-        elif self.verbose == 0:
-            logging.debug(f"Iteration {n_iter}")
 
     def _print_verbose_msg_init_end(self, ll):
         super()._print_verbose_msg_init_end(ll)
@@ -108,17 +104,19 @@ class MyGMM(GaussianMixture):
         return get_full_covariances(self.covariances_, self.covariance_type, K, N_features)
 
 
+DEFAULT_REG_COVAR = 1e-08
+
 class GLLiM():
     ''' Gaussian Locally-Linear Mapping'''
 
     def __init__(self, K_in, Lw=0, sigma_type='iso', gamma_type='full',
-                 verbose=True):
+                 verbose=True, reg_covar=DEFAULT_REG_COVAR):
 
         self.K = K_in
         self.Lw = Lw
         self.sigma_type = sigma_type
         self.gamma_type = gamma_type
-        self.reg_covar = 1e-08
+        self.reg_covar = reg_covar
         self.verbose = verbose
         self.track_theta = False
         self.nb_init_GMM = 1  # Number of init made by GMM when fit is init with it
@@ -234,19 +232,7 @@ class GLLiM():
             logging.debug("--- {} seconds for EM initialization---".format(time.time() - start_time_EMinit))
         return rnk
 
-    def init_fit(self, T, Y, init):
-        """Initialize model parameters. Three cases are supported :
-            - init = 'kmeans' :  GMM initialization, itself with kmeans initialization
-            - init = None : initialization with basic values (zeros, identity)
-            - init = 'random' : GMM initialization, itself with random initialization
-            - init = rnk : Array of clusters probabilities : skip GMM init.
-            - init = theta , where theta is a dict of Gllim parameters (with Sigma shape compatible with sigmae_type)
-        Remark : At the end, all that matter are rnk, since fit start by maximization.
-        """
-        init = init or ()
-        self.Lt = T.shape[1]
-        self.D = Y.shape[1]
-
+    def _default_init(self):
         # Add S covariances
         self.SkList_W = np.zeros((self.K, self.Lw, self.Lw))
 
@@ -278,6 +264,22 @@ class GLLiM():
         else:
             raise CovarianceTypeError
 
+
+    def init_fit(self, T, Y, init):
+        """Initialize model parameters. Three cases are supported :
+            - init = 'kmeans' :  GMM initialization, itself with kmeans initialization
+            - init = None : initialization with basic values (zeros, identity)
+            - init = 'random' : GMM initialization, itself with random initialization
+            - init = rnk : Array of clusters probabilities : skip GMM init.
+            - init = theta , where theta is a dict of Gllim parameters (with Sigma shape compatible with sigmae_type)
+        Remark : At the end, all that matter are rnk, since fit start by maximization.
+        """
+        init = init or ()
+        self.Lt = T.shape[1]
+        self.D = Y.shape[1]
+
+        self._default_init()
+
         if init in ['random', 'kmeans']:
             self.rnk = self._T_GMM_init(T, init)
 
@@ -285,6 +287,7 @@ class GLLiM():
             if self.verbose:
                 logging.debug('Initialization with given rnk')
             self.rnk = np.array(init['rnk'])
+            self._rnk_init = np.array(self.rnk)
             assert self.rnk.shape == (T.shape[0], self.K)
         elif type(init) is dict:
             self._init_from_dict(init)
@@ -528,6 +531,7 @@ class GLLiM():
             logging.info("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
                                                                                          N, L, D, self.K))
         self.init_fit(T, Y, init)
+
         if self.verbose is not None:
             logging.info("Done. GLLiM fitting...")
         self.current_iter = 0
@@ -569,9 +573,7 @@ class GLLiM():
 
     def end_iter_callback(self, loglikelihood):
         if self.verbose is not None:
-            logging.debug(f"Iteration {self.current_iter}")
-        elif self.verbose:
-            logging.debug(f"Log-likelihood = {loglikelihood} at iteration nb : {self.current_iter}")
+            logging.debug(f"Iteration {self.current_iter} : Log-likelihood = {loglikelihood} ")
 
         self.LLs_.append(loglikelihood)
         if self.track_theta:  # Save parameters history
@@ -601,6 +603,8 @@ class GLLiM():
             elif self.sigma_type == 'full':
                 i = _inv_sym_def(sig)
                 i = np.dot(i, Ak)
+            else:
+                raise CovarianceTypeError
 
             if np.allclose(Ak, np.zeros((self.D, self.L))):
                 sigS = gam
@@ -886,13 +890,19 @@ class jGLLiM(GLLiM):
         ])
         return {"rho": rho, "m": m, "V": V}
 
-    def _get_GMM(self,maxIter,rho,m,precisions,verbose):
-        Gmm = MyGMM(n_components=self.K,n_init=1,max_iter=maxIter,
-                    tol=np.finfo(np.float64).eps,
-                    weights_init=rho,means_init=m,precisions_init=precisions,
-                    verbose=verbose,track=self.track_theta)
-        return Gmm
+    def _Gmm_setup(self, T, Y, maxIter):
+        first_theta = self.compute_next_theta(T, Y)  # theta from rnk
+        jGMM_params = self.GLLiM_to_GGM(*first_theta)
+        precisions_chol = _compute_precision_cholesky(jGMM_params["V"], "full")
+        precisions = np.matmul(precisions_chol, precisions_chol.transpose((0, 2, 1)))
+        TY = np.concatenate((T, Y), axis=1)
 
+        verbose = {None: -1, False: 0, True: 1}[self.verbose]
+        Gmm = MyGMM(n_components=self.K, n_init=1, max_iter=maxIter, reg_covar=self.reg_covar,
+                    tol=np.finfo(np.float64).eps,
+                    weights_init=jGMM_params["rho"], means_init=jGMM_params["m"], precisions_init=precisions,
+                    verbose=verbose, track=self.track_theta)
+        return TY, Gmm
 
     def fit(self, T, Y, init, maxIter=100):
         """Use joint GMM model
@@ -908,17 +918,13 @@ class jGLLiM(GLLiM):
             logging.info("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
                                                                                          N, L, D, self.K))
         self.init_fit(T, Y, init)
+        TY, Gmm = self._Gmm_setup(T, Y, maxIter - 1)
+
         if self.verbose is not None:
             logging.info("Done. jGMM fitting...")
 
         start_time_EM = time.time()
 
-        jGMM_params = self.GLLiM_to_GGM(*self.compute_next_theta(T,Y)) # theta from rnk
-        precisions_chol = _compute_precision_cholesky(jGMM_params["V"], "full")
-        precisions = np.matmul(precisions_chol, precisions_chol.transpose((0, 2, 1)))
-        TY = np.concatenate((T, Y), axis=1)
-        verbose = {None: -1, False: 0, True: 1}[self.verbose]
-        Gmm = self._get_GMM(maxIter,jGMM_params["rho"],jGMM_params["m"],precisions,verbose)
         Gmm.fit(TY)
         self.LLs_ = Gmm.log_likelihoods[0]
 
@@ -927,14 +933,17 @@ class jGLLiM(GLLiM):
             logging.info("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
 
         if self.track_theta:
-            def tolist(rho, m, V):
-                params = self.GMM_to_GLLiM(rho, m, V, self.L)
-                return {c: v.tolist() for c, v in params.items()}
+            self.track = self.track_from_gmm(Gmm)
 
-            self.track = [tolist(rho, m, V) for (rho, m, V) in Gmm.track_params]
         rho, m, V = Gmm.weights_, Gmm.means_, Gmm.covariances_
 
         t = time.time()
         self._init_from_dict(self.GMM_to_GLLiM(rho, m, V, self.L))
         if self.verbose is not None:
             logging.debug("--- {:.3f} s to compute correspondance".format(time.time() - t))
+
+    def track_from_gmm(self, Gmm):
+        tolist = lambda rho, m, V: {c: v.tolist() for c, v in
+                                    self.GMM_to_GLLiM(rho, m, V, self.L).items()}
+
+        return [tolist(rho, m, V) for (rho, m, V) in Gmm.track_params]

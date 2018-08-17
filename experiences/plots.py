@@ -180,7 +180,7 @@ def init_cos():
 
     x = np.array([0.55])
     y = exp.context.F(x[None, :])
-    exp.mesures.illustration(gllim, x, y, savepath=PATHS("init_cos1.png"))
+    exp.mesures.illustration(gllim, x, None, savepath=PATHS("init_cos1.png"))
 
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
                            gamma_type="full", gllim_cls=GLLiM)
@@ -227,10 +227,10 @@ def comparaison_MCMC():
 def main():
     # exemple_pre_lissage()
     # plot_estimeF_simple()
-    plot_estimeF()
+    # plot_estimeF()
     # plot_evo_LL()
     # plusieurs_K_N(20)
-    # init_cos()
+    init_cos()
     # regularization()
     # comparaison_MCMC()
 

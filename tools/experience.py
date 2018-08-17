@@ -18,7 +18,7 @@ from tools.context import InjectiveFunction
 import tools.measures
 from tools.results import Results, VisualisationResults
 
-Ntest = 50000
+Ntest = 500
 
 class Experience():
     context: context.abstractFunctionModel
@@ -110,7 +110,7 @@ class Experience():
         gllim._init_from_dict(params)
         return gllim
 
-    def load_model(self, K, Lw=0, sigma_type="full", gamma_type="full", gllim_cls=GLLiM,
+    def load_model(self, K, Lw=0, sigma_type="full", gamma_type="full", gllim_cls=GLLiM, rnk_init=None,
                    mode="r", multi_init=True, init_local=None, track_theta=False, with_time=False):
         self.K = K
         self.Lw = Lw
@@ -119,6 +119,8 @@ class Experience():
         self.gllim_cls = gllim_cls
         if init_local is not None:
             multi_init = True
+        if rnk_init is not None:
+            multi_init = init_local = False
         self.multi_init = multi_init
         self.init_local = init_local
 
@@ -128,7 +130,7 @@ class Experience():
             training_time = params["training_time"]
         elif mode == "r": # new training
             t = time.time()
-            gllim = self.new_train(track_theta=track_theta)
+            gllim = self.new_train(track_theta=track_theta, rnk_init=rnk_init)
             training_time = time.time() - t
             self.archive.save_gllim(gllim,track_theta,training_time=training_time)
         else: # only register meta-data
@@ -138,7 +140,7 @@ class Experience():
             return gllim, training_time
         return gllim
 
-    def new_train(self,track_theta=False):
+    def new_train(self, track_theta=False, rnk_init=None):
         if self.gllim_cls is RiemannianjGLLiM and self.multi_init:
             raise ValueError("Multi init can't be used with Manifold optimization")
 
@@ -154,7 +156,7 @@ class Experience():
                                         sigma_type=self.sigma_type, gamma_type=self.gamma_type,
                                         track_theta=track_theta, gllim_cls=self.gllim_cls, verbose=self.verbose)
         else:
-            gllim = training.basic_fit(self.Xtrain, self.Ytrain, self.K, Lw=self.Lw,
+            gllim = training.basic_fit(self.Xtrain, self.Ytrain, self.K, Lw=self.Lw, rnk_init=rnk_init,
                                        sigma_type=self.sigma_type, gamma_type=self.gamma_type,
                                        track_theta=track_theta, gllim_cls=self.gllim_cls, verbose=self.verbose)
         return gllim

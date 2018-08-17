@@ -117,7 +117,8 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method,
     ti = time.time()
     try:
         exp.load_data(regenere_data=redata, with_noise=noise, N=exp_params["N"], method=method)
-        gllim, training_time = exp.load_model(exp_params["K"], mode=retrain and "r" or "l",
+        rnk_init = exp_params.get("rnk_init", None)
+        gllim, training_time = exp.load_model(exp_params["K"], mode=retrain and "r" or "l", rnk_init=rnk_init,
                                               init_local=exp_params["init_local"],
                                               sigma_type=exp_params["sigma_type"], gamma_type=exp_params["gamma_type"],
                                               gllim_cls=gllim_cls, with_time=True)
@@ -160,6 +161,8 @@ def _load_train_measure_gllim(i, gllim_cls, exp, exp_params, noise, method,
     m = exp.mesures.run_mesures(gllim)
     m["training_time"] = training_time
     logging.info("  Mesures done in {}".format(timedelta(seconds=time.time() - ti)))
+    if "get_rnk_init" in exp_params:
+        return m, gllim._rnk_init
     return m
 
 class abstractMeasures():
@@ -191,7 +194,7 @@ class abstractMeasures():
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
                 logging.info(f"Tests {self.CATEGORIE}, exp. {i+1}/{imax}")
-                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=True)
+                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
                 if dic is not None:
@@ -359,7 +362,13 @@ class AlgosMeasure(abstractMeasures):
 
     def _dic_mesures(self,i,exp,exp_params,t):
         dic = {}
-        dic["NG"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, NOISE, "sobol", t, t)  # noisy GLLiM
+        t = _load_train_measure_gllim(i, GLLiM, exp, dict(exp_params, get_rnk_init=True), NOISE, "sobol", t,
+                                      t)  # noisy GLLiM
+        if type(t) is dict:  # error
+            dic["NG"] = dic["NjG"] = dic["NjG"] = t
+            return dic
+        dic["NG"], exp_params["rnk_init"] = t  # fixed rnk
+
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
         dic["NjG"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
                                                Ytest=Ytest)  # noisy joint GLLiM
@@ -613,7 +622,7 @@ class ClusteredPredictionWriter(abstractLatexWriter):
 
 def main():
     """Run test"""
-    AlgosMeasure.run([True, True, True, False, False], [True, True, True, False, False])
+    AlgosMeasure.run([False, False, False, True, True], [False, False, False, True, True])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -623,7 +632,7 @@ def main():
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run(True,True)
-    #
+
     # AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()

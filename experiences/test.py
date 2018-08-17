@@ -204,14 +204,18 @@ def setup_jGLLiM_GLLiM():
 
 
 def equivalence_jGLLiM_GLLIM():
-    X = np.random.multivariate_normal(np.zeros(5) + 0.2, np.eye(5), 2000)
-    Y = np.random.multivariate_normal(np.zeros(6) + 10, np.eye(6), 2000)
+    h = HapkeContext((0, 1, 2, 3))
+    X = h.get_X_sampling(2000)
+    Y = np.random.multivariate_normal(np.zeros(10) + 0.4, np.eye(10), 2000)
 
-    gllim = GLLiM(10, 0, sigma_type="full", gamma_type="full", verbose=True)
-    gllim.fit(X, Y, None, maxIter=100)
+    gllim = GLLiM(10, 0, sigma_type="full", gamma_type="full", verbose=False)
+    gllim.init_fit(X, Y, "random")
+    rnk = gllim.rnk
+    init = {"rnk": rnk}
+    gllim.fit(X, Y, init, maxIter=5)
 
-    jgllim = jGLLiM(10, 0, sigma_type="full", gamma_type="full", verbose=True)
-    jgllim.fit(X, Y, None, maxIter=99)
+    jgllim = jGLLiM(10, 0, sigma_type="full", gamma_type="full", verbose=False)
+    jgllim.fit(X, Y, init, maxIter=5)
 
     theta = (gllim.pikList, gllim.ckList, gllim.GammakList, gllim.AkList, gllim.bkList, gllim.full_SigmakList)
     jtheta = (jgllim.pikList, jgllim.ckList, jgllim.GammakList, jgllim.AkList, jgllim.bkList, jgllim.full_SigmakList)
@@ -258,10 +262,10 @@ if __name__ == '__main__':
     # graphiques.plot_Y(Y)qw
     # simple_function()
     # evolu_cluster()
-    # equivalence_jGLLiM_GLLIM()  # OK
+    equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
     # test_map()
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
-    details_convergence(60, True)
+    # details_convergence(60, True)

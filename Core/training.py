@@ -26,7 +26,8 @@ NB_MAX_ITER_SECOND = 20
 """Number of used processes"""
 PROCESSES = 4
 
-warnings.filterwarnings("ignore")
+
+# warnings.filterwarnings("ignore")
 
 
 def initialize_process(_Ttrain, _Ytrain):
@@ -111,6 +112,7 @@ def init_local(Ttrain, Ytrain, K, ck_init_function, precision_rate, Lw = 0, sigm
     if track_theta:
         gllim.start_track()
     gllim.fit(Ttrain, Ytrain, {"rnk": rnk}, maxIter=NB_MAX_ITER)
+    np.random.seed()
     return gllim
 
 
@@ -124,16 +126,18 @@ def multi_init(Ttrain, Ytrain, K, Lw = 0, sigma_type = "iso", gamma_type = "full
     if track_theta:
         gllim.start_track()
     gllim.fit(Ttrain, Ytrain, {"rnk": rnk}, maxIter=NB_MAX_ITER)
+    np.random.seed()
     return gllim
 
 
 def basic_fit(Ttrain, Ytrain, K, Lw = 0, sigma_type = "iso", gamma_type = "full",
-              track_theta = False, gllim_cls = GLLiM, verbose=False) :
-    """Performs one fit with random GMM initialisation"""
+              track_theta=False, gllim_cls=GLLiM, verbose=False, rnk_init=None):
+    """Performs one fit, with random GMM initialisation unless rnk_init is given"""
     gllim = gllim_cls(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=verbose)
     if track_theta:
         gllim.start_track()
-    gllim.fit(Ttrain, Ytrain, 'random', maxIter=NB_MAX_ITER)
+    init = {'rnk': rnk_init} if rnk_init is not None else 'random'
+    gllim.fit(Ttrain, Ytrain, init, maxIter=NB_MAX_ITER)
     return gllim
 
 
