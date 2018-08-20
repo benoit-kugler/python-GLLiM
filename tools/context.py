@@ -38,7 +38,12 @@ def random_sequence_rqmc(dim, init=True, n=1):
     return(u)
 
 
-class abstractFunctionModel():
+def _xlims_to_P(xlims):
+    """Return latex code for definition domain defined by xlims"""
+    return "\\times".join(f""" \left[ {x[0]} , {x[1]} \\right] """ for x in xlims)
+
+
+class abstractFunctionModel:
     """Implements base methods to work with a model Y = F(X) + E"""
 
     PARAMETERS = None
@@ -53,16 +58,23 @@ class abstractFunctionModel():
     LABEL = None
     """String describing the context (latex formatting)"""
 
+    DESCRIPTION = "Generic function $F$"
+
     D = None
     """Dimension of F values"""
 
     PREFERED_MODAL_PRED = "prop"
     """Default method to find modes (int or float or "prop") """
 
+    def __new__(cls, *args, **kwargs):
+        if cls.LABEL is None:
+            raise NotImplementedError(f"Class atribut LABEL should be set for class {cls.__name__}")
+        return super().__new__(cls)
 
-    def __init__(self,partiel):
+    def __init__(self, partiel=None):
         """partiel is a tuple of indexes of x variable to take in account. None to take all variables"""
         self.partiel = partiel
+
 
 
     def F(self,X):
@@ -220,8 +232,9 @@ class abstractSimpleFunctionModel(abstractFunctionModel):
 
 
 class SquaredFunction(abstractSimpleFunctionModel):
+    LABEL = "Fonction carrée"
 
-    LABEL = r"$x \rightarrow x^{2}$"
+    DESCRIPTION = r"$x \rightarrow x^{2}$, sur $[0,1]$"
 
     YLIMS = np.array([[0, 0.25]])
 
@@ -230,8 +243,8 @@ class SquaredFunction(abstractSimpleFunctionModel):
 
 
 class WaveFunction(abstractSimpleFunctionModel):
-
-    LABEL = r"$x \rightarrow \cos(10x) $"
+    DESCRIPTION = f"  $x \mapsto \cos(10x) $, sur ${ _xlims_to_P(abstractSimpleFunctionModel.XLIMS) } $"
+    LABEL = "Fonction $\cos$"
 
     YLIMS = np.array([[0, 1]])
 
@@ -257,6 +270,10 @@ class TwoSolutionsFunction(abstractSimpleFunctionModel):
     YLIMS = np.exp([[-1, 2]] * 4)
     PARAMETERS = np.array(["x{}".format(i + 1) for i in range(4)])
 
+    LABEL = "Fourche"
+    DESCRIPTION = "Fonction ayant deux antécédants pour chaque $y$: $x \mapsto ( (x_{1} - 0.5)^2 , x_{2} , ... , x_{L})$." \
+                  f" Définie sur ${ _xlims_to_P(XLIMS) }$"
+
     def F(self, X):
         out = np.empty(X.shape)
         out[:, 0] = (X[:, 0] - 0.5) ** 2
@@ -271,7 +288,9 @@ class abstractExpFunction(abstractSimpleFunctionModel):
 
     LIPSCHITZ_F = np.exp(1)
 
-    LABEL = r"$(x_{i}) \mapsto (\exp(x_{i}) )$"
+    LABEL = "Fonction $\exp$"
+
+    DESCRIPTION = "$(x_{{i}}) \mapsto (\exp(x_{{i}}) )$, sur ${}$"
 
     PREFERED_MODAL_PRED = 1
 
@@ -282,10 +301,13 @@ class abstractExpFunction(abstractSimpleFunctionModel):
 
 
 def InjectiveFunction(d, **kwargs):
+    xlims = np.array([[-1, 2]] * d)
+    description = abstractExpFunction.DESCRIPTION.format(_xlims_to_P(xlims))
     attrs = dict(D=d,
                  DEFAULT_VALUES=np.array([0.5] * d),
-                 XLIMS=np.array([[-1, 2]] * d),
+                 XLIMS=xlims,
                  YLIMS=np.exp([[-1, 2]] * d),
+                 DESCRIPTION=description,
                  PARAMETERS=np.array(["x{}".format(i + 1) for i in range(d)]), **kwargs)
 
     return type("InjectiveFunction{}".format(d), (abstractExpFunction,), attrs)
@@ -298,7 +320,9 @@ class ExampleFunction(abstractSimpleFunctionModel):
     YLIMS = np.exp([[-1, 2]] * 4)
     PARAMETERS = np.array(["x", "y"])
 
-    LABEL = "$(x,y) \mapsto x^{2} + y^{3}$"
+    LABEL = "Surface"
+
+    DESCRIPTION = f"$(x,y) \mapsto x^2 + y^3$, sur ${ _xlims_to_P(XLIMS) }$"
 
     def F(self, X):
         return X[:, 0:1] ** 2 + X[:, 1:2] ** 3
@@ -428,10 +452,14 @@ class abstractHapkeModel(abstractFunctionModel):
 
 
 
-
-
 class HapkeContext(abstractHapkeModel):
     """Used by Experience. Defines meta data of the study"""
+
+    DESCRIPTION = "Contexte d'une observation satellitaire CRSIM, du site d’atterrissage du rover MER-Opportunity " \
+                  u"à Meridiani Planum (MARS)."
+    LABEL = "$F_{hapke}$ CRSIM"
+
+
 
     EXPERIENCES = ["exp1/Inv_FRT193AB_S_Wfix_0.33_rho_mod.mat",
                  "exp2/Inv_FRT0A941_S_Wfix_0.12508_rho_mod.mat"]
@@ -484,9 +512,12 @@ class HapkeContext(abstractHapkeModel):
             return a[:,index,0] , a[:,index_std,0]
         return a[:,index,0]
 
+
 class HapkeContext1993(HapkeContext):
 
     SCATTERING_VARIANT = "1993"
+
+    DESCRIPTION = HapkeContext.DESCRIPTION + " - Variante 1993"
 
 
 class abstractHapkeGonio(abstractHapkeModel):
@@ -499,7 +530,9 @@ class abstractHapkeGonio(abstractHapkeModel):
 
     GEOMETRIES = None
 
-    LABEL = "Config. Gonio"
+    LABEL = "Config. Gonio."
+
+    DESCRIPTION = "Configuration de mesure de réflectance en laboratoire"
 
     def _load_context_data(self):
         exp = self.EXP_NAME
@@ -528,11 +561,21 @@ class abstractHapkeGonio(abstractHapkeModel):
 class HapkeGonio1468(abstractHapkeGonio):
     EXP_NAME = 1468
 
+    LABEL = abstractHapkeGonio.LABEL + " C1"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - Charbon 1468"
+
 class HapkeGonio1521(abstractHapkeGonio):
     EXP_NAME = 1521
 
+    LABEL = abstractHapkeGonio.LABEL + " C2"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - Charbon 1521"
+
+
 class HapkeGonioJSC1(abstractHapkeGonio):
     EXP_NAME = "JSC1"
+
+    LABEL = abstractHapkeGonio.LABEL + " AM"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - Analogue martin JSC1"
 
 class HapkeGonio1468_30(HapkeGonio1468):
     GEOMETRIES = (np.arange(105) % 3) == 0
@@ -633,6 +676,9 @@ class abstractLabContext(abstractHapkeModel):
         return [os.path.join(self.result_path,"pdf_plot","{0:03}_pdf_{1}.png".format(i,self.PDF_NAMES[ind]))
                 for i in range(len(self.result_files_index))]
 
+    LABEL = "Config. Wavelengths"
+
+    DESCRIPTION = "Configuration de mesure de réflectance en laboratoire (divers longueurs d'ondes)"
 
 class LabContextNontronite(abstractLabContext):
 
@@ -641,10 +687,15 @@ class LabContextNontronite(abstractLabContext):
     def __init__(self,partiel):
         super().__init__(partiel,0)
 
+    DESCRIPTION = abstractLabContext.DESCRIPTION + " - Echantillon de nontronite"
+
 
 class LabContextOlivine(abstractLabContext):
 
     LABEL = "Config. Olivine"
+
+    DESCRIPTION = abstractLabContext.DESCRIPTION + " - Echantillon d'olivine"
+
 
     COERCIVITE_F = 1
     LIPSCHITZ_F = 1
@@ -715,7 +766,7 @@ class VoieL(abstractGlaceContext):
     LABEL = "Config. Glace - Voie L"
 
 if __name__ == '__main__':
-    h = abstractExpFunction(None)
+    # h = abstractExpFunction(None)
     # X = h.get_X_sampling(10000)
     # print(X.min(),X.max())
     # Y = h.get_X_sampling(10000)
@@ -738,7 +789,5 @@ if __name__ == '__main__':
     # h._test_dF()
     #
     # X = h.get_X_sampling(300)
-    h = HapkeGonioJSC1(None)
-    print(h.geometries.shape)
-    h = HapkeGonio1521(None)
-    print(h.geometries.shape)
+    h = HapkeContext(None)
+    print(h.geometries)

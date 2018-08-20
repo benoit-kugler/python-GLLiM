@@ -212,7 +212,7 @@ def comparaison_MCMC():
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
     exp.load_data(regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(150, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
+    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
     MCMC_X, Std = exp.context.get_result()
     exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wave_lengths,
@@ -224,16 +224,34 @@ def comparaison_MCMC():
                               varlims=None, method="mean")
 
 
+def plot_sol_multiples():
+    """Learning has been made by comparaison_MCMC"""
+    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
+
+    exp.load_data(regenere_data=False, with_noise=50, N=100000, method="sobol")
+    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
+                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+
+    n = 16
+    Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
+    exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2, colorplot=False, write_context=True,
+                                          draw_context=False, savepath=PATHS("solmult2D.png"))
+    exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2, dim=1, write_context=True,
+                                          savepath=PATHS("solmult1D.png"))
+
+
+
+
 def main():
     # exemple_pre_lissage()
     # plot_estimeF_simple()
     # plot_estimeF()
     # plot_evo_LL()
     # plusieurs_K_N(20)
-    init_cos()
+    # init_cos()
     # regularization()
     # comparaison_MCMC()
-
+    plot_sol_multiples()
 
 RETRAIN = False
 

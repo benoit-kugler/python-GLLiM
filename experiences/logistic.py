@@ -6,8 +6,8 @@ from tools.experience import SecondLearning
 
 
 class LogisticOlivineContext(LabContextOlivine):
-
-    LABEL = "Logistic Olivine"
+    LABEL = LabContextOlivine.LABEL + " - logit"
+    DESCRIPTION = LabContextOlivine.DESCRIPTION + " - Avec transformation logistique"
 
     def get_X_sampling(self, N, method ='sobol'):
         X = super().get_X_sampling(N,method)

@@ -194,10 +194,10 @@ class abstractMeasures():
         for i, exp_params, t, rm in zip(range(imax), self.experiences, train, run_mesure):
             if rm:
                 logging.info(f"Tests {self.CATEGORIE}, exp. {i+1}/{imax}")
-                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=None)
+                exp = Experience(exp_params["context"], partiel=exp_params["partiel"], verbose=False)
                 dGLLiM.dF_hook = exp.context.dF
                 dic = self._dic_mesures(i,exp,exp_params,t)
-                if dic is not None:
+                if not '__error__' in dic:
                     assert set(self.METHODES) <= set(dic.keys()), f"Missing measures for {self.CATEGORIE}"
             else:
                 try:
@@ -214,15 +214,11 @@ class abstractMeasures():
         return {}
 
 
-class abstractLatexWriter():
-    """Builds latex template and runs pdflatex.
-    This class transforms mesures into uniformed representation matrix, where one line represents one context.
-    """
-
-    FACTOR_NUMBERS = 100
-    """Multiply errors by this factor"""
-
+class abstractLatexWriter:
     LATEX_BUILD_DIR = "/scratch/WORK/_LATEX"
+
+    LATEX_EXPORT_PATH = None
+    """where to export bare latex file """
 
     latex_jinja_env = jinja2.Environment(
         block_start_string='(#',
@@ -242,11 +238,72 @@ class abstractLatexWriter():
     latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%H h %M m %S s", time.gmtime(s))
     latex_jinja_env.filters["truncate01"] = lambda f: 1 if f > 1 else (0 if f < 0 else f)
 
+    template = ""
+    """latex template file"""
+
+    @classmethod
+    def render(cls, **kwargs):
+        """Wrapper"""
+        w = cls()
+        w.render_pdf(**kwargs)
+
+    def __init__(self):
+        if not os.path.exists(self.LATEX_BUILD_DIR):
+            os.makedirs(self.LATEX_BUILD_DIR)
+            logging.warning(f"Latex build directory created : {self.LATEX_BUILD_DIR}")
+
+    def _get_template_args(self, **kwargs):
+        return {}
+
+    def render_latex(self, **kwargs):
+        template = self.latex_jinja_env.get_template(self.template)
+        baretable = template.render(**self._get_template_args(**kwargs))
+        standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
+        return baretable, standalone_template.render(TABLE=baretable)
+
+    def _get_barelatex_filename(self, filename):
+        return filename + ".tex"
+
+    def render_pdf(self, show_latex=False, verbose=False, filename=None, **kwargs):
+        barelatex, latex = self.render_latex(**kwargs)
+        if show_latex:
+            print(latex)
+
+        filename = self._get_barelatex_filename(filename)
+        path = os.path.join(self.LATEX_EXPORT_PATH, filename)
+        with open(path, "w", encoding="utf8") as f:
+            f.write(barelatex)
+        logging.info(f"Bare latex wrote in {path}")
+        cwd = os.path.abspath(os.getcwd())
+        os.chdir(self.LATEX_BUILD_DIR)
+        with open(filename, "w", encoding="utf8") as f:
+            f.write(latex)
+        command = ["pdflatex", "-interaction", "batchmode", filename]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        rep = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # for longtable package
+        if verbose:
+            logging.debug(rep.stdout)
+        if rep.stderr:
+            logging.error(rep.stderr)
+        else:
+            logging.info(f"Standalone pdf wrote in {os.path.abspath(filename)}")
+        os.chdir(cwd)
+
+
+class abstractLatexTableWriter(abstractLatexWriter):
+    """Builds latex template and runs pdflatex.
+    This class transforms mesures into uniformed representation matrix, where one line represents one context.
+    """
+
+    LATEX_EXPORT_PATH = "../latex/tables"
+
+    FACTOR_NUMBERS = 100
+    """Multiply errors by this factor"""
+
+
     CRITERES = ["compareF", "meanPred", "modalPred", "retrouveYmean",
                 "retrouveY", "retrouveYbest", "validPreds"]
 
-    LATEX_EXPORT_PATH = "../latex/tables"
-    """Saving directory for bare latex table"""
 
     MEASURE_class = None
     """Measure class which gives experiences and methods"""
@@ -257,28 +314,20 @@ class abstractLatexWriter():
     DESCRIPTION = ""
     """Latex table caption"""
 
-    template = ""
-    "latex template file"
 
     METHODES = None
     """Default to Measure_class.METHODES"""
 
-    @classmethod
-    def render(cls, **kwargs):
-        """Wrapper"""
-        w = cls()
-        w.render_pdf(**kwargs)
 
     def __init__(self):
+        super(abstractLatexTableWriter, self).__init__()
         self.CATEGORIE = self.MEASURE_class.__name__
         mesures = Archive.load_mesures(self.CATEGORIE)
         self.experiences = self.MEASURE_class.experiences
         self.methodes = self.METHODES or self.MEASURE_class.METHODES
         self.matrix = self._mesures_to_matrix(mesures)
         self.matrix = self._find_best()
-        if not os.path.exists(self.LATEX_BUILD_DIR):
-            os.makedirs(self.LATEX_BUILD_DIR)
-            logging.warning(f"Latex build directory created : {self.LATEX_BUILD_DIR}")
+
 
     def _find_best(self):
         """Find best value for each CRITERE, line per line"""
@@ -293,7 +342,7 @@ class abstractLatexWriter():
 
         for line in self.matrix:
             for key in set(self.CRITERES) - {"validPreds"}:
-                values = [case[key] if case else None for case in line]
+                values = [case[key] if (key in case) else None for case in line]
                 bmean, bmedian = best(values)
                 if bmean is not None:  # adding indicator of best
                     line[bmean][key]["mean"] = (line[bmean][key]["mean"], True)
@@ -318,42 +367,17 @@ class abstractLatexWriter():
             exp["variables"] = cc.variables_names
         return self.experiences
 
-    def render_latex(self, label=None, WITH_STD=False):
-        template = self.latex_jinja_env.get_template(self.template)
-        label = label or self.CATEGORIE
-        baretable = template.render(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
+    def _get_template_args(self, **kwargs):
+        label = kwargs.pop("label", None) or self.CATEGORIE
+        WITH_STD = kwargs.pop("WITH_STD", False)
+        return dict(MATRIX=self.matrix, title=self.TITLE, description=self.DESCRIPTION,
                                     hHeader=self._horizontal_header(), vHeader=self._vertical_header(),
                                     label=label, CRITERES=self.CRITERES,
                                     FACTOR_NUMBERS=self.FACTOR_NUMBERS, WITH_STD=WITH_STD,
                                     NB_COL_CELL=3 if WITH_STD else 2)
-        standalone_template = self.latex_jinja_env.get_template("STANDALONE.tex")
-        return baretable, standalone_template.render(TABLE=baretable)
 
-    def render_pdf(self, show_latex=False, verbose=False, filename=None, **kwargs):
-        barelatex, latex = self.render_latex(**kwargs)
-        if show_latex:
-            print(latex)
-
-        filename = (filename or self.CATEGORIE) + '.tex'
-        path = os.path.join(self.LATEX_EXPORT_PATH, filename)
-        with open(path, "w", encoding="utf8") as f:
-            f.write(barelatex)
-        logging.info(f"Latex table write in {path}")
-        cwd = os.path.abspath(os.getcwd())
-        os.chdir(self.LATEX_BUILD_DIR)
-        with open(filename, "w", encoding="utf8") as f:
-            f.write(latex)
-        command = ["pdflatex", "-interaction", "batchmode", filename]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        rep = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # for longtable package
-        if verbose:
-            logging.debug(rep.stdout)
-        if rep.stderr:
-            logging.error(rep.stderr)
-        else:
-            logging.info(f"Standalone pdf wrote in {os.path.abspath(filename)}")
-        os.chdir(cwd)
-
+    def _get_barelatex_filename(self, filename):
+        return (filename or self.CATEGORIE) + '.tex'
 
 
 class AlgosMeasure(abstractMeasures):
@@ -365,11 +389,11 @@ class AlgosMeasure(abstractMeasures):
         t = _load_train_measure_gllim(i, GLLiM, exp, dict(exp_params, get_rnk_init=True), NOISE, "sobol", t,
                                       t)  # noisy GLLiM
         if type(t) is dict:  # error
-            dic["NG"] = dic["NjG"] = dic["NjG"] = t
-            return dic
-        dic["NG"], exp_params["rnk_init"] = t  # fixed rnk
-
+            dic["NG"] = t
+        else:
+            dic["NG"], exp_params["rnk_init"] = t  # fixed rnk
         Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
+
         dic["NjG"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
                                                Ytest=Ytest)  # noisy joint GLLiM
         dic["NdG"] = _load_train_measure_gllim(i, dGLLiM, exp, exp_params, NOISE, "sobol", False, t, Xtest=Xtest,
@@ -487,18 +511,17 @@ class ClusteredPredictionMeasure(abstractMeasures):
 
 
 
-
 ### ----------------------------- LATEX WRTIERS ------------------------------- ###
 
 
-class AlgosLatexWriter(abstractLatexWriter):
+class AlgosLatexWriter(abstractLatexTableWriter):
     MEASURE_class = AlgosMeasure
     template = "algos.tex"
     TITLE = "Algorithmes"
     DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire légèrement bruité."
 
 
-class AlgosTimeLatexWriter(abstractLatexWriter):
+class AlgosTimeLatexWriter(abstractLatexTableWriter):
     MEASURE_class = AlgosMeasure
     template = "time.tex"
     TITLE = "Temps d'apprentissage"
@@ -511,7 +534,7 @@ class AlgosTimeLatexWriter(abstractLatexWriter):
         super().render(**kwargs)
 
 
-class GenerationLatexWriter(abstractLatexWriter):
+class GenerationLatexWriter(abstractLatexTableWriter):
     MEASURE_class = GenerationMeasure
     template = "generation.tex"
     TITLE = "Méthode de génération"
@@ -519,7 +542,7 @@ class GenerationLatexWriter(abstractLatexWriter):
                   "de nombres aléatoires."
 
 
-class DimensionLatexWriter(abstractLatexWriter):
+class DimensionLatexWriter(abstractLatexTableWriter):
     MEASURE_class = DimensionMeasure
     template = "dimension.tex"
     TITLE = "Influence de la dimension"
@@ -535,7 +558,7 @@ class DimensionLatexWriter(abstractLatexWriter):
         return [self.experiences[0]]
 
 
-class ModalLatexWriter(abstractLatexWriter):
+class ModalLatexWriter(abstractLatexTableWriter):
     MEASURE_class = ModalMeasure
     template = "modal.tex"
     TITLE = "Mode de prévision"
@@ -543,7 +566,7 @@ class ModalLatexWriter(abstractLatexWriter):
                   "par rapport à la prévision par le mode (Mo,Ymo,Yb)"
 
 
-class LogistiqueLatexWriter(abstractLatexWriter):
+class LogistiqueLatexWriter(abstractLatexTableWriter):
     MEASURE_class = LogistiqueMeasure
     template = "logistique.tex"
     TITLE = "Transformation logistique"
@@ -559,28 +582,28 @@ class LogistiqueLatexWriter(abstractLatexWriter):
         return [self.experiences[0]]
 
 
-class NoisesLatexWriter(abstractLatexWriter):
+class NoisesLatexWriter(abstractLatexTableWriter):
     MEASURE_class = NoisesMeasure
     template = "noises.tex"
     TITLE = "Bruitage des données"
     DESCRIPTION = "Comparaison des différentes intensités de bruit sur les observations."
 
 
-class LocalLatexWriter(abstractLatexWriter):
+class LocalLatexWriter(abstractLatexTableWriter):
     MEASURE_class = LocalMeasure
     template = "local.tex"
     TITLE = "Initialisation locale"
     DESCRIPTION = "Comparaison pour différentes valeurs de la précision initiale."
 
 
-class RelationCLatexWriter(abstractLatexWriter):
+class RelationCLatexWriter(abstractLatexTableWriter):
     MEASURE_class = RelationCMeasure
     template = "relationC.tex"
     TITLE = "Relation imposée entre $b$ et $c$"
     DESCRIPTION = "Comparaison entre un apprentissage standard et un apprentissage en déduisant $c$ de $b$."
 
 
-class DoubleLearningWriter(abstractLatexWriter):
+class DoubleLearningWriter(abstractLatexTableWriter):
     template = "doublelearning.tex"
     TITLE = "Double apprentissage"
     DESCRIPTION = "Test sur les mêmes {Ntest} données : apprentissage standard (gauche) " \
@@ -604,14 +627,14 @@ class DoubleLearningWriter(abstractLatexWriter):
         return [[exp[m] for m in self.methodes] for exp in mesures]
 
 
-class ErrorPerComponentsWriter(abstractLatexWriter):
+class ErrorPerComponentsWriter(abstractLatexTableWriter):
     MEASURE_class = PerComponentsMeasure
     template = "table_per_components.tex"
     TITLE = "Erreur variable par variable"
     DESCRIPTION = "Erreur (en valeur absolue) pour la prédiction par la moyenne"
 
 
-class ClusteredPredictionWriter(abstractLatexWriter):
+class ClusteredPredictionWriter(abstractLatexTableWriter):
     MEASURE_class = ClusteredPredictionMeasure
     template = "clustered_pred.tex"
     TITLE = "Prédiction par moyenne locale"
@@ -620,9 +643,26 @@ class ClusteredPredictionWriter(abstractLatexWriter):
                 "retrouveY", "retrouveYbest"] + ["clusteredPred", "retrouveYclustered",
                                                  "retrouveYbestclustered"]
 
+
+class DescriptionContextWriter(abstractLatexWriter):
+    template = "description_contexts.tex"
+
+    LATEX_EXPORT_PATH = "../latex/rapport/NUMERIQUE"
+
+    @classmethod
+    def render(cls, **kwargs):
+        kwargs["filename"] = "contexts"
+        super().render(**kwargs)
+
+    def _get_template_args(self, **kwargs):
+        return {"CONTEXTS": kwargs["CONTEXTS"]}
+
+
+
+
 def main():
     """Run test"""
-    AlgosMeasure.run([False, False, False, True, True], [False, False, False, True, True])
+    # AlgosMeasure.run([False, False, False, True, True], [False, False, False, True, True])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -633,7 +673,7 @@ def main():
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run(True,True)
 
-    # AlgosLatexWriter.render()
+    AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()
     # DimensionLatexWriter.render()

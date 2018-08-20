@@ -73,6 +73,7 @@ class abstractDrawerMPL():
         if savepath:
             self.save(savepath)
 
+
     def create_figure(self, *args):
         self.fig = pyplot.figure(figsize=self.FIGSIZE)
 
@@ -309,7 +310,81 @@ class estimated_F(abstractGridDrawerMPL):
             axe.set_ylabel(vary)
 
 
-class plot_density2D(abstractGridDrawerMPL):
+class Density1D(abstractGridDrawerMPL):
+    RESOLUTION = 200
+    Y_TITLE_BOX_WITH_CONTEXT = 1.18
+    SIZE_COLUMN = 5
+
+    def _get_nb_subplot(self, fs, *args):
+        return len(fs)
+
+    def main_draw(self, fs, xlims, varnames, titles,
+                  modal_preds, trueXs, var_description):
+        trueXs = trueXs if trueXs is not None else [None] * len(fs)
+
+        for f, xlim, modal_pred, truex, varname, title, axe in zip(fs, xlims, modal_preds,
+                                                                   trueXs, varnames, titles, self.get_axes()):
+            x = np.linspace(*xlim, self.RESOLUTION)[:, None]
+            y, _ = f(x)
+
+            _axe_density_1D(axe, x.flatten(), y.flatten(), xlim,
+                            varname, modal_pred, truex, title)
+
+        self.fig.text(0.5, -0.02, var_description, horizontalalignment='center',
+                      fontsize=12, bbox=self.FIGURE_TITLE_BOX, fontweight='bold')
+        if fs:
+            handles, labels = axe.get_legend_handles_labels()
+            self.fig.legend(handles, labels, loc="upper right")
+
+
+def _axe_density_1D(axe, x, y, xlims,
+                    varname, modal_preds, truex, title):
+    # axe.xaxis.set_minor_locator(ticker.MultipleLocator((xlims[1] - xlims[0]) / 100))
+    # axe.xaxis.set_major_locator(ticker.MultipleLocator((xlims[1] - xlims[0]) / 20))
+    axe.plot(x, y, "-", linewidth=1)
+    axe.set_xlim(*xlims)
+    axe.set_xlabel(varname)
+    axe.set_title(title)
+
+    colors = cm.coolwarm(np.linspace(0, 0.2, len(modal_preds)))
+    for i, (X, height, weight) in enumerate(modal_preds):
+        axe.axvline(x=X, color=colors[i], linestyle="--",
+                    label="$x_{{est}}^{{( {2} )}}$, $w_{{  {2} }} = {1:.3f}$".format(height, weight, i), alpha=0.5)
+
+    if truex:
+        axe.axvline(x=truex, label="True value", alpha=0.5)
+
+
+def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
+                   varnames, modal_preds, truex, title, with_colorbar=True):
+    if colorplot:
+        pc = axe.pcolormesh(x, y, z)
+        axe.set_xlim(*xlims)
+        axe.set_ylim(*ylims)
+        if with_colorbar:
+            pyplot.colorbar(pc, ax=axe)
+    else:
+        levels = [0.001] + list(np.linspace(0, z.max(), 20))
+        mask = z >= 0.0001  # autozoom
+        lines_ok, cols_ok = mask.max(axis=1) > 0, mask.max(axis=0) > 0
+        x, y, z = x[lines_ok][:, cols_ok], y[lines_ok][:, cols_ok], z[lines_ok][:, cols_ok]
+        axe.contour(x, y, z, levels=levels, alpha=0.5, aspect="auto")
+    axe.set_xlabel(varnames[0])
+    axe.set_ylabel(varnames[1])
+
+    colors = cm.coolwarm(np.linspace(0, 0.2, len(modal_preds)))
+    for i, (X, height, weight) in enumerate(modal_preds):
+        axe.scatter(X[0], X[1], color=colors[i], marker=".",
+                    label="$x_{{est}}^{{( {2} )}}$, $w_{{  {2} }} = {1:.3f}$".format(height, weight, i))
+        axe.annotate(str(i), (X[0], X[1]))
+
+    if truex is not None:
+        axe.scatter(truex[0], truex[1], color="r", marker="+", label="True value", s=50, zorder=10)
+
+    axe.set_title(title)
+
+
+class Density2D(abstractGridDrawerMPL):
     RESOLUTION = 200
     SIZE_COLUMN = 5
     SIZE_ROW = 3
@@ -331,14 +406,14 @@ class plot_density2D(abstractGridDrawerMPL):
             z, _ = f(variable)
             print("Done.")
             z = z.reshape((self.RESOLUTION, self.RESOLUTION))
-            _axe_density2D(self.fig, axe, x, y, z, colorplot, xlim, ylim, varname,
+            _axe_density2D(axe, x, y, z, colorplot, xlim, ylim, varname,
                            modal_pred, truex, title)
 
         if len(fs) > 0:
             handles, labels = axe.get_legend_handles_labels()
-            self.fig.legend(handles, labels, loc="center left")
+            self.fig.legend(handles, labels, loc="upper right")
 
-        self.fig.text(0.5, -0.1, var_description, horizontalalignment='center',
+        self.fig.text(0.5, -0.02, var_description, horizontalalignment='center',
                       fontsize=12, bbox=self.FIGURE_TITLE_BOX, fontweight='bold')
 
 
@@ -623,22 +698,6 @@ class abstractGridSequence(abstractGridDrawerMPL):
         self.fig = self.axes_seq.fig
 
 
-def _axe_density_1D(axe, x, y, xlims,
-                    varname, modal_preds, truex, title):
-    # axe.xaxis.set_minor_locator(ticker.MultipleLocator((xlims[1] - xlims[0]) / 100))
-    axe.xaxis.set_major_locator(ticker.MultipleLocator((xlims[1] - xlims[0]) / 20))
-    axe.plot(x, y, "-", linewidth=1)
-    axe.set_xlim(*xlims)
-    axe.set_xlabel(varname)
-    axe.set_title(title)
-
-    for i, (X, height, weight) in enumerate(modal_preds):
-        axe.axvline(x=X, color="b", linestyle="--",
-                    label="X modal {0:.2e} - {1:.3f}".format(height, weight), alpha=0.5)
-
-    if truex:
-        axe.axvline(x=truex, label="True value", alpha=0.5)
-
 
 class density_sequences1D(abstractGridSequence):
     RESOLUTION = 200
@@ -655,6 +714,8 @@ class density_sequences1D(abstractGridSequence):
 
     def main_draw(self, densitys, modal_preds, xlabels, xtitle, Xmean, Xweight, xlim,
                   varname, Yref, StdRef, StdMean, images_paths):
+        if xlabels is None:
+            xlabels = np.arange(len(Xmean))
         x = np.linspace(*xlim, self.RESOLUTION)[:, None]
         ydensity, _ = densitys(x)
         xpoints = x.flatten()
@@ -768,30 +829,7 @@ class MapValues(abstractDrawerMPL):
             self.fig.colorbar(s2, cax=cbar_ax)
 
 
-def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
-                   varnames, modal_preds, truex, title, with_colorbar=True):
-    if colorplot:
-        pc = axe.pcolormesh(x, y, z)
-        axe.set_xlim(*xlims)
-        axe.set_ylim(*ylims)
-        if with_colorbar:
-            pyplot.colorbar(pc, ax=axe)
-    else:
-        levels = np.linspace(0, z.max(), 20)
-        levels = [0.001] + list(levels)
-        axe.contour(x, y, z, levels=levels, alpha=0.5)
-    axe.set_xlabel(varnames[0])
-    axe.set_ylabel(varnames[1])
 
-    colors = cm.coolwarm(np.arange(len(modal_preds)) / len(modal_preds))
-    for i, (X, height, weight) in enumerate(modal_preds):
-        axe.scatter(X[0], X[1], color=colors[i], marker=".", label="X modal {0:.2e} - {1:.3f}".format(height, weight))
-        axe.annotate(str(i), (X[0], X[1]))
-
-    if truex is not None:
-        axe.scatter(truex[0], truex[1], color="r", marker="+", label="True value", s=50, zorder=10)
-
-    axe.set_title(title)
 
 
 ##### ----------------- TODO A refactor en classe  --------------- #################
@@ -799,39 +837,6 @@ def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
 
 
 
-def plot_density1D(fs,contexte,xlims=((0,1),),resolution=200,main_title="Density 1D",titles=("",),
-                   modal_preds=((),),trueXs=None,
-                   var_description = "",filename=None,varnames=(("x",),)):
-
-    trueXs = trueXs or [None] * len(fs)
-    nb_row, nb_column, figsize = _get_rows_columns(len(fs),coeff_column=5,coeff_row=4)
-    fig = pyplot.figure(figsize=figsize)
-    n = 1
-
-    for f , xlim, modal_pred, truex, varname, title in zip(fs,xlims,modal_preds,
-                                                           trueXs,varnames, titles):
-        x = np.linspace(*xlim,resolution)[:,None]
-        y , _ = f(x)
-        axe = fig.add_subplot(nb_row,nb_column,n)
-
-        _axe_density_1D(axe,x.flatten(),y.flatten(),xlim,
-                   varname,modal_pred,truex,title)
-        n += 1
-
-    fig.text(0.5, 0, var_description, horizontalalignment='center',
-             fontsize=12, bbox=dict(boxstyle="round", facecolor='#D8D8D8',
-                                    ec="0.5", pad=0.5, alpha=1), fontweight='bold')
-    if fs:
-        handles, labels = axe.get_legend_handles_labels()
-        fig.legend(handles,labels,bbox_to_anchor=(0.18,1))
-
-    title = main_title + "\n" + contexte
-    fig.suptitle(title, bbox=FIGURE_TITLE_BOX,y = 1.18)
-    fig.tight_layout(rect=[0.2,0,1,1])
-    if filename:
-        fig.savefig(filename, bbox_inches='tight')
-        print("Saved in ", filename)
-        pyplot.close(fig)
 
 
 

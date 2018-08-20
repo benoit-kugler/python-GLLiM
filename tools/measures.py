@@ -363,7 +363,7 @@ class VisualisationMesures(Mesures):
 
     def _collect_plot_density2D(self, density_full, base_title, trueX, modal_pred_full, filename, **kwargs):
         exp = self.experience
-        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
+        nb_var = len(exp.variables_names)
         graph_datas = []
 
         for i in range(nb_var):
@@ -378,23 +378,25 @@ class VisualisationMesures(Mesures):
         colorplot = kwargs.pop("colorplot", False)
         var_description = kwargs.pop("var_description", "")
         title = kwargs.pop("main_title", "")
-        self.G.plot_density2D(fs, varlims, varnames, titles, modal_preds, trueXs, colorplot,
-                              var_description, context=exp.get_infos(), title=title, savepath=filename, **kwargs)
+        self.G.Density2D(fs, varlims, varnames, titles, modal_preds, trueXs, colorplot,
+                         var_description, context=exp.get_infos(), title=title, savepath=filename, **kwargs)
 
     def _collect_plot_density1D(self, density_full, base_title, trueX, modal_pred_full, filename, **kwargs):
         exp = self.experience
-        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
+        nb_var = len(exp.variables_names)
         graph_datas = []
+        var_description = kwargs.pop("var_description", "")
 
         for i in range(nb_var):
             density, xlim, ylim, modal_pred, trueXi, varx, vary, title = \
                 self._collect_infos_density(density_full, base_title, trueX, i, j=None, modal_pred_full=modal_pred_full)
-            graph_datas.append((density, xlim, ylim, modal_pred, trueXi, (varx, vary), title))
+            graph_datas.append((density, xlim, ylim, modal_pred, trueXi, varx, title))
         fs, xlims, ylims, modal_preds, trueXs, varnames, titles = zip(*graph_datas)
 
-        self.G.plot_density1D(fs, exp.get_infos(), xlims=xlims,
-                              titles=titles, modal_preds=modal_preds, trueXs=trueXs,
-                              filename=filename, varnames=varnames, **kwargs)
+        fig_title = kwargs.pop("main_title", "")
+
+        self.G.Density1D(fs, xlims, varnames, titles, modal_preds, trueXs, var_description,
+                         context=exp.get_infos(), savepath=filename, title=fig_title, **kwargs)
 
     def plot_density_X(self, gllim: GLLiM, colorplot=True, with_modal=True):
         """Plot the general density of X (2D), for the given marginals (index in X)"""
@@ -403,7 +405,7 @@ class VisualisationMesures(Mesures):
         def density_full(x_points, marginals):
             return gllim.X_density(x_points, marginals=marginals), None
 
-        base_title = "Prior density of ${},{}$"
+        base_title = "Prior density of {},{}"
         modal_pred_full = None
         if with_modal:
             h, w, c, _ = zip(*(dominant_components(gllim.pikList,
@@ -418,8 +420,7 @@ class VisualisationMesures(Mesures):
                                      main_title=main_title, colorplot=colorplot)
 
     def plot_conditionnal_density(self, gllim: GLLiM, Y0_obs, X0_obs, dim=2,
-                                  sub_densities=0, with_modal=False, colorplot=True,
-                                  modal_threshold=0.01):
+                                  sub_densities=0, with_modal=None, colorplot=True, savepath=None, **kwargs):
         """marginals is the index in X.
         Y0_obs is a matrix with one row, X0_obs is an array"""
         exp = self.experience
@@ -427,29 +428,37 @@ class VisualisationMesures(Mesures):
         def density_full(x_points, marginals):
             return gllim.forward_density(Y0_obs, x_points, marginals=marginals, sub_densities=sub_densities)
 
-        modal_pred_full = None
-        if with_modal:
-            m, h, w = gllim.modal_prediction(Y0_obs, threshold=modal_threshold)
+        if type(with_modal) is int:
+            m, h, w = gllim.modal_prediction(Y0_obs, components=with_modal)
             modal_pred_full = m[0], h[0], w[0]
+            label = "(Centers selection - Components : {})".format(with_modal)
+        elif type(with_modal) is float:
+            m, h, w = gllim.modal_prediction(Y0_obs, threshold=with_modal)
+            modal_pred_full = m[0], h[0], w[0]
+            label = "(Centers selection - Weight threshold : {})".format(with_modal)
+        else:
+            modal_pred_full = None
+            label = ""
 
-        filename = exp.archive.get_path("figures", filecategorie="conditionnal_density-D{}-{}".format(dim,
+        filename = savepath or exp.archive.get_path("figures",
+                                                    filecategorie="conditionnal_density-D{}-{}".format(dim,
                                                                                                       colorplot and "color" or "contour"))
 
-        main_title = "Marginal conditional densities (Modal selection : threshold {})".format(modal_threshold)
+        main_title = "Marginal conditional densities " + label
 
-        s = (X0_obs is None) and "X unknown" or "".join(
-            " ${0}$ : {1:.5f} ".format(vn, v) for vn, v in zip(exp.variables_names, X0_obs))
+        s = (X0_obs is None) and "X unknown" or "$\\mathbf{x} = $" + "".join(
+            " {0} : {1:.5f} ".format(vn, v) for vn, v in zip(exp.variables_names, X0_obs))
 
         if dim == 2:
-            base_title = "Density of ${},{}$"
+            base_title = "Density of {},{}"
             self._collect_plot_density2D(density_full, base_title, X0_obs, modal_pred_full, filename,
                                          main_title=main_title, colorplot=colorplot, var_description=s,
-                                         draw_context=True)
+                                         **kwargs)
 
         elif dim == 1:
-            base_title = "Density of ${}$"
+            base_title = "Density of {}"
             self._collect_plot_density1D(density_full, base_title, X0_obs, modal_pred_full, filename,
-                                         main_title=main_title, var_description=s)
+                                         main_title=main_title, var_description=s, **kwargs)
         else:
             raise ValueError("Unknown dimension. Must be one 1 or 2")
 
@@ -462,7 +471,7 @@ class VisualisationMesures(Mesures):
 
     def plot_mean_prediction(self, G):
         exp = self.experience
-        nrmse, nrmse_by_components, _, nrmseclean, nb_valid, nrmseY = self._nrmse_mean_prediction(G)
+        nrmse, nrmse_by_components, _, nb_valid, nrmseY = self._nrmse_mean_prediction(G)
 
         errors = [nrmse] + list(nrmse_by_components)
         labels = ["Vector error"] + list(exp.variables_names)
@@ -605,7 +614,7 @@ class VisualisationSecondLearning(MesuresSecondLearning, VisualisationMesures):
         exp = self.experience
         fsbefore, fsafter, modal_preds_before, modal_preds_after, trueXs = [], [], [], [], []
 
-        nb_var = exp.partiel and len(exp.partiel) or len(exp.context.X_MAX)
+        nb_var = len(exp.variables_names)
         X = X if X is not None else [None] * len(Y)
         gllim_base.verbose = False
         for y, X0_obs, gllim in zip(Y, X, gllims):

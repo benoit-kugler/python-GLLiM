@@ -55,3 +55,8 @@
 (! MEAN_MEDIAN_STD_FREQ(None) !)
 (#- endif #)
 (#- endmacro #)
+
+
+(# macro LINK_CONTEXT_LABEL(context) -#)
+\textbf{ \hyperref[contexts]{ (! context.LABEL !) }}
+(#- endmacro #)

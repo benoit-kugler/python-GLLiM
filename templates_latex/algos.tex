@@ -11,7 +11,7 @@
 (# endblock #)
 
 (# block line_first_cell #)
-\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+\makecell{ (! macros.LINK_CONTEXT_LABEL(headercell.context)   !) \\
 { \small L,D = (! headercell.L !),(! headercell.D !) } \\
 {\small K = (! headercell.K !) } \\
 {\small N = (! headercell.N !) } \\ {\small (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) } \\

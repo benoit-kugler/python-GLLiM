@@ -27,8 +27,9 @@ class HapkeCRelationContext(HapkeContext):
     DEFAULT_VALUES = np.array([0.5,15,0.5,0.5,0.5])
     """Mean default values"""
 
-    LABEL = "$ C = f(B) $"
-
+    DESCRIPTION = HapkeContext.DESCRIPTION + " Modèle de Hapke à trois paramètres, " \
+                                             "où $c$ est déduit de $b$ par $ c = \mathcal{R}(b) $"
+    LABEL = HapkeContext.LABEL + " -$\mathcal{R}$"
 
     def _prepare_X(self, X):
         Xfull = super()._prepare_X(X)
@@ -49,6 +50,11 @@ class LabContextOlivine_C(LabContextOlivine):
     """Mean default values"""
 
     PDF_NAMES = ["b", "theta", "omega", "", "", ""]
+
+    DESCRIPTION = LabContextOlivine.DESCRIPTION + " Modèle de Hapke à trois paramètres, " \
+                                                  "où $c$ est déduit de $b$ par $ c = \mathcal{R}(b) $"
+    LABEL = LabContextOlivine.LABEL + " -$\calR$"
+
 
     def _prepare_X(self, X):
         Xfull = abstractHapkeModel._prepare_X(self, X)
