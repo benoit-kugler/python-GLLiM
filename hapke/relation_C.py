@@ -29,7 +29,7 @@ class HapkeCRelationContext(HapkeContext):
 
     DESCRIPTION = HapkeContext.DESCRIPTION + " Modèle de Hapke à trois paramètres, " \
                                              "où $c$ est déduit de $b$ par $ c = \mathcal{R}(b) $"
-    LABEL = HapkeContext.LABEL + " -$\mathcal{R}$"
+    LABEL = HapkeContext.LABEL + "-$\mathcal{R}$"
 
     def _prepare_X(self, X):
         Xfull = super()._prepare_X(X)

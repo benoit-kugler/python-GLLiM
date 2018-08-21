@@ -137,6 +137,7 @@ class simple_plot(abstractDrawerMPL):
         xlabels = xlabels if xlabels is not None else list(range(len(values[0])))
         axe = self.fig.gca()
         for v, lab, m, c in zip(values, labels, self.MARKERS, self.get_colors(len(values))):
+            print(len(v), len(xlabels))
             axe.scatter(xlabels, v, marker=m, label=lab, color=c)
         if ylog:
             axe.set_yscale("log")
@@ -157,9 +158,10 @@ class plusieursKN(simple_plot):
 
     @staticmethod
     def _format_context(context):
-        return f"""Courbe 1: $K$ évolue linéairement et $N = {context['coeffNK']} K$. 
-                Courbe 2: idem pour $K$ mais $N = {context['coeffmaxN1']}  K_{{max}}$.
-                Courbe 3: item pour $K$ mais $N = {context['coeffmaxN2']}  K_{{max}}$."""
+        return f"""Erreur moyenne sur {context["Ntest"]} x. \\
+        Courbe 1: $K$ évolue linéairement et $N = {context["coeffNK"]} K$. \\
+        Courbe 2: idem pour $K$ mais $N = {context["coeffmaxN1"]}  K_{{max}}$. \\
+        Courbe 3: item pour $K$ mais $N = {context["coeffmaxN2"]}  K_{{max}}$."""
 
 
 class doubleplusieursKN(plusieursKN):

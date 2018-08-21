@@ -7,7 +7,7 @@
 \setlength\tabcolsep{0.07cm}
 
 (# set cell_shape = 'c c c |' if WITH_STD else 'c c|' #)
-\begin{table}
+\begin{table}[h!]
     \centering
     \begin{tabular}
         (# block table_def #){ | l c | (! ([cell_shape] *  (hHeader | length )) | join(' ') !) }
@@ -37,7 +37,7 @@
 
     \multirow{6}{*}{
     (# block line_first_cell scoped #)
-\makecell{ \textbf{ \hyperref{(! headercell.context.LABEL !)} \\
+    \makecell{ (! macros.LINK_CONTEXT_LABEL(headercell.context) !) \\
     { \small L,D = (! headercell.L !),(! headercell.D !) } \\
     {\small K = (! headercell.K !) } \\
     {\small N = (! headercell.N !) } \\
@@ -51,7 +51,11 @@
     (# for m in line #)
     &
     (# if m and '__error__' in m #)
-        (# if rowloop.first #) \multicolumn{ (! NB_COL_CELL !) }{c}{\multirow{6}{*}{ (! m.__error__ !) }} (# endif #)
+        (#- if rowloop.first #)
+        \multicolumn{ (! NB_COL_CELL !) }{c|}{\multirow{7}{*}{ (! m.__error__ !) } }
+        (#- else #)
+        \multicolumn{ (! NB_COL_CELL !) }{c|}{}
+        (# endif -#)
     (# else #)
     (# block cell scoped #)
     (! macros.MESURES(m,critere) !)
@@ -59,7 +63,7 @@
     (# endif #)
     (# endfor #)
 
-    (# if loop.last #) \\ (# else #) \\* (# endif #)
+        \\
 
     (# endfor #)
     (# endblock #)

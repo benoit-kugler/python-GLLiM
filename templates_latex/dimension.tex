@@ -5,22 +5,17 @@
 
 (# block header_table #)
 (! super() !)
-&
-(#for exp in hHeader #)
-(# if loop.last #)
-& \multicolumn{3}{|c|}{
-(# else #)
-& \multicolumn{3}{|c}{
-(# endif #)
-L,D = (! exp.L !),(! exp.D !) } (# if loop.last #) \\* (# endif #)
-    (# endfor #)
-(# endblock #)
+\multicolumn{ 2 }{c | }{ }
+(#- for exp in hHeader #)
+& \multicolumn{ (! NB_COL_CELL !) }{ c |}{L,D = (! exp.L !),(! exp.D !) } (# if loop.last #) \\ (# endif #)
+(# endfor #)
+(#- endblock #)
 
 
 (# block line_first_cell #)
 \makecell{ \textbf{ (! headercell.context.LABEL !) } \\
 {\small K = (! headercell.K !) } \\
-{\small N = (! headercell.N !) } \\ {\small Local = (! headercell.init_local !) }}
+{\small N = (! headercell.N !) }}
 (# endblock #)
 
 

@@ -131,7 +131,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method,
     except WrongContextError as e:
         logging.warning("\t{} method is not appropriate for the parameters ! "
                         "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
-        return {"__error__": " - "}
+        return {"__error__": " Contraintes incompatibles "}
     except np.linalg.LinAlgError as e:
         logging.error("\tTraining failed ! {}".format(e))
         return {"__error__": "Instabilité numérique"}
@@ -279,8 +279,7 @@ class abstractLatexWriter:
         with open(filename, "w", encoding="utf8") as f:
             f.write(latex)
         command = ["pdflatex", "-interaction", "batchmode", filename]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        rep = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # for longtable package
+        rep = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if verbose:
             logging.debug(rep.stdout)
         if rep.stderr:
@@ -517,8 +516,8 @@ class ClusteredPredictionMeasure(abstractMeasures):
 class AlgosLatexWriter(abstractLatexTableWriter):
     MEASURE_class = AlgosMeasure
     template = "algos.tex"
-    TITLE = "Algorithmes"
-    DESCRIPTION = "Chaque algorithme est testé avec un dictionnaire légèrement bruité."
+    TITLE = "GLLiM et variantes"
+    DESCRIPTION = f"Chaque algorithme est testé avec un dictionnaire légèrement bruité ($r = {NOISE}$)"
 
 
 class AlgosTimeLatexWriter(abstractLatexTableWriter):
@@ -538,8 +537,8 @@ class GenerationLatexWriter(abstractLatexTableWriter):
     MEASURE_class = GenerationMeasure
     template = "generation.tex"
     TITLE = "Méthode de génération"
-    DESCRIPTION = "Le dictionnaire d'aprentissage est généré avec différentes méthodes de génération " \
-                  "de nombres aléatoires."
+    DESCRIPTION = "Le dictionnaire d'apprentissage est généré avec différents " \
+                  "générateurs pseudo ou quasi aléatoires."
 
 
 class DimensionLatexWriter(abstractLatexTableWriter):
@@ -631,7 +630,7 @@ class ErrorPerComponentsWriter(abstractLatexTableWriter):
     MEASURE_class = PerComponentsMeasure
     template = "table_per_components.tex"
     TITLE = "Erreur variable par variable"
-    DESCRIPTION = "Erreur (en valeur absolue) pour la prédiction par la moyenne"
+    DESCRIPTION = "Erreur (en valeur absolue) pour la prédiction par la moyenne."
 
 
 class ClusteredPredictionWriter(abstractLatexTableWriter):
@@ -662,7 +661,7 @@ class DescriptionContextWriter(abstractLatexWriter):
 
 def main():
     """Run test"""
-    # AlgosMeasure.run([False, False, False, True, True], [False, False, False, True, True])
+    # AlgosMeasure.run([True, True, True, False, False], [True, True, True, False, False])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -673,7 +672,7 @@ def main():
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run(True,True)
 
-    AlgosLatexWriter.render()
+    # AlgosLatexWriter.render()
     # AlgosTimeLatexWriter.render()
     # GenerationLatexWriter.render()
     # DimensionLatexWriter.render()
@@ -682,7 +681,7 @@ def main():
     # NoisesLatexWriter.render()
     # LocalLatexWriter.render()
     # RelationCLatexWriter.render()
-    # DoubleLearningWriter.render()
+    DoubleLearningWriter.render()
     # ErrorPerComponentsWriter.render()
     # ClusteredPredictionWriter.render()
 

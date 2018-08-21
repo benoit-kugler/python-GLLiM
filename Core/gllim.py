@@ -642,7 +642,7 @@ class GLLiM():
         """
         Compute the mean Ak*Y + Bk and the quantities alpha depending of Y in (7)
         :param Y: shape (N,D)
-        :return: mean shape(N,K,L) alpha shape (N,K)
+        :return: mean shape(N,K,L) alpha shape (N,K) , normalisation shape (N,1)
         """
         N = Y.shape[0]
         Y = Y.reshape((N, self.D))
@@ -918,7 +918,7 @@ class jGLLiM(GLLiM):
             logging.info("{} initialization... (N = {}, L = {} , D = {}, K = {})".format(self.__class__.__name__,
                                                                                          N, L, D, self.K))
         self.init_fit(T, Y, init)
-        TY, Gmm = self._Gmm_setup(T, Y, maxIter - 1)
+        TY, Gmm = self._Gmm_setup(T, Y, maxIter)
 
         if self.verbose is not None:
             logging.info("Done. jGMM fitting...")

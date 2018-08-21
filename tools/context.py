@@ -271,8 +271,9 @@ class TwoSolutionsFunction(abstractSimpleFunctionModel):
     PARAMETERS = np.array(["x{}".format(i + 1) for i in range(4)])
 
     LABEL = "Fourche"
-    DESCRIPTION = "Fonction ayant deux antécédants pour chaque $y$: $x \mapsto ( (x_{1} - 0.5)^2 , x_{2} , ... , x_{L})$." \
-                  f" Définie sur ${ _xlims_to_P(XLIMS) }$"
+    DESCRIPTION = "$x \mapsto ( (x_{1} - 0.5)^2 , x_{2} , ... , x_{L})$," + f" définie sur ${ _xlims_to_P(XLIMS) }$." \
+                  + " Fonction ayant deux antécédants pour chaque $y$."
+
 
     def F(self, X):
         out = np.empty(X.shape)

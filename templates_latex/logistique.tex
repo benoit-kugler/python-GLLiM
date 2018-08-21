@@ -5,20 +5,17 @@
 
 (# block header_table #)
 (! super() !)
-&
+\multicolumn{ 2 }{c | }{ }
 (#for exp in hHeader #)
-(# if loop.last #)
-& \multicolumn{3}{|c|}{
-(# else #)
-& \multicolumn{3}{|c}{
-(# endif #)
-(! exp.context.LABEL !)} (# if loop.last #) \\* (# endif #)
+& \multicolumn{ (! NB_COL_CELL !)}{c|}{ (! exp.context.LABEL !)} (# if loop.last #) \\ (# endif #)
 (# endfor #)
 (# endblock #)
 
 
 (# block line_first_cell #)
-\makecell{
+\makecell{ (! macros.LINK_CONTEXT_LABEL(headercell.context) !) \\
+{ \small L,D = (! headercell.L !),(! headercell.D !) } \\
 {\small K = (! headercell.K !) } \\
-{\small N = (! headercell.N !) } \\ {\small Local = (! headercell.init_local !) }}
+{\small N = (! headercell.N !) } \\
+{\small Modal pred. = (! headercell.context.PREFERED_MODAL_PRED !) }}
 (# endblock #)

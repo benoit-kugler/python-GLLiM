@@ -14,7 +14,7 @@ from plotting import graphiques
 from tools import context
 from tools.archive import Archive
 from tools.context import WaveFunction, InjectiveFunction, HapkeContext
-from tools.experience import Experience, mesure_convergence
+from tools.experience import Experience, mesure_convergence, Ntest_PLUSIEURS_KN
 from tools.measures import Mesures
 
 LATEX_IMAGES_PATH = "../latex/images/plots"
@@ -112,8 +112,8 @@ def plot_evo_LL():
     training.NB_MAX_ITER, old_MAXITER = 200, training.NB_MAX_ITER
     values, labels = [], []
     exp = Experience(WaveFunction, partiel=None, verbose=None)
-    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
-    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000)
+    gllim = exp.load_model(20, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
 
     _, LLs = exp.archive.load_tracked_thetas()
@@ -122,8 +122,8 @@ def plot_evo_LL():
     labels.append(exp.context.LABEL)
 
     exp = Experience(InjectiveFunction(4), partiel=None, verbose=None)
-    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=800)
-    gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=2000)
+    gllim = exp.load_model(50, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
                            gamma_type="full", gllim_cls=GLLiM)
 
     _, LLs = exp.archive.load_tracked_thetas()
@@ -132,9 +132,9 @@ def plot_evo_LL():
     labels.append(exp.context.LABEL)
 
     exp = Experience(HapkeContext, partiel=None, verbose=None)
-    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=1000)
-    gllim = exp.load_model(10, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
-                           gamma_type="full", gllim_cls=GLLiM)
+    exp.load_data(regenere_data=RETRAIN, with_noise=None, N=10000)
+    gllim = exp.load_model(50, mode=RETRAIN and "r" or "l", track_theta=True, init_local=200,
+                           gamma_type="full", gllim_cls=jGLLiM)
 
     _, LLs = exp.archive.load_tracked_thetas()
     LLs = (np.array(LLs[1:]) - LLs[0]) / (exp.context.D + exp.context.L)
@@ -152,21 +152,21 @@ def plot_evo_LL():
 
 def plusieurs_K_N(imax):
     l1, l2, l3, K_progression, coeffNK, coeffmaxN1, coeffmaxN2 = mesure_convergence(imax, RETRAIN)
-
     labels = Mesures.LABELS_STUDY_ERROR
     l1 = l1[:, 0]
     l2 = l2[:, 0]
     l3 = l3[:, 0]
-    label1 = labels[0] + f" - $N = {coeffNK}K$"
-    label2 = labels[0] + f" - $N = {coeffmaxN1} * Kmax$"
-    label3 = labels[0] + f" - $N = {coeffmaxN2} * Kmax$"
+    label1 = "1 - " + labels[0] + f" - $N = {coeffNK}K$"
+    label2 = "2 - " + labels[0] + f" - $N = {coeffmaxN1} * Kmax$"
+    label3 = "3 - " + labels[0] + f" - $N = {coeffmaxN2} * Kmax$"
 
     title = "Evolution de l'erreur en fonction de K et N"
     xlabels = K_progression
-    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], xlabels, True, "K", "Erreur",
+    graphiques.plusieursKN([l1, l2, l3], [label1, label2, label3], xlabels, True, "K", "Erreur moyenne",
                            savepath=PATHS("evoKN.png"),
                            title=title, write_context=True,
-                           context={"coeffNK": coeffNK, "coeffmaxN1": coeffmaxN1, "coeffmaxN2": coeffmaxN2})
+                           context={"coeffNK": coeffNK, "coeffmaxN1": coeffmaxN1, "coeffmaxN2": coeffmaxN2,
+                                    "Ntest": Ntest_PLUSIEURS_KN})
 
 
 def init_cos():
@@ -246,14 +246,15 @@ def main():
     # exemple_pre_lissage()
     # plot_estimeF_simple()
     # plot_estimeF()
-    # plot_evo_LL()
+    plot_evo_LL()
     # plusieurs_K_N(20)
     # init_cos()
     # regularization()
     # comparaison_MCMC()
-    plot_sol_multiples()
+    # plot_sol_multiples()
 
-RETRAIN = False
+
+RETRAIN = True
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",

@@ -20,6 +20,10 @@ from tools.results import Results, VisualisationResults
 
 Ntest = 500
 
+Ntest_PLUSIEURS_KN = 10000
+
+
+
 class Experience():
     context: context.abstractFunctionModel
     archive: Archive
@@ -512,7 +516,7 @@ def _train_K_N(exp, N_progression, K_progression, with_null_sigma=False):
     c = InjectiveFunction(1)(None)
     dGLLiM.dF_hook = c.dF
     ZeroDeltadGLLiM.F_hook = c.F
-    Xtest = c.get_X_sampling(10000)
+    Xtest = c.get_X_sampling(Ntest_PLUSIEURS_KN)
     l = []
     X, Y = c.get_data_training(N_progression[-1])
     for i in range(imax):

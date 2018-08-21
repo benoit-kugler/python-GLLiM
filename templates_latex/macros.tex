@@ -60,3 +60,9 @@
 (# macro LINK_CONTEXT_LABEL(context) -#)
 \textbf{ \hyperref[contexts]{ (! context.LABEL !) }}
 (#- endmacro #)
+
+(# macro ERROR(mesure) -#)
+\begin{minipage}{0.1\columnwidth}
+    (! mesure.__error__ !)
+\end{minipage}
+(#- endmacro #)

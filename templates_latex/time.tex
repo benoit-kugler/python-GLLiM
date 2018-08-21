@@ -3,7 +3,7 @@
 (# import 'macros.tex' as macros #)
 
 (# block table_def #)
-{ l | (! (['c |'] *  (hHeader | length )) | join(' ') !) }
+{ | l | (! (['c |'] *  (hHeader | length )) | join(' ') !) }
 \cline{2 -  (!  (hHeader | length ) * 1 + 1 !) }
 (# endblock #)
 
@@ -11,8 +11,8 @@
 (# block header_table #)
 (! super() !)
 
-& GLLiM & jGLLiM
-& dGLLiM  \\*
+\multicolumn{ 1 }{c | }{ } & GLLiM & jGLLiM
+& dGLLiM  \\
 
 (# endblock #)
 
@@ -23,7 +23,11 @@
 {\small N = (! headercell.N !) } \\
 {\small Contrainte $\Sigma$ : (! headercell.sigma_type !)  }}
 (# for m in line #)
-&  (# if m #) (! m.training_time | timespent !) (# endif #)
+&  (# if m and '__error__' in m #)
+(! macros.ERROR(m))
+(# elif m #)
+(! m.training_time | timespent !)
+(# endif #)
 (# endfor #) \\
 
 (# endblock #)

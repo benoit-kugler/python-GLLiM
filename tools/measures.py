@@ -211,6 +211,7 @@ class Mesures():
         context = self.experience.context
         Y = context.F(X)
         modals, gammas, normalisation = gllim._helper_forward_conditionnal_density(Y)
+
         N, L = X.shape
         _, D = Y.shape
         diff, term2 = np.empty((N, gllim.K, L)), np.empty((N, gllim.K, L))
@@ -242,7 +243,7 @@ class Mesures():
             ntx = np.linalg.norm(X - ck, axis=1)
             maj_x[:, k] = np.exp(-0.5 * alphak * M * ntx ** 2 + 2 * deltak * alphak * ntx * Mp) * ntx
 
-        mean_pred = np.sum(gammas[:, :, None] * modals.transpose(1, 2, 0), axis=1)
+        mean_pred = gllim._mean_melange(modals, gammas)
         term2 = gammas[:, :, None] * term2
 
         ecart_sum = np.linalg.norm(mean_pred - X, axis=1).mean()

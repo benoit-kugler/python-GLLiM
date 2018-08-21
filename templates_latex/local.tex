@@ -6,15 +6,17 @@
 (# block header_table #)
 (! super() !)
 
-& &  \multicolumn{3}{c | }{ Standard}  & \multicolumn{3}{c | }{ $p = 10$ }
-& \multicolumn{3}{c | }{ $p = 100$ } & \multicolumn{3}{c | }{ $p = 1000$ } \\*
+\multicolumn{ 2 }{c | }{ } &  \multicolumn{ (! NB_COL_CELL !) }{c | }{ Standard}  & \multicolumn{ (! NB_COL_CELL !) }{c | }{ $p = 10$ }
+& \multicolumn{ (! NB_COL_CELL !) }{c | }{ $p = 100$ } & \multicolumn{ (! NB_COL_CELL !) }{c | }{ $p = 1000$ } \\
 
 (# endblock #)
 
 
 (# block line_first_cell #)
-\makecell{ \textbf{ (! headercell.context.LABEL !) } \\
+\makecell{ (! macros.LINK_CONTEXT_LABEL(headercell.context) !) \\
 { \small L,D = (! headercell.L !),(! headercell.D !) } \\
 {\small K = (! headercell.K !) } \\
-{\small N = (! headercell.N !) } }
+{\small N = (! headercell.N !) } \\
+{\small Modal pred. = (! headercell.context.PREFERED_MODAL_PRED !) }
+}
 (# endblock #)
