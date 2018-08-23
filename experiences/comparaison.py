@@ -661,7 +661,7 @@ class DescriptionContextWriter(abstractLatexWriter):
 
 def main():
     """Run test"""
-    # AlgosMeasure.run([True, True, True, False, False], [True, True, True, False, False])
+    AlgosMeasure.run([False, False, False, True, False], [False, False, False, True, False])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -672,18 +672,18 @@ def main():
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run(True,True)
 
-    # AlgosLatexWriter.render()
-    # AlgosTimeLatexWriter.render()
-    # GenerationLatexWriter.render()
-    # DimensionLatexWriter.render()
-    # ModalLatexWriter.render()
-    # LogistiqueLatexWriter.render()
-    # NoisesLatexWriter.render()
-    # LocalLatexWriter.render()
-    # RelationCLatexWriter.render()
+    AlgosLatexWriter.render()
+    AlgosTimeLatexWriter.render()
+    GenerationLatexWriter.render()
+    DimensionLatexWriter.render()
+    ModalLatexWriter.render()
+    LogistiqueLatexWriter.render()
+    NoisesLatexWriter.render()
+    LocalLatexWriter.render()
+    RelationCLatexWriter.render()
     DoubleLearningWriter.render()
-    # ErrorPerComponentsWriter.render()
-    # ClusteredPredictionWriter.render()
+    ErrorPerComponentsWriter.render()
+    ClusteredPredictionWriter.render()
 
 
 if __name__ == '__main__':

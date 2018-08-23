@@ -5,6 +5,7 @@ import PIL
 import dill
 import matplotlib
 import numpy as np
+import vispy.plot, vispy.io
 from cartopy import crs
 from matplotlib.figure import Figure
 
@@ -50,46 +51,34 @@ def load_interactive_fig(savepath):
     # pyplot.show()
 
 
-class abstractDrawerMPL():
-    FIGURE_TITLE_BOX = dict(boxstyle="round", facecolor='#D8D8D8',
-                            ec="0.5", pad=0.5, alpha=1)
+class abstractDrawer:
 
-    Y_TITLE_BOX_WITH_CONTEXT = 1.2
-    Y_TITLE_BOX_WITHOUT_CONTEXT = 1.05
-    FIGSIZE = None
-
-    fig: Figure
-
-    def __init__(self, *args, title="", savepath=None, context=None, draw_context=False, write_context=False):
+    def __init__(self, *args, title="", savepath=None, context=None, draw_context=False,
+                 write_context=False, custom_context=None):
         self.create_figure(*args)
         logging.debug("Drawing...")
 
-        self.set_title(title, context, draw_context)
+        self.set_title(title, context, draw_context, custom_context)
         self.main_draw(*args)
 
         if write_context and savepath:
-            self.write_context(context, savepath)
+            self.write_context(context, custom_context, savepath)
 
         if savepath:
             self.save(savepath)
 
-
     def create_figure(self, *args):
-        self.fig = pyplot.figure(figsize=self.FIGSIZE)
+        self.fig = None
 
     def main_draw(self, *args):
         pass
 
-    def set_title(self, title, context, draw_context):
-        context = self._format_context(context) if context is not None else ""
-        if draw_context:
-            title = title + "\n" + context
-        y = self.Y_TITLE_BOX_WITH_CONTEXT if draw_context else self.Y_TITLE_BOX_WITHOUT_CONTEXT
-        self.fig.suptitle(title, bbox=self.FIGURE_TITLE_BOX, y=y)
+    def set_title(self, title, context, draw_context, custom_context):
+        pass
 
     @staticmethod
     def _format_context(context):
-        """Retuns a matplolib compatible string which describes metadata."""
+        """Retuns a latex string which describes metadata."""
         context["with_noise"] = "-" if context["with_noise"] is None else context["with_noise"]
         s = """
         Data $\\rightarrow N_{{train}}={N}$ ; $N_{{test}}={Ntest}$ ; Noise : {with_noise} ; 
@@ -100,10 +89,38 @@ class abstractDrawerMPL():
         return s.format(**context)
 
     @classmethod
-    def write_context(cls, context, savepath):
-        context = cls._format_context(context)
+    def write_context(cls, context, custom_context, savepath):
+        context = custom_context or cls._format_context(context)
         with open(savepath[:-4] + ".tex", "w") as f:
             f.write(context)
+
+    def save(self, savepath):
+        pass
+
+
+class abstractDrawerMPL(abstractDrawer):
+    FIGURE_TITLE_BOX = dict(boxstyle="round", facecolor='#D8D8D8',
+                            ec="0.5", pad=0.5, alpha=1)
+
+    Y_TITLE_BOX_WITH_CONTEXT = 1.2
+    Y_TITLE_BOX_WITHOUT_CONTEXT = 1.05
+    FIGSIZE = None
+
+    fig: Figure
+
+    def create_figure(self, *args):
+        self.fig = pyplot.figure(figsize=self.FIGSIZE)
+
+    def set_title(self, title, context, draw_context, custom_context):
+        if custom_context is None:
+            context = self._format_context(context) if context is not None else ""
+        else:
+            context = custom_context
+        if draw_context:
+            title = title + "\n" + context
+        y = self.Y_TITLE_BOX_WITH_CONTEXT if draw_context else self.Y_TITLE_BOX_WITHOUT_CONTEXT
+        self.fig.suptitle(title, bbox=self.FIGURE_TITLE_BOX, y=y)
+
 
     def save(self, savepath):
         self.fig.savefig(savepath, bbox_inches='tight', pad_inches=0.2)
@@ -370,7 +387,7 @@ def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
         mask = z >= 0.0001  # autozoom
         lines_ok, cols_ok = mask.max(axis=1) > 0, mask.max(axis=0) > 0
         x, y, z = x[lines_ok][:, cols_ok], y[lines_ok][:, cols_ok], z[lines_ok][:, cols_ok]
-        axe.contour(x, y, z, levels=levels, alpha=0.5, aspect="auto")
+        axe.contour(x, y, z, levels=levels, alpha=0.5)
     axe.set_xlabel(varnames[0])
     axe.set_ylabel(varnames[1])
 
@@ -459,8 +476,8 @@ class abstractHistogram(abstractDrawerMPL):
 
     Y_TITLE_BOX_WITH_CONTEXT = 1.3
 
-    def set_title(self, title, context, draw_context):
-        super().set_title(self.TITLE, context, draw_context)
+    def set_title(self, title, *args):
+        super().set_title(self.TITLE, *args)
 
     def main_draw(self, values, cut_tail, labels):
         xlabel = self.XLABEL
@@ -666,20 +683,42 @@ class Results_2D(abstractGridDrawerMPL):
 
     def _get_nb_subplot(self, X, xlabels, xtitle, varnames, varlims, Xref):
         n = len(varnames)
-        return (n * (n - 1) // 2)
+        return (2 if Xref is not None else 1) * (n * (n - 1) // 2)
+
+    def _get_dims_fig(self, X, xlabels, xtitle, varnames, varlims, Xref):
+        if Xref is None:
+            return super(Results_2D, self)._get_dims_fig(X, xlabels, xtitle, varnames, varlims, Xref)
+        nb_col = 2
+        nb_row = self._get_nb_subplot(X, xlabels, xtitle, varnames, varlims, Xref) / nb_col
+        nb_row = int(np.ceil(nb_row))
+        return nb_row, nb_col, (self.SIZE_COLUMN * nb_col,
+                                self.SIZE_ROW * nb_row)
+
+
+
+
 
     def main_draw(self, X, xlabels, xtitle, varnames, varlims, Xref):
         nb_var = len(varnames)
         indexes = [(i, j) for i in range(nb_var) for j in range(i + 1, nb_var)]
-        for (i, j), axe in zip(indexes, self.get_axes()):
+        iterator = self.get_axes()
+        for i, j in indexes:
             x = X[:, (i, j)]
+            axe = next(iterator)
             l = axe.scatter(*x.T, c=xlabels, marker="+", label="prediction")
             if Xref is not None:
+                axe2 = next(iterator)
                 x = Xref[:, (i, j)]
-                l = axe.scatter(*x.T, c=xlabels, marker="^", label="reference")
+                l = axe2.scatter(*x.T, c=xlabels, marker="^", label="reference")
+                axe2.set_xlabel(varnames[i])
+                axe2.set_ylabel(varnames[j])
+                axe2.legend()
             if varlims is not None:
                 axe.set_xlim(varlims[i])
                 axe.set_ylim(varlims[j])
+                if Xref is not None:
+                    axe2.set_xlim(varlims[i])
+                    axe2.set_ylim(varlims[j])
             axe.set_xlabel(varnames[i])
             axe.set_ylabel(varnames[j])
             axe.legend()
@@ -806,10 +845,12 @@ class Density2DSequence(abstractGridSequence):
 class MapValues(abstractDrawerMPL):
     FIGSIZE = (25, 12)
 
+    Y_TITLE_BOX_WITHOUT_CONTEXT = 0.95
+
     def main_draw(self, latlong, values, addvalues, titles):
         lat = list(latlong[:, 0])
         long = list(latlong[:, 1])
-        axe = self.fig.add_subplot(121, projection=crs.PlateCarree())
+        axe = self.fig.add_subplot(211, projection=crs.PlateCarree())
 
         totalvalues = list(values) + list([] if addvalues is None else addvalues)
         vmin, vmax = min(totalvalues), max(totalvalues)
@@ -822,13 +863,80 @@ class MapValues(abstractDrawerMPL):
         if addvalues is None:
             self.fig.colorbar(s)
         else:
-            ax2 = self.fig.add_subplot(122, projection=crs.PlateCarree())
+            ax2 = self.fig.add_subplot(212, projection=crs.PlateCarree())
             s2 = ax2.scatter(long, lat, transform=crs.Geodetic(), cmap=cm.rainbow, vmin=vmin, vmax=vmax,
                              c=addvalues)
             ax2.set_title(titles[1])
-            self.fig.subplots_adjust(right=0.8)
-            cbar_ax = self.fig.add_axes([0.85, 0.15, 0.02, 0.7])
+            self.fig.subplots_adjust(right=0.9)
+            cbar_ax = self.fig.add_axes([0.65, 0.15, 0.02, 0.7])
             self.fig.colorbar(s2, cax=cbar_ax)
+
+
+###   ----------------------  Vispy scatter    ---------------------- ###
+
+class abstractDrawerVispy(abstractDrawer):
+    fig: vispy.plot.Fig
+
+    def create_figure(self, *args):
+        self.fig = vispy.plot.Fig()
+
+    def set_title(self, title, context, draw_context, custom_context):
+        self.fig.title = title
+
+    def save(self, savepath):
+        image = self.fig.render()
+        vispy.io.write_png(savepath, image)
+        logging.info(f"Saved in {savepath}")
+
+
+class abstractGridDrawerVispy(abstractDrawerVispy):
+
+    def _get_nb_subplot(self, *args):
+        return 1
+
+    def create_figure(self, *args):
+        self.nb_row, self.nb_column, _ = _get_rows_columns(self._get_nb_subplot(*args), 1, 1)
+        super(abstractGridDrawerVispy, self).create_figure(*args)
+
+    def get_axes(self):
+        for i in range(self.nb_row):
+            for j in range(self.nb_column):
+                yield self.fig[i, j]
+
+
+class ScatterProjections(abstractGridDrawerVispy):
+
+    def _get_nb_subplot(self, points, labels, add_points):
+        L = points.shape[1]
+        return L * (L - 1) // 2
+
+    def main_draw(self, X, labels, add_X):
+        if labels is not None:
+            colors = cm.rainbow(np.linspace(0.2, 0.8, max(labels) + 1))
+            colors = [colors[c] for c in labels]
+        else:
+            colors = [cm.rainbow(0.7)] * X.shape[0]
+
+        L = X.shape[1]
+        axes_iter = self.get_axes()
+        for i in range(L):
+            for j in range(i + 1, L):
+                axe = next(axes_iter)
+                if add_X is not None:
+                    col = cm.coolwarm(np.linspace(0, 1, 2))
+                    axe.plot(add_X[0:1, (i, j)], symbol="*", face_color="yellow", marker_size=10,
+                             title="x initial")
+                    axe.plot(add_X[1:3, (i, j)], symbol="-", face_color=col, marker_size=10,
+                             title="centres")
+                    axe.plot(add_X[3:5, (i, j)], symbol="square", face_color=col, marker_size=10,
+                             title="predictions")
+
+                axe.plot(X[:, (i, j)], width=0, symbol="disc", marker_size=3, edge_width=1,
+                         face_color=colors, edge_color=colors)
+                axe.title.text = f"x{i} - x{j}"
+
+        self.fig.show(run=True)
+
 
 
 

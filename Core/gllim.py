@@ -776,11 +776,12 @@ class GLLiM():
         N, K, L = meanss.shape
         out = np.empty((N, size, L))
         alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), (N, size))
+        chols = np.linalg.cholesky(self.SigmakListS)
         for weights, means, Xs, n in zip(weightss, meanss, alea, range(N)):
             clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
             means = np.array([means[k] for k in clusters])
-            covs = np.array([self.SigmakListS[k] for k in clusters])
-            out[n] = np.matmul(covs, Xs[:, :, None])[:, :, 0] + means
+            stds = np.array([chols[k] for k in clusters])
+            out[n] = np.matmul(stds, Xs[:, :, None])[:, :, 0] + means
         return out
 
     def predict_sample(self, Y, nb_per_Y=10):
@@ -804,7 +805,7 @@ class GLLiM():
         Number of x to predict is choosen according to F criteria."""
         meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
         # sampless = self._sample_from_mixture(meanss, weightss, size)  # too large when N is big
-        Xmeans = GLLiM._mean_melange(meanss, weightss)  # avoid recomp
+        Xmeans = self._mean_melange(meanss, weightss)  # avoid recomp
         preds = []
         N = len(Y)
         for n, X, weights, y, xmean, means in zip(range(N), meanss, weightss, Y, Xmeans, meanss):
@@ -817,7 +818,7 @@ class GLLiM():
                 except ValueError:
                     err, Xpreds = np.inf, None
                 else:
-                    Xpreds, choix = self.monte_carlo_esperance(samples, centers)
+                    Xpreds, _ = self.monte_carlo_esperance(samples, centers)
                     if not np.isfinite(Xpreds).all():
                         err, Xpreds = np.inf, None
                     else:

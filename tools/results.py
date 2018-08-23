@@ -113,13 +113,15 @@ class VisualisationResults(Results):
         return Xmean, Covs
 
     def prediction_2D(self, gllim: GLLiM, Y, labels_value, xtitle="observations", method="mean",
-                      varlims=None, Xref=None, savepath=None):
+                      varlims=None, Xref=None, savepath=None, indexes=None):
         """Prediction for each Y and plot 2D with labels as color.
         If method is weight or height or bestY, use best modal prediction"""
         exp = self.experience
-        X = exp._one_X_prediction(gllim, Y, method)
-        varlims = exp.variables_lims if (varlims == "context") else varlims
-        varnames = exp.variables_names
+        indexes = indexes if indexes is not None else np.arange(len(exp.variables_names))
+        X = exp._one_X_prediction(gllim, Y, method)[:, indexes]
+        Xref = Xref[:, indexes] if Xref is not None else None
+        varlims = exp.variables_lims[indexes] if (varlims == "context") else varlims
+        varnames = exp.variables_names[indexes]
         savepath = savepath or exp.archive.get_path("figures", filecategorie="correlations-{}".format(method))
         self.G.Results_2D(X, labels_value, xtitle, varnames, varlims, Xref, context=exp.get_infos(Ntest="-"),
                           title="Corrélations - Mode de prédiction :  {}".format(method), write_context=True,

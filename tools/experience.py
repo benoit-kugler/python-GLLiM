@@ -10,6 +10,7 @@ import numpy as np
 from Core import training
 from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
 from Core.gllim import GLLiM, jGLLiM
+from Core.log_gauss_densities import dominant_components
 from Core.riemannian import RiemannianjGLLiM
 from experiences.rtls import RtlsCO2Context
 from tools import context, regularization
@@ -29,6 +30,20 @@ class Experience():
     archive: Archive
     mesures: 'tools.measures.VisualisationMesures'
     results: VisualisationResults
+
+    @classmethod
+    def setup(cls, context_class, K, **kwargs):
+        object_kwargs = {i: v for i, v in kwargs.items() if i in ["partiel", "verbose", "with_plot"]}
+        data_kwargs = {i: v for i, v in kwargs.items() if i in ["regenere_data", "with_noise", "N", "method"]}
+        model_kwargs = {i: v for i, v in kwargs.items() if
+                        i in ["Lw", "sigma_type", "gamma_type", "gllim_cls", "rnk_init",
+                              "mode", "multi_init", "init_local", "track_theta", "with_time"]}
+        exp = cls(context_class, **object_kwargs)
+        exp.load_data(**data_kwargs)
+        dGLLiM.dF_hook = exp.context.dF
+        gllim = exp.load_model(K, **model_kwargs)
+        return exp, gllim
+
 
     def __init__(self, context_class, partiel=None, verbose=True, with_plot=False, **kwargs):
         """If with_plot is False, methods which use matplotlib or vispy can't be used.
@@ -414,20 +429,7 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
     #                                             Xref=MCMC_X,StdRef=Std,with_pdf_images=True,varlims=(-0.2,1.2))
 
 
-def test_map():
-    exp = Experience(context.HapkeContext, partiel=(0, 1, 2, 3), with_plot=True)
-    exp.load_data(regenere_data=False, with_noise=50, N=10000, method="sobol")
-    dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=200,
-                           gllim_cls=jGLLiM)
 
-    Y = exp.context.get_observations()
-    latlong, mask = exp.context.get_spatial_coord()
-    Y = Y[mask]  # cleaning
-    MCMC_X, Std = exp.context.get_result(with_std=True)
-    MCMC_X = MCMC_X[mask]
-
-    exp.results.map(gllim, Y, latlong, 0, Xref=MCMC_X)
 
 
 def main():
@@ -437,7 +439,7 @@ def main():
     gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    n = 16
+    n = 1
     Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
     exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2)
 
@@ -562,6 +564,43 @@ def mesure_convergence(imax, RETRAIN):
     return l1, l2, l3, K_progression, coeffNK, coeffmaxN1, coeffmaxN2
 
 
+def test_clustered_pred():
+    # exp,gllim = Experience.setup(context.LabContextOlivine,100,partiel=(0, 1, 2, 3), with_plot=True,
+    #                              regenere_data=False, with_noise=50, N=100000, method="sobol",
+    #                              mode="l", track_theta=False, init_local=100,
+    #                              sigma_type="full", gamma_type="full", gllim_cls=jGLLiM
+    #                              )
+
+    exp, gllim = Experience.setup(context.TwoSolutionsFunction, 100, partiel=None, with_plot=True,
+                                  regenere_data=False, with_noise=50, N=10000, method="sobol",
+                                  mode="l", track_theta=False, init_local=None,
+                                  sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM
+                                  )
+
+    n = 16
+    Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
+    meanss, weightss, _ = gllim._helper_forward_conditionnal_density(Y0_obs)
+    means, weights = meanss[0], weightss[0]
+    _, modes = zip(*sorted(zip(weights, means), key=lambda d: d[0], reverse=True)[0:2])
+
+    size = 100000
+    samples = gllim._sample_from_mixture(means[None, :], weights[None, :], size)[0]
+
+    # exp.mesures.plot_conditionnal_density(gllim,Y0_obs,X0_obs,colorplot=False)
+    exp.mesures.G.ScatterProjections(samples, None, None)
+    nb_predsMax = 3
+    assert np.isfinite(means).all() and np.isfinite(weights).all()
+
+    for nb_preds in range(2, nb_predsMax + 1):
+        w = regularization.WeightedKMeans(nb_preds)
+        try:
+            labels, score, centers = w.fit_predict_score(means, weights, None)
+        except ValueError as e:
+            err, Xpreds = np.inf, None
+        else:
+            Xpreds, choix = gllim.monte_carlo_esperance(samples, centers)
+            exp.mesures.G.ScatterProjections(samples, choix, np.array([X0_obs] + list(modes) + list(Xpreds)))
+
 
 def job():
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s  %(asctime)s : %(levelname)s : %(message)s",
@@ -572,9 +611,10 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # RTLS()
-    main()
+    # main()
     # monolearning()
     # test_map()
     # double_learning(Ntest=10, retrain_base=False)
     # glace()
     # test_map()
+    test_clustered_pred()

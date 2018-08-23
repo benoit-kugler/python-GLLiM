@@ -24,7 +24,7 @@
 {\small Contrainte $\Sigma$ : (! headercell.sigma_type !)  }}
 (# for m in line #)
 &  (# if m and '__error__' in m #)
-(! macros.ERROR(m))
+(! macros.ERROR(m) !)
 (# elif m #)
 (! m.training_time | timespent !)
 (# endif #)

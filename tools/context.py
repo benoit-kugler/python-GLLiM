@@ -264,11 +264,11 @@ class MixedFunction(abstractSimpleFunctionModel):
 
 
 class TwoSolutionsFunction(abstractSimpleFunctionModel):
-    D = 4
-    DEFAULT_VALUES = np.array([0.5] * 4)
-    XLIMS = np.array([[0, 1]] * 4)
-    YLIMS = np.exp([[-1, 2]] * 4)
-    PARAMETERS = np.array(["x{}".format(i + 1) for i in range(4)])
+    D = 2
+    DEFAULT_VALUES = np.array([0.5] * 2)
+    XLIMS = np.array([[0, 1]] * 2)
+    YLIMS = np.exp([[-1, 2]] * 2)
+    PARAMETERS = np.array(["x{}".format(i + 1) for i in range(2)])
 
     LABEL = "Fourche"
     DESCRIPTION = "$x \mapsto ( (x_{1} - 0.5)^2 , x_{2} , ... , x_{L})$," + f" définie sur ${ _xlims_to_P(XLIMS) }$." \
@@ -276,9 +276,9 @@ class TwoSolutionsFunction(abstractSimpleFunctionModel):
 
 
     def F(self, X):
-        out = np.empty(X.shape)
+        out = np.empty((X.shape[0], self.L))
         out[:, 0] = (X[:, 0] - 0.5) ** 2
-        out[:, 1:-1] = X[:, 1:-1]
+        out[:, 1:self.L] = X[:, 1:self.L]
         return out
 
 class abstractExpFunction(abstractSimpleFunctionModel):
@@ -340,7 +340,7 @@ class abstractHapkeModel(abstractFunctionModel):
     PARAMETERS = np.array(['$\omega$', r'$\overline{\theta}$', '$b$', '$c$', '$H$', '$B_{0}$'])
 
     """Therorical intervals [0,xmax]"""
-    XLIMS = np.array([[-0.05,1],[0,31], [-0.05,1],[-0.05, 1], [-0.05,1.2], [-0.05,1.2]])
+    XLIMS = np.array([[0, 1], [0, 31], [-0.05, 1], [-0.05, 1], [-0.05, 1.2], [-0.05, 1.2]])
 
     DEFAULT_VALUES = np.array([0.5,15,0.5,0.5,0.5,0.5])
     """Mean default values"""
@@ -460,7 +460,7 @@ class HapkeContext(abstractHapkeModel):
                   u"à Meridiani Planum (MARS)."
     LABEL = "$F_{hapke}$ CRSIM"
 
-
+    DEFAULT_VALUES = np.array([0.5, 15, 0.5, 0.5, 0.5, 0])
 
     EXPERIENCES = ["exp1/Inv_FRT193AB_S_Wfix_0.33_rho_mod.mat",
                  "exp2/Inv_FRT0A941_S_Wfix_0.12508_rho_mod.mat"]
