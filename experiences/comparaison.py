@@ -250,6 +250,7 @@ class abstractLatexWriter:
     latex_jinja_env.globals.update(zip=zip)
     latex_jinja_env.filters["timespent"] = lambda s: pretty_time_delta(s)
     latex_jinja_env.filters["truncate01"] = lambda f: 1 if f > 1 else (0 if f < 0 else f)
+    latex_jinja_env.tests["float"] = lambda p: type(p) is float
 
     template = ""
     """latex template file"""
@@ -690,20 +691,20 @@ def main():
     # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
-    ClusteredPredictionMeasure.run([True, True], [True, True])
+    # ClusteredPredictionMeasure.run([True, True], [True, True])
 
-    # AlgosLatexWriter.render()
-    # AlgosTimeLatexWriter.render()
-    # GenerationLatexWriter.render()
-    # DimensionLatexWriter.render()
-    # ModalLatexWriter.render()
-    # LogistiqueLatexWriter.render()
-    # NoisesLatexWriter.render()
-    # LocalLatexWriter.render()
-    # RelationCLatexWriter.render()
-    # DoubleLearningWriter.render()
-    # ErrorPerComponentsWriter.render()
-    # ClusteredPredictionWriter.render()
+    AlgosLatexWriter.render()
+    AlgosTimeLatexWriter.render()
+    GenerationLatexWriter.render()
+    DimensionLatexWriter.render()
+    ModalLatexWriter.render()
+    LogistiqueLatexWriter.render()
+    NoisesLatexWriter.render()
+    LocalLatexWriter.render()
+    RelationCLatexWriter.render()
+    DoubleLearningWriter.render()
+    ErrorPerComponentsWriter.render()
+    ClusteredPredictionWriter.render()
 
 
 if __name__ == '__main__':

@@ -229,8 +229,15 @@ def plot_sol_multiples():
     gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    n = 16
+    # exp.results.plot_density_sequence(gllim, exp.Ytest[101:200], None,
+    #                                   index=2, Xref=None, StdRef=None, with_pdf_images=False,
+    #                                   varlims=None, regul=False, xtitle="wavelength (microns)")
+    # return
+
+    n = 152
     Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
+    # X0_obs = np.array([0.86484,0.03438,11.80042,0.4833])
+    # Y0_obs = exp.context.F(X0_obs[None,:])
     exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2, colorplot=False, write_context=True,
                                           draw_context=False, savepath=PATHS("solmult2D.png"))
     exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2, dim=1, write_context=True,
@@ -261,11 +268,11 @@ def main():
     # plot_estimeF()
     # plot_evo_LL()
     # plusieurs_K_N(20)
-    init_cos()
+    # init_cos()
 
     # regularization()
     # comparaison_MCMC()
-    # plot_sol_multiples()
+    plot_sol_multiples()
     # plot_map()
 
 

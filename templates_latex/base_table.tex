@@ -41,7 +41,7 @@
     { \small L,D = (! headercell.L !),(! headercell.D !) } \\
     {\small K = (! headercell.K !) } \\
     {\small N = (! headercell.N !) } \\
-    {\small  (# if headercell.init_local #) Local = (! headercell.init_local !) (# else #) Init. standard (# endif #) } \\
+    {\small  (! macros.FORMAT_INIT(headercell.init_local) !) } \\
     {\small Modal pred. = (! headercell.context.PREFERED_MODAL_PRED !) }}
     (# endblock #)
     }

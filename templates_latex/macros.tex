@@ -66,3 +66,7 @@
     (! mesure.__error__ !)
 \end{minipage}
 (#- endmacro #)
+
+(#- macro FORMAT_INIT(init_local) #)
+Init. : (# if init_local #) p = (! init_local !) (# else #) standard (# endif #)
+(#- endmacro #)

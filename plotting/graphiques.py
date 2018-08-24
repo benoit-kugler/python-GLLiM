@@ -366,13 +366,13 @@ def _axe_density_1D(axe, x, y, xlims,
     axe.set_xlabel(varname)
     axe.set_title(title)
 
-    colors = cm.coolwarm(np.linspace(0, 0.2, len(modal_preds)))
+    colors = cm.coolwarm(np.linspace(0, 0.8, len(modal_preds)))
     for i, (X, height, weight) in enumerate(modal_preds):
         axe.axvline(x=X, color=colors[i], linestyle="--",
                     label="$x_{{est}}^{{( {2} )}}$, $w_{{  {2} }} = {1:.3f}$".format(height, weight, i), alpha=0.5)
 
     if truex:
-        axe.axvline(x=truex, label="True value", alpha=0.5)
+        axe.axvline(x=truex, label="True value", color="black", alpha=0.5)
 
 
 def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
@@ -394,9 +394,9 @@ def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
     axe.set_xlabel(varnames[0])
     axe.set_ylabel(varnames[1])
 
-    colors = cm.coolwarm(np.linspace(0, 0.2, len(modal_preds)))
+    # colors = cm.coolwarm(np.linspace(0, 0.2, len(modal_preds)))
     for i, (X, height, weight) in enumerate(modal_preds):
-        axe.scatter(X[0], X[1], color=colors[i], marker=".",
+        axe.scatter(X[0], X[1], color="black", marker=".", zorder=4,
                     label="$x_{{est}}^{{( {2} )}}$, $w_{{  {2} }} = {1:.3f}$".format(height, weight, i))
         axe.annotate(str(i), (X[0], X[1]))
 
