@@ -12,14 +12,14 @@ from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.log_gauss_densities import dominant_components
 from Core.riemannian import RiemannianjGLLiM
-from experiences.rtls import RtlsCO2Context
+import experiences.rtls
 from tools import context, regularization
 from tools.archive import Archive
 from tools.context import InjectiveFunction
 import tools.measures
 from tools.results import Results, VisualisationResults
 
-Ntest = 500
+Ntest = 50000
 
 Ntest_PLUSIEURS_KN = 10000
 
@@ -358,12 +358,11 @@ class SecondLearning(Experience):
 
 
 def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
-    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=False)
-    exp.load_data(regenere_data=retrain_base, with_noise=50, N=10000, method="sobol")
-    dGLLiM.dF_hook = exp.context.dF
-    # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
-    gllim = exp.load_model(100, mode=retrain_base and "r" or "l", track_theta=False, init_local=200,
-                           sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
+    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=retrain_base, with_noise=50, N=10000, method="sobol",
+                                  mode=retrain_base and "r" or "l", init_local=200,
+                                  sigma_type="iso", gllim_cls=dGLLiM
+                                  )
 
     exp.centre_data_test()
     exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]
@@ -383,7 +382,6 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
     exp = Experience(context.InjectiveFunction(4), partiel=None, with_plot=False)
     exp.load_data(regenere_data=retrain_base, with_noise=50, N=10000, method="sobol")
     dGLLiM.dF_hook = exp.context.dF
-    # X, _ = exp.add_data_training(None,adding_method="sample_perY:9000",only_added=False,Nadd=132845)
     gllim = exp.load_model(100, mode=retrain_base and "r" or "l", track_theta=False, init_local=200,
                            sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
@@ -403,7 +401,8 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
     exp.archive.save_mesures([mexp1, mexp2], "SecondLearning")
 
     # savepath = "/scratch/WORK/sequence2D"
-    # exp.mesures.compare_density2D_parallel(Y[0:2], gllim, gllims[0:2], X=X[0:2], savepath=savepath)
+    # exp.mesures.compare_density2D_parallel(Y, gllim, gllims, X=X,
+    #                                        savepath=savepath, colorplot=False)
     # exp.mesures.G.load_interactive_fig(savepath)
     index = 3
     # X0 = exp.Xtest[56]
@@ -496,15 +495,16 @@ def glace():
 
 
 def RTLS():
-    exp = Experience(RtlsCO2Context, partiel=(0, 1, 2, 3))
-    exp.load_data(regenere_data=True,with_noise=50,N=10000)
-    dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(500,mode="r",track_theta=False,init_local=500,
-                           sigma_type="iso",gamma_type="full",gllim_cls=dGLLiM)
+    training.PROCESSES = 4
+    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 200, partiel=(0, 1, 2, 3),
+                                  regenere_data=False, with_plot=True,
+                                  with_noise=50, N=150000, mode="l", init_local=100,
+                                  gllim_cls=jGLLiM)
+
 
     # exp.mesures.plot_mesures(gllim)
-    Xmean, Covs = exp.mesures.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wave_lengths,
-                                         regul="exclu",varlims=[(0.5,1),(0,30),(0,1),(0,1)])
+    Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+                                                       varlims=None)
 
     exp.archive.save_resultat({"w_mean":Xmean[:,0],"w_var":Covs[:,0,0],
                       "theta_mean": Xmean[:, 1], "theta_var": Covs[:, 1, 1],
@@ -565,17 +565,21 @@ def mesure_convergence(imax, RETRAIN):
 
 
 def test_clustered_pred():
-    # exp,gllim = Experience.setup(context.LabContextOlivine,100,partiel=(0, 1, 2, 3), with_plot=True,
-    #                              regenere_data=False, with_noise=50, N=100000, method="sobol",
-    #                              mode="l", track_theta=False, init_local=100,
-    #                              sigma_type="full", gamma_type="full", gllim_cls=jGLLiM
-    #                              )
-
-    exp, gllim = Experience.setup(context.TwoSolutionsFunction, 100, partiel=None, with_plot=True,
-                                  regenere_data=False, with_noise=50, N=10000, method="sobol",
-                                  mode="l", track_theta=False, init_local=None,
-                                  sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM
+    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=False, with_noise=50, N=100000, method="sobol",
+                                  mode="l", track_theta=False, init_local=100,
+                                  sigma_type="full", gamma_type="full", gllim_cls=jGLLiM
                                   )
+
+    # exp, gllim = Experience.setup(context.TwoSolutionsFunction, 100, partiel=None, with_plot=True,
+    #                               regenere_data=False, with_noise=50, N=10000, method="sobol",
+    #                               mode="l", track_theta=False, init_local=None,
+    #                               sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM
+    #                               )
+    exp.Ytest, exp.Xtest = exp.Ytest[0:20], exp.Xtest[0:20]
+    exp.mesures._nrmse_clustered_prediction(gllim, nb_predsMax=2, size_sampling=100000,
+                                            agg_method="max")
+    return
 
     n = 16
     Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
@@ -596,7 +600,7 @@ def test_clustered_pred():
         try:
             labels, score, centers = w.fit_predict_score(means, weights, None)
         except ValueError as e:
-            err, Xpreds = np.inf, None
+            print(e)
         else:
             Xpreds, choix = gllim.monte_carlo_esperance(samples, centers)
             exp.mesures.G.ScatterProjections(samples, choix, np.array([X0_obs] + list(modes) + list(Xpreds)))
@@ -614,7 +618,7 @@ if __name__ == '__main__':
     # main()
     # monolearning()
     # test_map()
-    # double_learning(Ntest=10, retrain_base=False)
+    # double_learning(Ntest=10, retrain_base=False, retrain_second=False)
     # glace()
     # test_map()
     test_clustered_pred()

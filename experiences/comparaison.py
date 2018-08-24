@@ -1,25 +1,24 @@
 """Sums up several tests on different contexts. Runs tests and saves results in json File.
 Then translates this file into latex table.
 """
+import logging
 import os
 import subprocess
 import time
 import warnings
 from datetime import timedelta
-import logging
 
 import coloredlogs
 import jinja2
 import numpy as np
 
-from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM, WrongContextError
 from experiences import logistic
 from hapke import relation_C
-from tools import context, experience
+from tools import context
 from tools.archive import Archive
-from tools.experience import SecondLearning, Experience
+from tools.experience import Experience
 
 warnings.filterwarnings("ignore")
 
@@ -106,10 +105,24 @@ PARCOMPONENTS_exps = [
 CLUSTERED_PREDICTION_exps = [
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
-    {"context": context.TwoSolutionsFunction, "partiel": None, "K": 100, "N": 100000,
+    {"context": context.TwoSolutionsFunction, "partiel": None, "K": 100, "N": 10000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
 ]
 
+
+def pretty_time_delta(seconds):
+    seconds = int(seconds)
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if days > 0:
+        return '{}j {}h {}m '.format(days, hours, minutes)
+    elif hours > 0:
+        return '{}h {}m '.format(hours, minutes)
+    elif minutes > 0:
+        return '{}m {}s'.format(minutes, seconds)
+    else:
+        return '{}s'.format(seconds)
 
 def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method,
                       redata, retrain):
@@ -202,9 +215,9 @@ class abstractMeasures():
             else:
                 try:
                     dic = old_mesures[i]
-                    logging.info("Loaded mesures {}/{}".format(i + 1, imax))
+                    logging.info("Loaded mesures for exp. {}/{}".format(i + 1, imax))
                 except IndexError:
-                    logging.info("No mesure {}/{} found".format(i + 1, imax))
+                    logging.info("No mesure for exp. {}/{} found".format(i + 1, imax))
                     dic = {"__error__": "Mesure non effectuée"}
             mesures.append(dic)
         Archive.save_mesures(mesures, self.CATEGORIE)
@@ -235,7 +248,7 @@ class abstractLatexWriter:
         loader=jinja2.FileSystemLoader("templates_latex")
     )
     latex_jinja_env.globals.update(zip=zip)
-    latex_jinja_env.filters["timespent"] = lambda s: time.strftime("%H h %M m %S s", time.gmtime(s))
+    latex_jinja_env.filters["timespent"] = lambda s: pretty_time_delta(s)
     latex_jinja_env.filters["truncate01"] = lambda f: 1 if f > 1 else (0 if f < 0 else f)
 
     template = ""
@@ -500,11 +513,18 @@ class ClusteredPredictionMeasure(abstractMeasures):
         if type(r) is dict:  # error
             return r
         gllim, training_time = r
-        mo_c, y_c, ybest_c = exp.mesures._nrmse_clustered_prediction(gllim)
+        mo_c, y_c, ybest_c = exp.mesures._nrmse_clustered_prediction(gllim, nb_predsMax=2,
+                                                                     size_sampling=100000, agg_method="max")
+        mo_c_mean, y_c_mean, ybest_c_mean = exp.mesures._nrmse_clustered_prediction(gllim, nb_predsMax=2,
+                                                                                    size_sampling=100000,
+                                                                                    agg_method="mean")
         dic = dict(exp.mesures.run_mesures(gllim),
                    clusteredPred=exp.mesures.sumup_errors(mo_c),
                    retrouveYclustered=exp.mesures.sumup_errors(y_c),
                    retrouveYbestclustered=exp.mesures.sumup_errors(ybest_c),
+                   clusteredPredMean=exp.mesures.sumup_errors(mo_c_mean),
+                   retrouveYclusteredMean=exp.mesures.sumup_errors(y_c_mean),
+                   retrouveYbestclusteredMean=exp.mesures.sumup_errors(ybest_c_mean),
                    training_time=training_time)
         return {"jGLLiM": dic}
 
@@ -661,7 +681,7 @@ class DescriptionContextWriter(abstractLatexWriter):
 
 def main():
     """Run test"""
-    AlgosMeasure.run([False, False, False, True, False], [False, False, False, True, False])
+    # AlgosMeasure.run([False, False, False, False, True], [False, False, False, False, True])
     # GenerationMeasure.run(True, True)
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
@@ -670,20 +690,20 @@ def main():
     # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
-    # ClusteredPredictionMeasure.run(True,True)
+    ClusteredPredictionMeasure.run([True, True], [True, True])
 
-    AlgosLatexWriter.render()
-    AlgosTimeLatexWriter.render()
-    GenerationLatexWriter.render()
-    DimensionLatexWriter.render()
-    ModalLatexWriter.render()
-    LogistiqueLatexWriter.render()
-    NoisesLatexWriter.render()
-    LocalLatexWriter.render()
-    RelationCLatexWriter.render()
-    DoubleLearningWriter.render()
-    ErrorPerComponentsWriter.render()
-    ClusteredPredictionWriter.render()
+    # AlgosLatexWriter.render()
+    # AlgosTimeLatexWriter.render()
+    # GenerationLatexWriter.render()
+    # DimensionLatexWriter.render()
+    # ModalLatexWriter.render()
+    # LogistiqueLatexWriter.render()
+    # NoisesLatexWriter.render()
+    # LocalLatexWriter.render()
+    # RelationCLatexWriter.render()
+    # DoubleLearningWriter.render()
+    # ErrorPerComponentsWriter.render()
+    # ClusteredPredictionWriter.render()
 
 
 if __name__ == '__main__':

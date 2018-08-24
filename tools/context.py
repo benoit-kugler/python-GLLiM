@@ -319,11 +319,11 @@ class ExampleFunction(abstractSimpleFunctionModel):
     DEFAULT_VALUES = np.array([0.5] * 2)
     XLIMS = np.array([[0, 1]] * 2)
     YLIMS = np.exp([[-1, 2]] * 4)
-    PARAMETERS = np.array(["x", "y"])
+    PARAMETERS = np.array(["$x_{1}$", "$x_{2}$"])
 
     LABEL = "Surface"
 
-    DESCRIPTION = f"$(x,y) \mapsto x^2 + y^3$, sur ${ _xlims_to_P(XLIMS) }$"
+    DESCRIPTION = f"$(x,y) \mapsto x_{1}^2 + x_{2}^3$, sur ${ _xlims_to_P(XLIMS) }$"
 
     def F(self, X):
         return X[:, 0:1] ** 2 + X[:, 1:2] ** 3

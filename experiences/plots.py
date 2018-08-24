@@ -261,12 +261,12 @@ def main():
     # plot_estimeF()
     # plot_evo_LL()
     # plusieurs_K_N(20)
-    # init_cos()
+    init_cos()
 
     # regularization()
     # comparaison_MCMC()
     # plot_sol_multiples()
-    plot_map()
+    # plot_map()
 
 
 RETRAIN = False

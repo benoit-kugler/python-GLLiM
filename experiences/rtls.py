@@ -8,14 +8,15 @@ import scipy.io
 from tools.context import abstractHapkeModel
 
 
-class RtlsH2OContext(abstractHapkeModel):
+class RtlsH2O(abstractHapkeModel):
 
     BASE_PATH = "../DATA/RTLS"
     RTLS_FILE = "spect_RTLS_weights_H2O_ice_17669.txt"
 
     _theta0 = 61.6
     _theta = [70.37, 62.98, 56.07, 49.68, 43.09, 3.94, 46.82, 52.34, 58.34, 64.80, 71.65]
-    _phi = [48.529254,48.534201,48.556448,48.602086,48.596889,48.719586,131.41790,131.41432,131.41587,131.41992,131.38141]
+    _phi = [48.529254, 48.534201, 48.556448, 48.602086, 48.596889, 48.719586,
+            131.41790, 131.41432, 131.41587, 131.41992, 131.38141]
 
 
     def _load_context_data(self):
@@ -26,7 +27,7 @@ class RtlsH2OContext(abstractHapkeModel):
             r.__next__()
             poids = np.array(list(r),dtype=float)
 
-        self.wave_lengths = poids[:,0]
+        self.wavelengths = poids[:, 0]
         self.poids = poids
 
     def compute_observations(self):
@@ -54,17 +55,31 @@ class RtlsH2OContext(abstractHapkeModel):
         return scipy.io.loadmat(path)["REFF"]
 
 
-class RtlsCO2Context(RtlsH2OContext):
+class RtlsCO2(RtlsH2O):
 
     RTLS_FILE = "spect_RTLS_weights_CO2_ice_63B0.txt"
 
     _theta0 = 66
-    _theta = [67.674637,60.986866,55.314976,48.840813,43.664577,11.408441,42.847710,49.346943,54.778233,61.158634,67.509018]
-    _phi = [131.28603,130.94880,130.52049,130.05166,129.53958,33.219429,44.183444,44.759813,45.196033,45.619191,45.980522]
+    _theta = [67.674637, 60.986866, 55.314976, 48.840813, 43.664577, 11.408441,
+              42.847710, 49.346943, 54.778233, 61.158634, 67.509018]
+    _phi = [131.28603, 130.94880, 130.52049, 130.05166, 129.53958, 33.219429, 44.183444,
+            44.759813, 45.196033, 45.619191, 45.980522]
+
+
+class RtlsH2OPolaire(RtlsH2O):
+    RTLS_FILE = "spect_RTLS_weights_H2O_ice_c1b1.txt"
+
+    _theta0 = 62
+    _theta = [70.527618, 3.273434, 56.591091, 50.084389, 43.954475,
+              1.9700866, 46.234722, 52.013779, 58.038464, 64.573189, 71.497536]
+    _phi = [53.704558, 53.569893, 53.468970, 53.316048, 53.137580, 87.005072,
+            124.93080, 125.06818, 125.21281, 125.34180, 125.41491]
+
 
 
 if __name__ == '__main__':
-    h = RtlsH2OContext(None)
-    h.compute_observations()
-    h = RtlsCO2Context(None)
-    h.compute_observations()
+    # h = RtlsH2O(None)
+    # h.compute_observations()
+    # h = RtlsCO2(None)
+    # h.compute_observations()
+    RtlsH2OPolaire(None).compute_observations()

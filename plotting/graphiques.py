@@ -194,7 +194,7 @@ def _axe_schema_1D_direct(axe, ck, ckS, Ak, bk, xlims, labelcks=True):
     for k, a, b in zip(range(len(bk)), Ak[:, 0, 0], bk[:, 0]):
         x = x_box + ck[k]
         y = a * x + b
-        label = "$a_{k}$" if k == 0 else None
+        label = "$A_{k}$" if k == 0 else None
         axe.plot(x, y, color="g", alpha=0.7, label=label)
 
     axe.scatter(ck, ckS, marker="+", color='r', label="$(c_{k}, c_{k}^{*})$" if labelcks else None)
@@ -224,7 +224,8 @@ class schema_1D(abstractDrawerMPL):
             axe.plot(*points_true_F, color="b", label="True F")
 
             for i, (xpred, w) in enumerate(modal_preds):
-                axe.axvline(xpred[0], color="y", linewidth=0.5, label="{0:.4f} - {1:.2f}".format(xpred[0], w))
+                axe.axvline(xpred[0], color="y", linewidth=0.5,
+                            label="{0:.2f} - $w_{{ {2} }} = {1:.2f}$".format(xpred[0], w, i))
                 axe.annotate(str(i), (xpred[0], 0))
 
             axe.axhline(y=ytest, label="$y_{obs}$")
@@ -322,7 +323,7 @@ class estimated_F(abstractGridDrawerMPL):
                 axe.set_title("Component {}".format(g))
             axe.scatter(*X.T, Y[:, g], c=colors, marker="o", s=1, alpha=0.6)
             z = zs_true[g]
-            strueF = axe.plot_surface(x, y, z, cmap=cm.coolwarm, alpha=0.7, label="True F")
+            strueF = axe.plot_surface(x, y, z, color="gray", alpha=0.4, label="True F")
             axe.set_xlim(*xlim)
             axe.set_ylim(*ylim)
             axe.set_xlabel(varx)
@@ -375,7 +376,8 @@ def _axe_density_1D(axe, x, y, xlims,
 
 
 def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
-                   varnames, modal_preds, truex, title, with_colorbar=True):
+                   varnames, modal_preds, truex, title, with_colorbar=True,
+                   auto_zoom=True):
     if colorplot:
         pc = axe.pcolormesh(x, y, z)
         axe.set_xlim(*xlims)
@@ -384,9 +386,10 @@ def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
             pyplot.colorbar(pc, ax=axe)
     else:
         levels = [0.001] + list(np.linspace(0, z.max(), 20))
-        mask = z >= 0.0001  # autozoom
-        lines_ok, cols_ok = mask.max(axis=1) > 0, mask.max(axis=0) > 0
-        x, y, z = x[lines_ok][:, cols_ok], y[lines_ok][:, cols_ok], z[lines_ok][:, cols_ok]
+        if auto_zoom:
+            mask = z >= 0.0001  # autozoom
+            lines_ok, cols_ok = mask.max(axis=1) > 0, mask.max(axis=0) > 0
+            x, y, z = x[lines_ok][:, cols_ok], y[lines_ok][:, cols_ok], z[lines_ok][:, cols_ok]
         axe.contour(x, y, z, levels=levels, alpha=0.5)
     axe.set_xlabel(varnames[0])
     axe.set_ylabel(varnames[1])
@@ -826,9 +829,9 @@ class Density2DSequence(abstractGridSequence):
                 axeb = next(iterator)
                 axea = next(iterator)
                 _axe_density2D(axeb, x, y, zb, colorplot, xlim, ylim, varname, modal_predb, truex, titleb,
-                               with_colorbar=False)
+                               with_colorbar=False, auto_zoom=False)
                 _axe_density2D(axea, x, y, za, colorplot, xlim, ylim, varname, modal_preda, truex, titlea,
-                               with_colorbar=False)
+                               with_colorbar=False, auto_zoom=False)
             logging.debug(f"Drawing of page {i+1}/{N}")
         self.axes_seq.show_first()
         pyplot.show()

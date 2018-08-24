@@ -800,7 +800,8 @@ class GLLiM():
         esp_rapp = (samples[:, None, :] * crible[:, :, None]).sum(axis=0) / denom
         return esp_rapp, choix
 
-    def clustered_prediction(self, Y, F, nb_predsMax=3, size=100):
+    def clustered_prediction(self, Y, F, nb_predsMax=3, size_sampling=10000,
+                             agg_method="mean"):
         """Compute prediction of several x per y.
         Number of x to predict is choosen according to F criteria."""
         meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
@@ -808,8 +809,10 @@ class GLLiM():
         Xmeans = self._mean_melange(meanss, weightss)  # avoid recomp
         preds = []
         N = len(Y)
+        k_choosen = []
+        agg = np.max if agg_method == "max" else np.mean
         for n, X, weights, y, xmean, means in zip(range(N), meanss, weightss, Y, Xmeans, meanss):
-            samples = self._sample_from_mixture(means[None, :], weights[None, :], size)[0]
+            samples = self._sample_from_mixture(means[None, :], weights[None, :], size_sampling)[0]
             y_accuracy, xs = [np.square(F(xmean[None, :])[0] - y).sum()], [xmean[None, :]]
             for nb_preds in range(2, nb_predsMax + 1):
                 w = regularization.WeightedKMeans(nb_preds)
@@ -823,13 +826,16 @@ class GLLiM():
                         err, Xpreds = np.inf, None
                     else:
                         ys = F(Xpreds)
-                        err = np.square(ys - y).sum(axis=1).max()
+                        err = agg(np.square(ys - y).sum(axis=1))
                 y_accuracy.append(err)
                 xs.append(Xpreds)
             best_K = np.argmin(y_accuracy)
+            k_choosen.append(best_K)
             preds.append(xs[best_K])
-            if n % 100 == 0:
+            if n and n % 100 == 0:
                 logging.debug(f"Prediction {n}/{N} done.")
+        props = (np.array(k_choosen)[:, None] == np.arange(0, nb_predsMax)[None, :]).sum(axis=0) / N
+        logging.info(f"Number of prediction proporations : {props}")
         return preds
 
 

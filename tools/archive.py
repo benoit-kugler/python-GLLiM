@@ -226,6 +226,6 @@ class Archive():
 
 
     def save_resultat(self,dic):
-        path  = os.path.join(self.directory,self._suffixe())
+        path = os.path.join(self.directory, "RES_" + self._suffixe())
         scipy.io.savemat(path,dic)
         logging.debug(f"Results saved in {path}")

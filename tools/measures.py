@@ -160,10 +160,10 @@ class Mesures():
 
         return nrmse, label, worstX, nb_valid, nrmseY, nrmseY_best
 
-    def _nrmse_clustered_prediction(self, gllim):
+    def _nrmse_clustered_prediction(self, gllim, **kwargs):
         exp = self.experience
         logging.info("Starting clustered prediction...")
-        Xs = gllim.clustered_prediction(exp.Ytest, exp.context.F)
+        Xs = gllim.clustered_prediction(exp.Ytest, exp.context.F, **kwargs)
         Xs, mask = exp.clean_X(Xs)
         mask = [(m is not None and sum(m, 0) > 0) for m in mask]  # only X,Y for which at least one prediction is clean
         Y, Xtrue = exp.Ytest[mask], exp.Xtest[mask]
