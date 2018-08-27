@@ -71,9 +71,9 @@ LOGISTIQUE_exps = [
 ]
 
 NOISES_exps = [
-    {"context": context.InjectiveFunction(1), "partiel": None, "K": 100, "N": 5000,
-     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.WaveFunction, "partiel": None, "K": 100, "N": 5000,
+     "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
+    {"context": context.InjectiveFunction(4), "partiel": None, "K": 100, "N": 5000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
@@ -103,7 +103,7 @@ PARCOMPONENTS_exps = [
 ]
 
 CLUSTERED_PREDICTION_exps = [
-    {"context": context.LabContextOlivine, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
+    {"context": context.HapkeContext, "partiel": (0, 1, 2, 3), "K": 100, "N": 100000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
     {"context": context.TwoSolutionsFunction, "partiel": None, "K": 100, "N": 10000,
      "init_local": 100, "sigma_type": "full", "gamma_type": "full"},
@@ -462,9 +462,10 @@ class NoisesMeasure(abstractMeasures):
 
     def _dic_mesures(self, i, exp, exp_params, t):
         dic = {}
-        dic["no"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, None, "sobol", t, t)
-        dic["10"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, 10, "sobol", t, t)
-        dic["50"] = _load_train_measure_gllim(i, GLLiM, exp, exp_params, 50, "sobol", t, t)
+        dic["50"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, 50, "sobol", t, t)
+        Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
+        dic["no"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t, Xtest=Xtest, Ytest=Ytest)
+        dic["10"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, 10, "sobol", t, t, Xtest=Xtest, Ytest=Ytest)
         return dic
 
 
@@ -583,7 +584,11 @@ class ModalLatexWriter(abstractLatexTableWriter):
     template = "modal.tex"
     TITLE = "Mode de prévision"
     DESCRIPTION = "Comparaison des résultats de la prévision par la moyenne (Me,Yme) " \
-                  "par rapport à la prévision par le mode (Mo,Ymo,Yb)"
+                  "par rapport à la prévision par le mode (Ce,Yce,Yb)"
+
+    def _find_best(self):
+        """Do nothing, since there is only on method by exp."""
+        return self.matrix
 
 
 class LogistiqueLatexWriter(abstractLatexTableWriter):
@@ -606,7 +611,8 @@ class NoisesLatexWriter(abstractLatexTableWriter):
     MEASURE_class = NoisesMeasure
     template = "noises.tex"
     TITLE = "Bruitage des données"
-    DESCRIPTION = "Comparaison des différentes intensités de bruit sur les observations."
+    DESCRIPTION = "Comparaison des différentes intensités de bruit sur le dictionnaire d'apprentissage. " \
+                  f"Les observations sont bruitées avec $r_{0} = 50$"
 
 
 class LocalLatexWriter(abstractLatexTableWriter):
@@ -625,9 +631,9 @@ class RelationCLatexWriter(abstractLatexTableWriter):
 
 class DoubleLearningWriter(abstractLatexTableWriter):
     template = "doublelearning.tex"
-    TITLE = "Double apprentissage"
+    TITLE = "Double adaptatif"
     DESCRIPTION = "Test sur les mêmes {Ntest} données : apprentissage standard (gauche) " \
-                  "contre double apprentissage (droite)"
+                  "contre apprentissage adaptatif (droite)"
     METHODES = ["first", "second"]
 
     def __init__(self):
@@ -687,23 +693,23 @@ def main():
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
     # LogistiqueMeasure.run(True, True)
-    # NoisesMeasure.run(True, True)
+    # NoisesMeasure.run([False,True,False], True)
     # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
     # ClusteredPredictionMeasure.run([True, True], [True, True])
 
-    AlgosLatexWriter.render()
-    AlgosTimeLatexWriter.render()
-    GenerationLatexWriter.render()
-    DimensionLatexWriter.render()
-    ModalLatexWriter.render()
-    LogistiqueLatexWriter.render()
-    NoisesLatexWriter.render()
-    LocalLatexWriter.render()
-    RelationCLatexWriter.render()
-    DoubleLearningWriter.render()
-    ErrorPerComponentsWriter.render()
+    # AlgosLatexWriter.render()
+    # AlgosTimeLatexWriter.render()
+    # GenerationLatexWriter.render()
+    # DimensionLatexWriter.render()
+    # ModalLatexWriter.render()
+    # LogistiqueLatexWriter.render()
+    # NoisesLatexWriter.render()
+    # LocalLatexWriter.render()
+    # RelationCLatexWriter.render()
+    # DoubleLearningWriter.render()
+    # ErrorPerComponentsWriter.render()
     ClusteredPredictionWriter.render()
 
 

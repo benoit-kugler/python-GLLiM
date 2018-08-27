@@ -24,7 +24,7 @@ NB_MAX_ITER = 100
 NB_MAX_ITER_SECOND = 20
 
 """Number of used processes"""
-PROCESSES = 1
+PROCESSES = 8
 
 
 # warnings.filterwarnings("ignore")

@@ -189,10 +189,9 @@ def init_cos():
 
 
 def regularization():
-    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
-    exp.load_data(regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol")
-    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
-                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol",
+                                  mode=RETRAIN and "r" or "l", init_local=100, sigma_type="full", gllim_cls=jGLLiM)
 
     filenames = [PATHS("modalPred1.png"), None, None, None]
     filenames_regu = [PATHS("modalPred2.png"), None, None, None]
@@ -207,18 +206,19 @@ def regularization():
 
 
 def comparaison_MCMC():
-    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
-    exp.load_data(regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol")
-    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
-                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=RETRAIN, with_noise=100, N=100000, method="sobol",
+                                  mode=RETRAIN and "r" or "l", init_local=100, sigma_type="full", gllim_cls=jGLLiM)
+
     MCMC_X, Std = exp.context.get_result()
-    # exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
-    #                                      xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
-    #                                      Xref=MCMC_X, StdRef=Std, with_modal=2)
+    exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+                                         xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
+                                         Xref=MCMC_X, StdRef=Std, with_modal=2)
 
     exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wavelengths,
                               Xref=MCMC_X, savepath=PATHS("results2.png"), xtitle="wavelength (microns)",
-                              varlims=None, method="mean", indexes=[0, 1, 3])
+                              varlims=np.array([(0.05, 0.4), (-0.3, 0.18), (0.7, 1.1)]), method="mean",
+                              indexes=[0, 1, 3])
 
 
 def plot_sol_multiples():
@@ -270,9 +270,9 @@ def main():
     # plusieurs_K_N(20)
     # init_cos()
 
-    # regularization()
+    regularization()
     # comparaison_MCMC()
-    plot_sol_multiples()
+    # plot_sol_multiples()
     # plot_map()
 
 

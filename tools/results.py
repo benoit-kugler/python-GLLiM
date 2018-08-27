@@ -77,16 +77,16 @@ class VisualisationResults(Results):
 
             self.G.ModalPred1D(Xs, Xm, xlabels, varlim, varnames, "Poids de rang {}", context=exp.get_infos(),
                                write_context=True,
-                               title="Prédiction modale - Vue par composants", savepath=savepath)
+                               title="Prédiction par les centres", savepath=savepath)
 
             self.G.ModalPred1D(Xs1, Xm, xlabels, varlim, varnames, "Initialisation avec poids de rang {}",
                                context=exp.get_infos(),
                                write_context=False, savepath=savepath1,
-                               title="Prédiction modale - Vue par composants - Avec régularisation par permutation")
+                               title="Prédiction par les centres - Avec régularisation par permutation")
 
             self.G.ModalPred1D(Xs2, Xm, xlabels, varlim, varnames, "Initialisation avec poids de rang {}",
                                context=exp.get_infos(), write_context=False,
-                               title="Prédiction modale - Vue par composants - Avec régularisation par fusion",
+                               title="Prédiction par les centres - Avec régularisation par fusion",
                                savepath=savepath2)
 
     def prediction_by_components(self, gllim: GLLiM, Y, labels, xtitle="observations", varlims=None, with_modal=False,

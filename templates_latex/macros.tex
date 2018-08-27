@@ -70,3 +70,14 @@
 (#- macro FORMAT_INIT(init_local) #)
 Init. : (# if init_local #) p = (! init_local !) (# else #) standard (# endif #)
 (#- endmacro #)
+
+(#- macro FORMAT_MODAL_PRED(modal_pred,K) #)
+Centres :
+(# if modal_pred == "prop" #)
+$w_{min} = \frac{1}{(! K !)}$
+(# elif modal_pred is float #)
+$w_{min} = (! modal_pred !)$
+(# else #)
+$k_{max} = (! modal_pred !)$
+(# endif #)
+(#- endmacro #)

@@ -610,7 +610,7 @@ class Evolution1D(mplAnimation):
 ### -------------------  Results visualisation --------------------- ###
 
 def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle, StdMean=None, Xref=None, StdRef=None,
-                   monoweight=False):
+                   modal_label=None):
     if xlim is not None:
         axe.set_ylim(*xlim)
         axe.yaxis.set_major_locator(ticker.MultipleLocator((xlim[1] - xlim[0]) / 10))
@@ -628,7 +628,7 @@ def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle, StdMean=
     if Xweight is not None:
         colors = cm.Oranges(np.linspace(0.4, 0.9, Xweight.shape[1]))
         for i, X in enumerate(Xweight.T):
-            label = "Weight prediction" if monoweight else f"Weight prediction {i}"
+            label = (modal_label or "Weight prediction {}").format(i)
             axe.plot(xlabels, X, marker="+", label=label, color=colors[i])
 
     if Xref is not None:
@@ -636,21 +636,16 @@ def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle, StdMean=
         axe.fill_between(xlabels, Xref + StdRef, Xref - StdRef, alpha=0.3, color="g", label="Std on reference")
 
 
-class ModalPred1D(abstractGridDrawerMPL):
+class ModalPred1D(abstractDrawerMPL):
     """Draw 1D X modal pred"""
 
     ROW_SIZE = 5
     Y_TITLE_BOX_WITHOUT_CONTEXT = 1.01
 
-    def create_figure(self, Xweight, Xmean, xlabels, varlim, varname, base_xtitle):
-        self.nb_row, self.nb_column = len(Xweight.T), 1
-        self.fig = pyplot.figure(figsize=(15, self.nb_row * self.ROW_SIZE))
-
-    def main_draw(self, Xweight, Xmean, xlabels, varlim, varname, base_xtitle):
-        for i, axe, X in zip(range(self.nb_row), self.get_axes(), Xweight.T):
-            _prediction_1D(axe, varlim, varname, xlabels, Xmean, X[:, None], base_xtitle.format(i), monoweight=True)
-        if self.nb_row:
-            self.fig.legend(*axe.get_legend_handles_labels())  # pour ne pas surcharger
+    def main_draw(self, Xweight, Xmean, xlabels, varlim, varname, modal_label):
+        axe = self.fig.gca()
+        _prediction_1D(axe, varlim, varname, xlabels, Xmean, Xweight, "", modal_label=modal_label)
+        axe.legend()
 
 
 class Results_1D(abstractGridDrawerMPL):

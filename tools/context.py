@@ -456,9 +456,9 @@ class abstractHapkeModel(abstractFunctionModel):
 class HapkeContext(abstractHapkeModel):
     """Used by Experience. Defines meta data of the study"""
 
-    DESCRIPTION = "Contexte d'une observation satellitaire CRSIM, du site d’atterrissage du rover MER-Opportunity " \
+    DESCRIPTION = "Contexte d'une observation satellitaire CRISM, du site d’atterrissage du rover MER-Opportunity " \
                   u"à Meridiani Planum (MARS)."
-    LABEL = "$F_{hapke}$ CRSIM"
+    LABEL = "$F_{hapke}$ CRISM"
 
     DEFAULT_VALUES = np.array([0.5, 15, 0.5, 0.5, 0.5, 0])
 
@@ -563,20 +563,20 @@ class HapkeGonio1468(abstractHapkeGonio):
     EXP_NAME = 1468
 
     LABEL = abstractHapkeGonio.LABEL + " C1"
-    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - Charbon 1468"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Charbon 1468"
 
 class HapkeGonio1521(abstractHapkeGonio):
     EXP_NAME = 1521
 
     LABEL = abstractHapkeGonio.LABEL + " C2"
-    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - Charbon 1521"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Charbon 1521"
 
 
 class HapkeGonioJSC1(abstractHapkeGonio):
     EXP_NAME = "JSC1"
 
     LABEL = abstractHapkeGonio.LABEL + " AM"
-    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - Analogue martin JSC1"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Analogue martien JSC1"
 
 class HapkeGonio1468_30(HapkeGonio1468):
     GEOMETRIES = (np.arange(105) % 3) == 0
@@ -584,7 +584,6 @@ class HapkeGonio1468_30(HapkeGonio1468):
 
 class HapkeGonio1468_50(HapkeGonio1468):
     GEOMETRIES = (np.arange(105) % 2) == 0
-
 
 
 class abstractLabContext(abstractHapkeModel):
@@ -688,14 +687,14 @@ class LabContextNontronite(abstractLabContext):
     def __init__(self,partiel):
         super().__init__(partiel,0)
 
-    DESCRIPTION = abstractLabContext.DESCRIPTION + " - Echantillon de nontronite"
+    DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon de nontronite"
 
 
 class LabContextOlivine(abstractLabContext):
 
     LABEL = "Config. Olivine"
 
-    DESCRIPTION = abstractLabContext.DESCRIPTION + " - Echantillon d'olivine"
+    DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon d'olivine"
 
 
     COERCIVITE_F = 1

@@ -358,7 +358,7 @@ class SecondLearning(Experience):
 
 
 def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
-    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3),
+    exp, gllim = Experience.setup(context.LabContextNontronite, 100, partiel=(0, 1, 2, 3),
                                   regenere_data=retrain_base, with_noise=50, N=10000, method="sobol",
                                   mode=retrain_base and "r" or "l", init_local=200,
                                   sigma_type="iso", gllim_cls=dGLLiM
