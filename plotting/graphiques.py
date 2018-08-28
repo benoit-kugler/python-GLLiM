@@ -737,8 +737,7 @@ class abstractGridSequence(abstractGridDrawerMPL):
         self.fig = self.axes_seq.fig
 
 
-
-class density_sequences1D(abstractGridSequence):
+class Density1DSequence(abstractGridSequence):
     RESOLUTION = 200
     FIGSIZE = (25, 15)
     SAVEBOUNDS = (2, 0.5, 21, 6)
@@ -786,6 +785,42 @@ class density_sequences1D(abstractGridSequence):
         pyplot.show()
         self.fig.savefig(savepath, bbox_inches=transforms.Bbox.from_bounds(*self.SAVEBOUNDS))
         logging.info(f"Saved in {savepath}")
+
+
+class Density1DNappe(abstractDrawerMPL):
+
+    def main_draw(self, densitys, modal_preds, xlabels, xtitle, Xmean, Xweight, xlim,
+                  varname, Yref, StdRef, StdMean, images_paths):
+        if xlabels is None:
+            xlabels = np.arange(len(Xmean))
+        x = np.linspace(*xlim, self.RESOLUTION)[:, None]
+        ydensity, _ = densitys(x)
+        xpoints = x.flatten()
+
+        for i, axes, y, m in zip(range(len(ydensity)), self.axes_seq, ydensity, modal_preds):
+
+            _axe_density_1D(axes[0], xpoints, y.flatten(), xlim, varname, m, None, "")
+
+            if images_paths:
+                axe2 = axes[2]
+                axe_im = axes[1]
+                img = PIL.Image.open(images_paths[i]).convert("L")
+                axe_im.imshow(np.asarray(img), cmap="gray", aspect="auto")
+                axe_im.get_xaxis().set_visible(False)
+                axe_im.get_yaxis().set_visible(False)
+            else:
+                axe2 = axes[1]
+
+            _prediction_1D(axe2, xlim, varname, xlabels, Xmean, Xweight, xtitle,
+                           StdMean=StdMean, Xref=Yref, StdRef=StdRef)
+
+            # Current point
+            axe2.axvline(xlabels[i], c="b", marker="<", label="index " + str(i), zorder=4, alpha=0.4)
+            axe2.legend()
+        self.axes_seq.show_first()
+
+
+
 
 
 class Density2DSequence(abstractGridSequence):

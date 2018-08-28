@@ -1,6 +1,7 @@
 """Implements severals training pattern, build on gllims classes.
 Main functions have signature X (training), Y (training), K, *args, **options -> gllim.
 Archiving of model parameters is not done in this module"""
+import json
 import logging
 import time
 import warnings
@@ -143,44 +144,42 @@ def basic_fit(Ttrain, Ytrain, K, Lw = 0, sigma_type = "iso", gamma_type = "full"
 
 ##    ----- SECOND LEARNING TOOLS   ------   ##
 
-def job_second_learning(listXYK, params, process_index) -> [GLLiM]:
+def job_second_learning(XYK, savepath, params, i):
     """Trains one GLLiM for each tuple (X,Y,rnk)"""
-    gllims = []
     Lw, sigma_type, gamma_type = params
-    maxi = len(listXYK)
-    for i , (X,Y,K) in enumerate(listXYK):
-        K = min(K, len(X))  # In case of degenerate sampling
-        logging.debug(f"\tSecond learning {i+1}/{maxi} in process {process_index}... ({len(X)} data, {K} clusters)")
-        rho = np.ones(K) / K
-        m = X[0:K,:]
-        precisions = K * np.array([np.eye(X.shape[1])] * K)
-        gllim = GLLiM(K, Lw=Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=None)
-        rnk = gllim._T_GMM_init(X, "random",
-                                weights_init=rho, means_init=m, precisions_init=precisions)
-        gllim.fit(X, Y, {"rnk": rnk}, maxIter=NB_MAX_ITER_SECOND)
-        gllim.inversion()
-        gllims.append(gllim)
-        if (i + 1) % 10 == 0:
-            logging.info(f"Second learning {i+1}/{maxi} in process {process_index} done.")
-    return gllims
+    X, Y, K = XYK
+    K = min(K, len(X))  # In case of degenerate sampling
+    logging.debug(f"\tSecond learning {i+1} starting... ({len(X)} data, {K} clusters)")
+    rho = np.ones(K) / K
+    m = X[0:K, :]
+    precisions = K * np.array([np.eye(X.shape[1])] * K)
+    gllim = GLLiM(K, Lw=Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=None)
+    rnk = gllim._T_GMM_init(X, "random",
+                            weights_init=rho, means_init=m, precisions_init=precisions)
+    gllim.fit(X, Y, {"rnk": rnk}, maxIter=NB_MAX_ITER_SECOND)
+
+    with open(savepath, 'w', encoding='utf8') as f:
+        json.dump(gllim.theta, f, indent=2)
+    logging.debug(f"\tSnd parameters saved in {savepath}")
+
+    if (i + 1) % 10 == 0:
+        logging.info(f"Second learning {i+1} done.")
 
 
-def second_training_parallel(newXYK, Lw=0, sigma_type="iso", gamma_type="full"):
+def second_training_parallel(newXYK, savepaths, Lw=0, sigma_type="iso", gamma_type="full"):
     logging.info("Second learning starting...")
-    chunck = len(newXYK) // PROCESSES
-    parts = [newXYK[start * chunck:((start + 1) * chunck)] for start in range(PROCESSES - 1)]
-    parts.append(newXYK[(PROCESSES - 1) * chunck:])
+    # chunck = len(newXYK) // PROCESSES
+    # parts = [newXYK[start * chunck:((start + 1) * chunck)] for start in range(PROCESSES - 1)]
+    # parts.append(newXYK[(PROCESSES - 1) * chunck:])
 
-    params = [(Lw, sigma_type, gamma_type)] * len(parts)
+    params = [(Lw, sigma_type, gamma_type)] * len(newXYK)
     ti = time.time()
 
     with Pool(PROCESSES) as p:
-        l = p.starmap(job_second_learning, zip(parts, params, range(len(parts))))
+        p.starmap(job_second_learning, zip(newXYK, savepaths, params, range(len(savepaths))))
 
-    gllims = [g for sublist in l for g in sublist]
     logging.info("Second learning time for {0} observations : {1} ".format(len(newXYK),
                                                                            timedelta(seconds=time.time() - ti)))
 
-    return gllims
 
 

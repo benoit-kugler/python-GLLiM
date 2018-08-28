@@ -207,7 +207,7 @@ def regularization():
 
 def comparaison_MCMC():
     exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=RETRAIN, with_noise=100, N=100000, method="sobol",
+                                  regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol",
                                   mode=RETRAIN and "r" or "l", init_local=100, sigma_type="full", gllim_cls=jGLLiM)
 
     MCMC_X, Std = exp.context.get_result()
@@ -246,7 +246,7 @@ def plot_sol_multiples():
 
 def plot_map():
     exp = Experience(context.HapkeContext, partiel=None, with_plot=True)
-    exp.load_data(regenere_data=RETRAIN, with_noise=50, N=50000, method="sobol")
+    exp.load_data(regenere_data=RETRAIN, with_noise=20, N=50000, method="sobol")
     gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
                            gllim_cls=jGLLiM)
 
@@ -270,13 +270,13 @@ def main():
     # plusieurs_K_N(20)
     # init_cos()
 
-    regularization()
+    # regularization()
     # comparaison_MCMC()
     # plot_sol_multiples()
-    # plot_map()
+    plot_map()
 
 
-RETRAIN = False
+RETRAIN = True
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",

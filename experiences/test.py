@@ -22,6 +22,7 @@ from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from plotting import graphiques
+from tools import context
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, InjectiveFunction
 from tools.experience import SecondLearning, Experience, _train_K_N
 from tools.interface_R import is_egal
@@ -253,6 +254,18 @@ def details_convergence(imax, RETRAIN):
                                  title=title, write_context=False)
 
 
+def double(Ntest=2):
+    exp = Experience(context.InjectiveFunction(1), partiel=None, with_plot=False)
+    exp.load_data(regenere_data=False, with_noise=50, N=1000, method="sobol")
+    dGLLiM.dF_hook = exp.context.dF
+    gllim = exp.load_model(10, mode="l", track_theta=False, init_local=100,
+                           sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
+
+    exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]
+    exp = SecondLearning.from_experience(exp, with_plot=True)
+    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+
+    Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
 
 if __name__ == '__main__':
@@ -262,10 +275,11 @@ if __name__ == '__main__':
     # graphiques.plot_Y(Y)qw
     # simple_function()
     # evolu_cluster()
-    equivalence_jGLLiM_GLLIM()  # OK
+    # equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
     # test_map()
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
     # details_convergence(60, True)
+    double()

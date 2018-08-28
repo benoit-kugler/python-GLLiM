@@ -140,7 +140,7 @@ def _load_train_gllim(i, gllim_cls, exp, exp_params, noise, method,
             "--- No model or data found for experience {}, version {} - noise : {} ---".format(i + 1,
                                                                                                gllim_cls.__name__,
                                                                                                noise))
-        return {"__error__": "Données ou model indisponibles"}
+        return {"__error__": "Données ou modèle indisponibles"}
     except WrongContextError as e:
         logging.warning("\t{} method is not appropriate for the parameters ! "
                         "Details \n\t{} \n\tIgnored".format(gllim_cls.__name__, e))
@@ -462,8 +462,8 @@ class NoisesMeasure(abstractMeasures):
 
     def _dic_mesures(self, i, exp, exp_params, t):
         dic = {}
-        dic["50"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, 50, "sobol", t, t)
-        Xtest, Ytest = exp.Xtest, exp.Ytest  # fixed test values
+        Xtest, Ytest = exp._genere_data(exp.DEFAULT_NTEST, "sobol", 20)
+        dic["50"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, 50, "sobol", t, t, Xtest=Xtest, Ytest=Ytest)
         dic["no"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, None, "sobol", t, t, Xtest=Xtest, Ytest=Ytest)
         dic["10"] = _load_train_measure_gllim(i, jGLLiM, exp, exp_params, 10, "sobol", t, t, Xtest=Xtest, Ytest=Ytest)
         return dic
@@ -612,7 +612,7 @@ class NoisesLatexWriter(abstractLatexTableWriter):
     template = "noises.tex"
     TITLE = "Bruitage des données"
     DESCRIPTION = "Comparaison des différentes intensités de bruit sur le dictionnaire d'apprentissage. " \
-                  f"Les observations sont bruitées avec $r_{0} = 50$"
+                  f"Les observations sont bruitées avec $r_{0} = 20$"
 
 
 class LocalLatexWriter(abstractLatexTableWriter):
@@ -693,7 +693,7 @@ def main():
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
     # LogistiqueMeasure.run(True, True)
-    # NoisesMeasure.run([False,True,False], True)
+    NoisesMeasure.run(True, True)
     # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
@@ -705,12 +705,12 @@ def main():
     # DimensionLatexWriter.render()
     # ModalLatexWriter.render()
     # LogistiqueLatexWriter.render()
-    # NoisesLatexWriter.render()
+    NoisesLatexWriter.render()
     # LocalLatexWriter.render()
     # RelationCLatexWriter.render()
     # DoubleLearningWriter.render()
     # ErrorPerComponentsWriter.render()
-    ClusteredPredictionWriter.render()
+    # ClusteredPredictionWriter.render()
 
 
 if __name__ == '__main__':

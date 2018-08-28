@@ -195,23 +195,22 @@ class Archive():
         logging.debug(f"\tParameters history loaded from {filename}")
         return d["thetas"], d["LLs"]
 
-    def save_second_learned(self,gllims,Y,X):
+    def save_data_second_learned(self, Y, X):
         path = self.get_path("second_models")
-        dt = datetime.datetime.now().strftime("%c")
-        for i, g in enumerate(gllims):
-            savepath = path + "-" + str(i)
-            self._save_data(dict(g.theta,datetime=dt),savepath)
-        logging.debug(f"\tSnd parameters saved in {path}-0 , -{len(gllims)-1}")
-        d = {"Yadd": Y, "Nadd": len(gllims)}
+        d = {"Yadd": Y, "Nadd": len(Y)}
         if X is not None:
             assert len(X) == len(Y)
             d["Xadd"] = X
-        scipy.io.savemat(path + "add", d)
+        scipy.io.savemat(path, d)
         logging.debug(f"\tAdditional data saved in {path}")
+
+    def get_path_second_learned_models(self, N):
+        path = self.get_path("second_models")
+        return [path + "-" + str(i) for i in range(N)]
 
     def load_second_learned(self,withX):
         path = self.get_path("second_models")
-        data = scipy.io.loadmat(path + "add")
+        data = scipy.io.loadmat(path)
         thetas = []
         for i in range(data["Nadd"][0, 0]):
             filename = path + "-" + str(i)

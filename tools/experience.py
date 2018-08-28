@@ -19,7 +19,6 @@ from tools.context import InjectiveFunction
 import tools.measures
 from tools.results import Results, VisualisationResults
 
-Ntest = 50000
 
 Ntest_PLUSIEURS_KN = 10000
 
@@ -31,10 +30,12 @@ class Experience():
     mesures: 'tools.measures.VisualisationMesures'
     results: VisualisationResults
 
+    DEFAULT_NTEST = 50000
+
     @classmethod
     def setup(cls, context_class, K, **kwargs):
         object_kwargs = {i: v for i, v in kwargs.items() if i in ["partiel", "verbose", "with_plot"]}
-        data_kwargs = {i: v for i, v in kwargs.items() if i in ["regenere_data", "with_noise", "N", "method"]}
+        data_kwargs = {i: v for i, v in kwargs.items() if i in ["regenere_data", "with_noise", "N", "method", "save"]}
         model_kwargs = {i: v for i, v in kwargs.items() if
                         i in ["Lw", "sigma_type", "gamma_type", "gllim_cls", "rnk_init",
                               "mode", "multi_init", "init_local", "track_theta", "with_time"]}
@@ -64,24 +65,26 @@ class Experience():
             self.mesures = tools.measures.Mesures(self)
             self.results = Results(self)
 
+    def _genere_data(self, Ndata, method, noise):
+        X, Y = self.context.get_data_training(Ndata, method=method)
+        if noise:
+            Y = self.context.add_noise_data(Y, std=noise)
+        return X, Y
+
     def load_data(self, regenere_data=False, with_noise=None, N=1000, method="sobol"):
         self.with_noise = with_noise
         self.generation_method = method
         self.N = N
-        Ndata = N + Ntest
+        Ndata = N + self.DEFAULT_NTEST
 
         if regenere_data:
-            X, Y = self.context.get_data_training(Ndata,method=method)
-
-            if with_noise:
-                Y = self.context.add_noise_data(Y,std=with_noise)
-
+            X, Y = self._genere_data(Ndata, method, with_noise)
             self.archive.save_data(X,Y)
         else:
             X,Y = self.archive.load_data()
 
         self.Xtrain, self.Ytrain = X[0:N], Y[0:N]
-        self.Xtest, self.Ytest = X[-Ntest:], Y[-Ntest:]
+        self.Xtest, self.Ytest = X[-self.DEFAULT_NTEST:], Y[-self.DEFAULT_NTEST:]
 
         # Mean of training responses
         self.Xmean = self.Xtrain.mean(axis=0)
@@ -314,12 +317,12 @@ class SecondLearning(Experience):
         X = X[mask] if X is not None else None
         logging.info("Modal prediction done in {0:.2f} secs".format(time.time() - t))
 
-        gllims = training.second_training_parallel(newXYK, Lw=self.Lw, sigma_type=self.sigma_type,
+        savepaths = self.archive.get_path_second_learned_models(len(newXYK))
+        training.second_training_parallel(newXYK, savepaths, Lw=self.Lw, sigma_type=self.sigma_type,
                                                    gamma_type=self.gamma_type)
 
-        self.archive.save_second_learned(gllims,Y,X)
+        self.archive.save_data_second_learned(Y, X)
 
-        return Y,X,gllims
 
     def load_second_learning(self, nb_per_Y, clusters, withX=True):
         self.second_learning = "perY:{},{}".format(nb_per_Y, clusters)
@@ -376,6 +379,7 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
     d2 = exp.mesures.run_mesures(gllims, Y, X)
     mexp1 = {"first": d1, "second": d2, "Ntest": Ntest}
+    exp.archive.save_mesures([mexp1], "SecondLearning")
 
     ### ---------------------------------------------------------------------------- ###
 
@@ -496,9 +500,9 @@ def glace():
 
 def RTLS():
     training.PROCESSES = 4
-    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 200, partiel=(0, 1, 2, 3),
-                                  regenere_data=False, with_plot=True,
-                                  with_noise=50, N=150000, mode="l", init_local=100,
+    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=True, with_plot=True,
+                                  with_noise=20, N=100000, mode="r", init_local=100,
                                   gllim_cls=jGLLiM)
 
 
@@ -614,11 +618,11 @@ def job():
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    # RTLS()
+    RTLS()
     # main()
     # monolearning()
     # test_map()
     # double_learning(Ntest=10, retrain_base=False, retrain_second=False)
     # glace()
     # test_map()
-    test_clustered_pred()
+    # test_clustered_pred()

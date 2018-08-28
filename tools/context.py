@@ -479,7 +479,7 @@ class HapkeContext(abstractHapkeModel):
 
 
     def get_observations(self,wave_index=0):
-        "Renvoi les géométries et les observations"
+        "Renvoi les observations"
         chemin = os.path.join(self.BASE_PATH,self.EXPERIENCES[self.index_exp])
         d = scipy.io.loadmat(chemin)
         obs = d["cub_rho_mod"][:,:,wave_index]
@@ -531,7 +531,7 @@ class abstractHapkeGonio(abstractHapkeModel):
 
     GEOMETRIES = None
 
-    LABEL = "Config. Gonio."
+    LABEL = "$F_{hapke}$ Gonio."
 
     DESCRIPTION = "Configuration de mesure de réflectance en laboratoire"
 
@@ -681,8 +681,7 @@ class abstractLabContext(abstractHapkeModel):
     DESCRIPTION = "Configuration de mesure de réflectance en laboratoire (divers longueurs d'ondes)"
 
 class LabContextNontronite(abstractLabContext):
-
-    LABEL = "Config. Nontronite"
+    LABEL = "$F_{hapke}$ Nontronite"
 
     def __init__(self,partiel):
         super().__init__(partiel,0)
@@ -691,8 +690,7 @@ class LabContextNontronite(abstractLabContext):
 
 
 class LabContextOlivine(abstractLabContext):
-
-    LABEL = "Config. Olivine"
+    LABEL = "$F_{hapke}$ Olivine"
 
     DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon d'olivine"
 

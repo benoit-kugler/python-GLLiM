@@ -160,10 +160,10 @@ class VisualisationResults(Results):
             Xweight = np.array([post_processing(X) for X in Xweight])
             Xmean = np.array([post_processing(X) for X in Xmean])
 
-        self.G.density_sequences1D(densitys, modal_preds, xlabels, xtitle, Xmean[:, index], Xweight[:, :, index],
-                                   xlim, varname, Xref, StdRef, StdMean, pdf_paths,
-                                   title="Densities - {}".format(varname),
-                                   savepath=exp.archive.get_path("figures", filecategorie="sequence"))
+        self.G.Density1DSequence(densitys, modal_preds, xlabels, xtitle, Xmean[:, index], Xweight[:, :, index],
+                                 xlim, varname, Xref, StdRef, StdMean, pdf_paths,
+                                 title="Densities - {}".format(varname),
+                                 savepath=exp.archive.get_path("figures", filecategorie="sequence"))
 
     def map(self, gllim: GLLiM, Y, latlong, index, Xref=None, savepath=None):
         X = gllim.predict_high_low(Y)
