@@ -146,13 +146,32 @@ def test_hapke_vect():
     print("Hapke opt time ", time.time() - t)
     assert np.allclose(y1, y2)
 
-def test_map():
-    h = VoieS(None)
-    Y , mask = h.get_observations_fixed_wl(wave_index=0)
-    latlong = h.get_spatial_coord()[mask]
-    mask2 = [not np.allclose(x,0) for x in latlong]
-    latlong = latlong[mask2]
-    graphiques.map_values(latlong, np.ones(len(latlong)))
+
+def test_map(RETRAIN=False):
+    # h = VoieS(None)
+    # Y , mask = h.get_observations_fixed_wl(wave_index=0)
+    # latlong = h.get_spatial_coord()[mask]
+    # mask2 = [not np.allclose(x,0) for x in latlong]
+    # latlong = latlong[mask2]
+    # graphiques.map_values(latlong, np.ones(len(latlong)))
+
+    exp = Experience(context.HapkeContext, partiel=(0, 1, 2, 3), with_plot=True, index_exp=1)
+    exp.load_data(regenere_data=RETRAIN, with_noise=20, N=50000, method="sobol")
+    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
+                           gllim_cls=jGLLiM)
+
+    Y = exp.context.get_observations()
+    # latlong, mask = exp.context.get_spatial_coord()
+    # Y = Y[mask]  # cleaning
+    # MCMC_X, Std = exp.context.get_result(with_std=True)
+    # MCMC_X = MCMC_X[mask]
+    # Std = Std[mask]
+    N = 100
+    labels = [str(i) for i in range(N)]
+    exp.results.prediction_by_components(gllim, Y[0:N], labels[0:N],
+                                         xtitle="wavelength (microns)",
+                                         Xref=None, StdRef=None, with_modal=2)
+
 
 def test_dF():
     c = HapkeContext(partiel=(0,1))
@@ -268,6 +287,22 @@ def double(Ntest=2):
     Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
 
 
+def plot_cks(retrain=False):
+    exp, gllim = Experience.setup(context.SurfaceFunction, 50, gllim_cls=jGLLiM,
+                                  N=2000, regenere_data=retrain, mode=retrain and "r" or "l")
+    x, y, z = exp.context.Fsample(500)
+    z = z[0]
+
+    xcoupe = np.linspace(0, 0.85, 200)
+    Z = 0.6
+    ycoupe = exp.context.Fcoupe(Z, xcoupe)
+    print(exp.context.F(np.concatenate((xcoupe[:, None], ycoupe[:, None]), axis=1)))
+
+    Y = np.array([[Z]])
+    _, alphas, _ = gllim._helper_forward_conditionnal_density(Y)
+
+    graphiques.IllustreCks(gllim.ckList, gllim.ckListS, alphas[0], (x, y, z), (xcoupe, ycoupe, Z))
+
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
@@ -278,8 +313,9 @@ if __name__ == '__main__':
     # equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
-    # test_map()
+    # test_map(RETRAIN=True)
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
     # details_convergence(60, True)
-    double()
+    # double()
+    plot_cks(False)

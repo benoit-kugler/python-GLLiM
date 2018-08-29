@@ -165,7 +165,7 @@ class abstractFunctionModel:
 
 
     def Fsample(self,N,with_noise=False):
-        """Return array with shape (N,N) corresponding of value of Hapke.
+        """Return array with shape (N,N) corresponding of value of F.
         If partiel, other components are fixed to default values."""
         if not (self.partiel and len(self.partiel) == 2 or len(self.XLIMS) == 2):
             raise ValueError("Fsample expects only 2 variables context")
@@ -176,8 +176,12 @@ class abstractFunctionModel:
         if with_noise:
             Y = self.add_noise_data(Y)
 
-        r = np.array([ y.reshape((N,N)) for y in Y.T])
-        return X, r
+        H = np.array([y.reshape((N, N)) for y in Y.T])
+
+        x = X[:, 0].reshape((N, N))
+        y = X[:, 1].reshape((N, N))
+
+        return x, y, H
 
     def get_X_uniform(self, K):
         """Returns a uniform grid with K points around the X space"""
@@ -230,6 +234,24 @@ class abstractSimpleFunctionModel(abstractFunctionModel):
     def normalize_Y(self, Y):
         return (Y - self.YLIMS[:, 0]) / (self.YLIMS[:, 1] - self.YLIMS[:, 0])
 
+
+class SurfaceFunction(abstractSimpleFunctionModel):
+    DEFAULT_VALUES = np.array([0.5, 0.5])
+
+    XLIMS = np.array([[0, 1], [0, 1]])
+
+    PARAMETERS = np.array(["x", "y"])
+
+    LABEL = "$x ,y \mapsto \\frac{x^2 + y^3}{2}$ "
+
+    def F(self, X):
+        return (-(X[:, 0:1] ** 2 + X[:, 1:2] ** 3) / 2) + 1
+
+    def Fcoupe(self, z, X):
+        """return Y such as F(X,Y) = z"""
+        arg = 2 * (1 - z) - X ** 2
+        sign = (arg >= 0) * 2 - 1
+        return np.float_power(np.abs(arg), 1 / 3) * sign
 
 class SquaredFunction(abstractSimpleFunctionModel):
     LABEL = "Fonction carrée"
@@ -563,20 +585,20 @@ class HapkeGonio1468(abstractHapkeGonio):
     EXP_NAME = 1468
 
     LABEL = abstractHapkeGonio.LABEL + " C1"
-    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Charbon 1468"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Charbon 1468."
 
 class HapkeGonio1521(abstractHapkeGonio):
     EXP_NAME = 1521
 
     LABEL = abstractHapkeGonio.LABEL + " C2"
-    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Charbon 1521"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Charbon 1521."
 
 
 class HapkeGonioJSC1(abstractHapkeGonio):
     EXP_NAME = "JSC1"
 
     LABEL = abstractHapkeGonio.LABEL + " AM"
-    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Analogue martien JSC1"
+    DESCRIPTION = abstractHapkeGonio.DESCRIPTION + " - sur échantillon Analogue martien JSC1."
 
 class HapkeGonio1468_30(HapkeGonio1468):
     GEOMETRIES = (np.arange(105) % 3) == 0
@@ -686,13 +708,13 @@ class LabContextNontronite(abstractLabContext):
     def __init__(self,partiel):
         super().__init__(partiel,0)
 
-    DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon de nontronite"
+    DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon de nontronite."
 
 
 class LabContextOlivine(abstractLabContext):
     LABEL = "$F_{hapke}$ Olivine"
 
-    DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon d'olivine"
+    DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon d'olivine."
 
 
     COERCIVITE_F = 1

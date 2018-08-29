@@ -350,11 +350,8 @@ class VisualisationMesures(Mesures):
         Yest, rnk = exp.reconstruct_F(gllim, exp.Xtrain)
 
         N = 100
-        bh, H = exp.context.Fsample(N)
-        x = bh[:, 0].reshape((N, N))
-        y = bh[:, 1].reshape((N, N))
 
-        data_trueF = (x, y, H)
+        data_trueF = exp.context.Fsample(N)
 
         savepath = savepath or exp.archive.get_path("figures", filecategorie="estimatedF:mean")
         title = title or self.get_title("Estimated F - Method : mean")

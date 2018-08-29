@@ -7,7 +7,7 @@ from tools.experience import SecondLearning
 
 class LogisticOlivineContext(LabContextOlivine):
     LABEL = LabContextOlivine.LABEL + " - logit"
-    DESCRIPTION = LabContextOlivine.DESCRIPTION + " - Avec transformation logistique"
+    DESCRIPTION = LabContextOlivine.DESCRIPTION + " Avec transformation logistique."
 
     def get_X_sampling(self, N, method ='sobol'):
         X = super().get_X_sampling(N,method)
@@ -59,8 +59,6 @@ def compare_MCMC():
                                       index=index, Xref=MCMC_X, StdRef=Std, with_pdf_images=True, varlims=(-0.2, 1.2),
                                       regul="exclu",post_processing=exp.context.to_X_physique)
 
-def main():
-    exp.mesures.plot_mesures(gllim)
 
 if __name__ == '__main__':
     exp = SecondLearning(LogisticOlivineContext, partiel=(0, 1, 2, 3))

@@ -679,35 +679,37 @@ class Results_2D(abstractGridDrawerMPL):
     Y_TITLE_BOX_WITHOUT_CONTEXT = 1.01
     SIZE_COLUMN = 8
 
-    def _get_nb_subplot(self, X, xlabels, xtitle, varnames, varlims, Xref):
+    def _get_nb_subplot(self, X, xlabels, xtitle, varnames, varlims, Xref, add_data):
         n = len(varnames)
         return (2 if Xref is not None else 1) * (n * (n - 1) // 2)
 
-    def _get_dims_fig(self, X, xlabels, xtitle, varnames, varlims, Xref):
+    def _get_dims_fig(self, X, xlabels, xtitle, varnames, varlims, Xref, add_data):
         if Xref is None:
-            return super(Results_2D, self)._get_dims_fig(X, xlabels, xtitle, varnames, varlims, Xref)
+            return super(Results_2D, self)._get_dims_fig(X, xlabels, xtitle, varnames, varlims, Xref, add_data)
         nb_col = 2
-        nb_row = self._get_nb_subplot(X, xlabels, xtitle, varnames, varlims, Xref) / nb_col
+        nb_row = self._get_nb_subplot(X, xlabels, xtitle, varnames, varlims, Xref, add_data) / nb_col
         nb_row = int(np.ceil(nb_row))
         return nb_row, nb_col, (self.SIZE_COLUMN * nb_col,
                                 self.SIZE_ROW * nb_row)
 
-
-
-
-
-    def main_draw(self, X, xlabels, xtitle, varnames, varlims, Xref):
+    def main_draw(self, X, xlabels, xtitle, varnames, varlims, Xref, add_data):
         nb_var = len(varnames)
+        add_data = add_data or {}
         indexes = [(i, j) for i in range(nb_var) for j in range(i + 1, nb_var)]
         iterator = self.get_axes()
         for i, j in indexes:
+            add_curve, add_label = add_data.get((i, j), (None, ""))
             x = X[:, (i, j)]
             axe = next(iterator)
             l = axe.scatter(*x.T, c=xlabels, marker="+", label="prediction")
+            if add_curve is not None:
+                axe.plot(*add_curve, label=add_label)
             if Xref is not None:
                 axe2 = next(iterator)
                 x = Xref[:, (i, j)]
                 l = axe2.scatter(*x.T, c=xlabels, marker="^", label="reference")
+                if add_curve is not None:
+                    axe2.plot(*add_curve, label=add_label)
                 axe2.set_xlabel(varnames[i])
                 axe2.set_ylabel(varnames[j])
                 axe2.legend()
@@ -971,6 +973,21 @@ class ScatterProjections(abstractGridDrawerVispy):
         self.fig.show(run=True)
 
 
+class IllustreCks(abstractDrawerMPL):
+
+    def main_draw(self, ck, cks, alphas, points_F, points_coupe):
+        axe = self.fig.add_subplot(111, projection="3d")
+
+        axe.plot_surface(*points_F, label="$F$", alpha=0.4, color="gray")
+        alphas = alphas / alphas.max()
+        colors = cm.cool(alphas)
+        axe.scatter(ck[:, 0], ck[:, 1], cks, c=colors)
+
+        x, y, z = points_coupe
+        print(x, y)
+        axe.scatter(x, y, z * np.ones(x.shape), color="green", alpha=1, marker=".")
+
+        pyplot.show()
 
 
 

@@ -583,8 +583,8 @@ class ModalLatexWriter(abstractLatexTableWriter):
     MEASURE_class = ModalMeasure
     template = "modal.tex"
     TITLE = "Mode de prévision"
-    DESCRIPTION = "Comparaison des résultats de la prévision par la moyenne (Me,Yme) " \
-                  "par rapport à la prévision par le mode (Ce,Yce,Yb)"
+    DESCRIPTION = """Comparaison des résultats de la prévision par la moyenne (Me,Yme) par rapport à la prévision par le mode (Ce,Yce,Yb). 
+                  (Les colonnes sont respectivement la moyenne et la médiane des erreurs.)"""
 
     def _find_best(self):
         """Do nothing, since there is only on method by exp."""
@@ -612,7 +612,7 @@ class NoisesLatexWriter(abstractLatexTableWriter):
     template = "noises.tex"
     TITLE = "Bruitage des données"
     DESCRIPTION = "Comparaison des différentes intensités de bruit sur le dictionnaire d'apprentissage. " \
-                  f"Les observations sont bruitées avec $r_{0} = 20$"
+                  f"Les observations sont bruitées avec $r_{0} = 20$."
 
 
 class LocalLatexWriter(abstractLatexTableWriter):
@@ -631,7 +631,7 @@ class RelationCLatexWriter(abstractLatexTableWriter):
 
 class DoubleLearningWriter(abstractLatexTableWriter):
     template = "doublelearning.tex"
-    TITLE = "Double adaptatif"
+    TITLE = "Apprentissage adaptatif"
     DESCRIPTION = "Test sur les mêmes {Ntest} données : apprentissage standard (gauche) " \
                   "contre apprentissage adaptatif (droite)"
     METHODES = ["first", "second"]
@@ -657,7 +657,8 @@ class ErrorPerComponentsWriter(abstractLatexTableWriter):
     MEASURE_class = PerComponentsMeasure
     template = "table_per_components.tex"
     TITLE = "Erreur variable par variable"
-    DESCRIPTION = "Erreur (en valeur absolue) pour la prédiction par la moyenne."
+    DESCRIPTION = """Erreur (en valeur absolue) pour la prédiction par la moyenne. 
+                  (Les colonnes sont respectivement la moyenne et la médiane des erreurs.)"""
 
 
 class ClusteredPredictionWriter(abstractLatexTableWriter):
@@ -693,7 +694,7 @@ def main():
     # DimensionMeasure.run(True, True)
     # ModalMeasure.run(True, True)
     # LogistiqueMeasure.run(True, True)
-    NoisesMeasure.run(True, True)
+    # NoisesMeasure.run(True, True)
     # LocalMeasure.run(True, True)
     # RelationCMeasure.run(True, True)
     # PerComponentsMeasure.run(True, True)
@@ -705,10 +706,10 @@ def main():
     # DimensionLatexWriter.render()
     # ModalLatexWriter.render()
     # LogistiqueLatexWriter.render()
-    NoisesLatexWriter.render()
+    # NoisesLatexWriter.render()
     # LocalLatexWriter.render()
     # RelationCLatexWriter.render()
-    # DoubleLearningWriter.render()
+    DoubleLearningWriter.render()
     # ErrorPerComponentsWriter.render()
     # ClusteredPredictionWriter.render()
 

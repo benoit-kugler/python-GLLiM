@@ -10,6 +10,7 @@ from PIL import Image
 from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
+from hapke import relation_C
 from plotting import graphiques
 from tools import context
 from tools.archive import Archive
@@ -211,14 +212,19 @@ def comparaison_MCMC():
                                   mode=RETRAIN and "r" or "l", init_local=100, sigma_type="full", gllim_cls=jGLLiM)
 
     MCMC_X, Std = exp.context.get_result()
-    exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
-                                         xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
-                                         Xref=MCMC_X, StdRef=Std, with_modal=2)
+    # exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+    #                                      xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
+    #                                      Xref=MCMC_X, StdRef=Std, with_modal=2)
+    # relation c= R(b)
+    xpoints = np.linspace(*exp.context.variables_lims[0], 1000)
+    ypoints = relation_C.Crelation(xpoints)
+    add_curve = (xpoints, ypoints)
+    add_data = {(0, 1): (add_curve, "$c = \mathcal{R}(b)$")}
 
     exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wavelengths,
                               Xref=MCMC_X, savepath=PATHS("results2.png"), xtitle="wavelength (microns)",
                               varlims=np.array([(0.05, 0.4), (-0.3, 0.18), (0.7, 1.1)]), method="mean",
-                              indexes=[0, 1, 3])
+                              indexes=[0, 1, 3], add_data=add_data)
 
 
 def plot_sol_multiples():
@@ -245,10 +251,12 @@ def plot_sol_multiples():
 
 
 def plot_map():
-    exp = Experience(context.HapkeContext, partiel=None, with_plot=True)
-    exp.load_data(regenere_data=RETRAIN, with_noise=20, N=50000, method="sobol")
-    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=200,
-                           gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(context.HapkeContext, 100, partiel=None, with_plot=True,
+                                  regenere_data=RETRAIN, with_noise=40, N=100000, method="sobol",
+                                  mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
+                                  gllim_cls=jGLLiM
+                                  )
+
 
     Y = exp.context.get_observations()
     latlong, mask = exp.context.get_spatial_coord()
@@ -256,9 +264,9 @@ def plot_map():
     MCMC_X, Std = exp.context.get_result(with_std=True)
     MCMC_X = MCMC_X[mask]
 
-    exp.results.map(gllim, Y, latlong, 0, Xref=MCMC_X, savepath=PATHS("map.png"))
+    exp.results.map(gllim, Y, latlong, 0, Xref=MCMC_X, savepath=PATHS("map2.png"))
     diff = gllim.predict_high_low(Y)[:, 0] - MCMC_X[:, 0]
-    exp.results.G.MapValues(latlong, diff, None, ("Différence GLLiM - MCMC",), savepath=PATHS("map-diff.png"),
+    exp.results.G.MapValues(latlong, diff, None, ("Différence GLLiM - MCMC",), savepath=PATHS("map-diff2.png"),
                             custom_context="Moyenne {0:.3f}, écart-type {1:.3f}".format(diff.mean(), diff.std()),
                             write_context=True)
 
