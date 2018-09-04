@@ -284,31 +284,27 @@ def plot_courbe_photometrique():
 
 
 def plot_influence_noise():
-    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
-                                  regenere_data=False, with_plot=True, with_noise=None,
-                                  N=100000, mode="l", init_local=100,
-                                  gllim_cls=jGLLiM)
+    kwargs = dict(partiel=(0, 1, 2, 3), regenere_data=False, with_plot=True,
+                  with_noise=None, N=100000, mode="l", init_local=100, gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, **kwargs)
 
     tmp_path = "/scratch/WORK/tmp/noise{}.png"
+    tmp_paths = [tmp_path.format(i + 1) for i in range(3)]
     Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
                                                        varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
-                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_path.format(1))
+                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_paths[0])
 
-    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
-                                  regenere_data=False, with_plot=True, with_noise=None,
-                                  N=100000, mode="l", init_local=100,
-                                  gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, **dict(kwargs, with_noise=50))
     Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
                                                        varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
-                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_path.format(2))
+                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_paths[1])
 
-    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
-                                  regenere_data=False, with_plot=True, with_noise=None,
-                                  N=100000, mode="l", init_local=100,
-                                  gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, **dict(kwargs, with_noise=20))
     Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
                                                        varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
-                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_path.format(3))
+                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_paths[2])
+
+    _merge_image_byside(tmp_paths, "../latex/slides/images/noise2.png", remove=True)
 
 def main():
     # exemple_pre_lissage()
@@ -322,7 +318,8 @@ def main():
     # comparaison_MCMC()
     # plot_sol_multiples()
     # plot_map()
-    plot_courbe_photometrique()
+    # plot_courbe_photometrique()
+    plot_influence_noise()
 
 
 RETRAIN = False
