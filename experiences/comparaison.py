@@ -632,7 +632,7 @@ class RelationCLatexWriter(abstractLatexTableWriter):
 class DoubleLearningWriter(abstractLatexTableWriter):
     template = "doublelearning.tex"
     TITLE = "Apprentissage adaptatif"
-    DESCRIPTION = "Test sur les mêmes {Ntest} données : apprentissage standard (gauche) " \
+    DESCRIPTION = "Moyenne (et médianne) pour les mêmes {Ntest} données : apprentissage standard (gauche) " \
                   "contre apprentissage adaptatif (droite)"
     METHODES = ["first", "second"]
 

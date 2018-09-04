@@ -106,11 +106,12 @@ class VisualisationResults(Results):
             StdRef = StdRef[:, indexes] if StdRef is not None else None
             varlims = varlims[list(indexes)] if varlims is not None else None
             varnames = varnames[list(indexes)]
-        self.G.Results_1D(Xmean, Covs, Xweight, labels, xtitle, varnames,
+        StdMean = np.sqrt(Covs)
+        self.G.Results_1D(Xmean, StdMean, Xweight, labels, xtitle, varnames,
                           varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
                           title="Prédiction - Vue par composants",
                           savepath=savepath, write_context=True)
-        return Xmean, Covs
+        return Xmean, StdMean
 
     def prediction_2D(self, gllim: GLLiM, Y, labels_value, xtitle="observations", method="mean",
                       varlims=None, Xref=None, savepath=None, indexes=None, add_data=None):

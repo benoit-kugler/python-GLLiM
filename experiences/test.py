@@ -273,35 +273,57 @@ def details_convergence(imax, RETRAIN):
                                  title=title, write_context=False)
 
 
-def double(Ntest=2):
-    exp = Experience(context.InjectiveFunction(1), partiel=None, with_plot=False)
-    exp.load_data(regenere_data=False, with_noise=50, N=1000, method="sobol")
-    dGLLiM.dF_hook = exp.context.dF
-    gllim = exp.load_model(10, mode="l", track_theta=False, init_local=100,
-                           sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
+def double(retrain_base=False, retrain_second=False):
+    # exp, gllim = Experience.setup(context.InjectiveFunction(4),100, partiel=None, with_plot=False,
+    #                               regenere_data=retrain_base, with_noise=50, N=10000, method="sobol",
+    #                               mode=retrain_base and "r" or "l",  init_local=200,
+    #                               sigma_type="iso", gamma_type="full", gllim_cls=dGLLiM)
 
-    exp.Xtest, exp.Ytest = exp.Xtest[0:Ntest], exp.Ytest[0:Ntest]
+    exp, gllim = Experience.setup(context.LabContextNontronite, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=retrain_base, with_noise=50, N=10000, method="sobol",
+                                  mode=retrain_base and "r" or "l", init_local=200,
+                                  sigma_type="iso", gllim_cls=dGLLiM
+                                  )
+
     exp = SecondLearning.from_experience(exp, with_plot=True)
-    exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    if retrain_second:
+        exp.extend_training_parallel(gllim, Y=exp.Ytest, X=exp.Xtest, nb_per_Y=10000, clusters=100)
+    Y, X, gllims = exp.load_second_learning(10000, 100, withX=True, imax=5)
 
-    Y, X, gllims = exp.load_second_learning(10000, 100, withX=True)
+    # varlims = np.array([(0.5,0.8),(0.1,0.4),(0.7,1),(-0.3,0)])
+    varlims = np.array([(0.7, 0.8), (0.4, 0.6), (0, 15), (0.4, 0.6)])
+    exp.mesures.plot_conditionnal_density(gllim, Y[0:1], X[0], savepath="/scratch/WORK/tmp/d1.png",
+                                          colorplot=False, varlims=varlims)
+    exp.mesures.plot_conditionnal_density(gllims[0], Y[0:1], X[0], savepath="/scratch/WORK/tmp/d2.png",
+                                          colorplot=False, varlims=varlims)
 
 
 def plot_cks(retrain=False):
-    exp, gllim = Experience.setup(context.SurfaceFunction, 50, gllim_cls=jGLLiM,
+    exp, gllim = Experience.setup(context.SurfaceFunction, 50, gllim_cls=jGLLiM, with_plot=True,
                                   N=2000, regenere_data=retrain, mode=retrain and "r" or "l")
     x, y, z = exp.context.Fsample(500)
     z = z[0]
 
-    xcoupe = np.linspace(0, 0.85, 200)
-    Z = 0.6
-    ycoupe = exp.context.Fcoupe(Z, xcoupe)
-    print(exp.context.F(np.concatenate((xcoupe[:, None], ycoupe[:, None]), axis=1)))
+    ycoupe = np.linspace(0, 0.86, 200)
+    Z = 0.7
+    xcoupe = exp.context.Fcoupe(Z, ycoupe)
 
     Y = np.array([[Z]])
-    _, alphas, _ = gllim._helper_forward_conditionnal_density(Y)
+    centres, alphas, _ = gllim._helper_forward_conditionnal_density(Y)
+    centres = np.array(list(zip(*(sorted(zip(centres[0], alphas[0]), key=lambda d: d[1], reverse=True)[0:15])))[0])
 
-    graphiques.IllustreCks(gllim.ckList, gllim.ckListS, alphas[0], (x, y, z), (xcoupe, ycoupe, Z))
+    # graphiques.IllustreCks(gllim.ckList, gllim.ckListS, alphas[0], (x, y, z), (xcoupe, ycoupe, Z),
+    #                        exp.context.LABEL,savepath="../latex/slides/images/cks2.png")
+
+    def density(x_points):
+        return gllim.forward_density(Y, x_points)
+
+    mean = gllim.predict_high_low(Y)[0]
+    graphiques.SimpleDensity2D(density, exp.context.variables_lims, exp.context.variables_names, mean, True,
+                               "Densité conditionnelle de $X$ sachant $Y = y_{obs}$.", (xcoupe, ycoupe), centres,
+                               savepath="../latex/slides/images/density.png")
+
+
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",

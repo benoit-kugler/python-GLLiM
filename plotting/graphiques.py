@@ -15,6 +15,7 @@ from matplotlib import cm, ticker, transforms, rc, axes
 from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.patches
 
 from plotting.interaction import AxesSequence, SubplotsSequence, vispyAnimation, mplAnimation
 
@@ -238,6 +239,35 @@ class schema_1D(abstractDrawerMPL):
         self.fig.subplots_adjust(right=0.77)
 
 
+class IllustreCks(abstractDrawerMPL):
+
+    def create_figure(self, *args):
+        self.fig = pyplot.figure(figsize=(10, 5))
+
+    def main_draw(self, ck, cks, alphas, points_F, points_coupe, F_label):
+        axe = self.fig.add_subplot(111, projection="3d")
+
+        axe.plot_surface(*points_F, alpha=0.4, color="gray")
+        alphas = alphas / alphas.max()
+        colors = cm.cool(alphas)
+        axe.scatter(ck[:, 0], ck[:, 1], cks, c=colors, s=15)
+
+        x, y, z = points_coupe
+        axe.plot(x, y, z * np.ones(x.shape), color="green", alpha=1, label="$F(x) = y_{obs}$")
+
+        fake2Dline = matplotlib.lines.Line2D([0], [0], linestyle="none", c='gray',
+                                             marker='s', alpha=0.4)
+        gray_patch = matplotlib.patches.Patch(color="gray", alpha=0.4)
+
+        fake2Dline2 = matplotlib.lines.Line2D([0], [0], linestyle="none", c='cyan', marker='o')
+        axe.azim, axe.elev = 83, 21  # setup view for example
+        handle, label = axe.get_legend_handles_labels()
+        axe.legend([gray_patch, handle[0], fake2Dline2],
+                   [f"$F$ : {F_label}", label[0], "$c_{k}^{*}$"], bbox_to_anchor=[0.6, 0.15, 0.2, 0.3])
+        pyplot.show()
+
+
+
 ### --------------- Plot de plusieurs subplots sur une grille ----------------- ###
 
 class abstractGridDrawerMPL(abstractDrawerMPL):
@@ -377,9 +407,9 @@ def _axe_density_1D(axe, x, y, xlims,
 
 def _axe_density2D(axe, x, y, z, colorplot, xlims, ylims,
                    varnames, modal_preds, truex, title, with_colorbar=True,
-                   auto_zoom=True):
+                   auto_zoom=False):
     if colorplot:
-        pc = axe.pcolormesh(x, y, z)
+        pc = axe.pcolormesh(x, y, z, cmap="Greens")
         axe.set_xlim(*xlims)
         axe.set_ylim(*ylims)
         if with_colorbar:
@@ -437,6 +467,32 @@ class Density2D(abstractGridDrawerMPL):
 
         self.fig.text(0.5, -0.02, var_description, horizontalalignment='center',
                       fontsize=12, bbox=self.FIGURE_TITLE_BOX, fontweight='bold')
+
+
+class SimpleDensity2D(abstractDrawerMPL):
+    RESOLUTION = 800
+
+    def create_figure(self, *args):
+        self.fig = pyplot.figure(figsize=(4, 4))
+
+    def main_draw(self, f, varlims, varnames, mean, colorplot, title, trueX, centres):
+        axe = self.fig.gca()
+        xlim, ylim = varlims
+        x, y = np.meshgrid(np.linspace(*xlim, self.RESOLUTION, dtype=float),
+                           np.linspace(*ylim, self.RESOLUTION, dtype=float))
+        variable = np.array([x.flatten(), y.flatten()]).T
+        print("Comuting of density...")
+        z, _ = f(variable)
+        print("Done.")
+        z = z.reshape((self.RESOLUTION, self.RESOLUTION))
+        _axe_density2D(axe, x, y, z, colorplot, xlim, ylim, varnames,
+                       (), None, title, with_colorbar=False)
+        axe.scatter(*mean, label="Moyenne", marker="+", s=20, color="blue")
+        axe.plot(*trueX, label="Solution théorique", color="black", linestyle="-.", alpha=0.3,
+                 linewidth=0.6)
+        axe.scatter(*centres.T, label="Centres", marker="+", s=20, color="green")
+        axe.legend(loc="upper right")
+
 
 
 ### ----------- Sequence interactive ------------- ###
@@ -615,8 +671,8 @@ def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle, StdMean=
         axe.set_ylim(*xlim)
         axe.yaxis.set_major_locator(ticker.MultipleLocator((xlim[1] - xlim[0]) / 10))
 
-    axe.set_xlabel(xtitle)
-    axe.set_ylabel(varname)
+    axe.set_xlabel(xtitle, fontsize=15)
+    axe.set_ylabel(varname, fontsize=20)
 
     if Xmean is not None:
         axe.plot(xlabels, Xmean, color="indigo", marker="*", label="Mean")
@@ -719,8 +775,8 @@ class Results_2D(abstractGridDrawerMPL):
                 if Xref is not None:
                     axe2.set_xlim(varlims[i])
                     axe2.set_ylim(varlims[j])
-            axe.set_xlabel(varnames[i])
-            axe.set_ylabel(varnames[j])
+            axe.set_xlabel(varnames[i], fontsize=20)
+            axe.set_ylabel(varnames[j], fontsize=20)
             axe.legend()
         if nb_var:
             self.fig.subplots_adjust(right=0.9)
@@ -971,23 +1027,6 @@ class ScatterProjections(abstractGridDrawerVispy):
                 axe.title.text = f"x{i} - x{j}"
 
         self.fig.show(run=True)
-
-
-class IllustreCks(abstractDrawerMPL):
-
-    def main_draw(self, ck, cks, alphas, points_F, points_coupe):
-        axe = self.fig.add_subplot(111, projection="3d")
-
-        axe.plot_surface(*points_F, label="$F$", alpha=0.4, color="gray")
-        alphas = alphas / alphas.max()
-        colors = cm.cool(alphas)
-        axe.scatter(ck[:, 0], ck[:, 1], cks, c=colors)
-
-        x, y, z = points_coupe
-        print(x, y)
-        axe.scatter(x, y, z * np.ones(x.shape), color="green", alpha=1, marker=".")
-
-        pyplot.show()
 
 
 

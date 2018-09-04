@@ -123,6 +123,7 @@ class abstractFunctionModel:
 
     def add_noise_data(self,Y,std=10):
         """Gaussian Noise"""
+        Y = np.copy(Y)
         N , L = Y.shape
         noise = np.random.multivariate_normal(np.zeros(L),np.eye(L),size=N)
         for i,Yi in enumerate(Y):
@@ -240,18 +241,18 @@ class SurfaceFunction(abstractSimpleFunctionModel):
 
     XLIMS = np.array([[0, 1], [0, 1]])
 
-    PARAMETERS = np.array(["x", "y"])
+    PARAMETERS = np.array(["$x_1$", "$x_2$"])
 
-    LABEL = "$x ,y \mapsto \\frac{x^2 + y^3}{2}$ "
+    LABEL = "$x_1 ,x_2 \mapsto 1 - \\frac{x_1^2 + x_2^3}{2}$ "
 
     def F(self, X):
         return (-(X[:, 0:1] ** 2 + X[:, 1:2] ** 3) / 2) + 1
 
-    def Fcoupe(self, z, X):
-        """return Y such as F(X,Y) = z"""
-        arg = 2 * (1 - z) - X ** 2
+    def Fcoupe(self, z, Y):
+        """return X such as F(X,Y) = z"""
+        arg = 2 * (1 - z) - Y ** 3
         sign = (arg >= 0) * 2 - 1
-        return np.float_power(np.abs(arg), 1 / 3) * sign
+        return np.sqrt(arg)
 
 class SquaredFunction(abstractSimpleFunctionModel):
     LABEL = "Fonction carrée"
@@ -367,7 +368,7 @@ class abstractHapkeModel(abstractFunctionModel):
     DEFAULT_VALUES = np.array([0.5,15,0.5,0.5,0.5,0.5])
     """Mean default values"""
 
-    PREFERED_MODAL_PRED = 3
+    PREFERED_MODAL_PRED = 2
 
     LABEL = "$F_{hapke}$"
 

@@ -323,15 +323,16 @@ class SecondLearning(Experience):
 
         self.archive.save_data_second_learned(Y, X)
 
-
-    def load_second_learning(self, nb_per_Y, clusters, withX=True):
+    def load_second_learning(self, nb_per_Y, clusters, withX=True, imax=None):
         self.second_learning = "perY:{},{}".format(nb_per_Y, clusters)
         Y, X , thetas = self.archive.load_second_learned(withX)
         gllims = []
         self.verbose, old_verbose = None, self.verbose
         t = time.time()
         logging.info("Loading and inversion of second learning gllims...")
-        for theta in thetas:
+        imax = imax or len(thetas)
+        for i in range(imax):
+            theta = thetas[i]
             gllim = self._load_gllim(theta)
             gllim.inversion()
             gllims.append(gllim)
@@ -500,21 +501,22 @@ def glace():
 
 def RTLS():
     training.PROCESSES = 4
-    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 100, partiel=(0, 1, 2, 3),
-                                  regenere_data=True, with_plot=True,
-                                  with_noise=20, N=100000, mode="r", init_local=100,
+    exp, gllim = Experience.setup(experiences.rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=False, with_plot=True, with_noise=None,
+                                  N=100000, mode="l", init_local=100,
                                   gllim_cls=jGLLiM)
 
 
     # exp.mesures.plot_mesures(gllim)
     Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
-                                                       varlims=None)
+                                                       varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
+                                                       xtitle="longueur d'onde $(\mu m)$")
 
-    exp.archive.save_resultat({"w_mean":Xmean[:,0],"w_var":Covs[:,0,0],
-                      "theta_mean": Xmean[:, 1], "theta_var": Covs[:, 1, 1],
-                      "b_mean": Xmean[:, 2], "b_var": Covs[:, 2, 2],
-                      "c_mean": Xmean[:, 3], "c_var": Covs[:, 3, 3],
-                      })
+    # exp.archive.save_resultat({"w_mean":Xmean[:,0],"w_var":Covs[:,0,0],
+    #                   "theta_mean": Xmean[:, 1], "theta_var": Covs[:, 1, 1],
+    #                   "b_mean": Xmean[:, 2], "b_var": Covs[:, 2, 2],
+    #                   "c_mean": Xmean[:, 3], "c_var": Covs[:, 3, 3],
+    #                   })
 
 
 def _train_K_N(exp, N_progression, K_progression, with_null_sigma=False):

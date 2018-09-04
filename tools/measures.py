@@ -45,15 +45,16 @@ class Mesures():
         """Return a dict containing mean, median and std of values"""
         return {"mean": np.mean(l), "median": np.median(l), "std": np.std(l)}
 
-
-    def _collect_infos_density(self,density_full,title,X0_obs,i,j=None,modal_pred_full=None):
+    def _collect_infos_density(self, density_full, title, X0_obs, i, j=None, modal_pred_full=None,
+                               varlims=None):
         exp = self.experience
         componentx = exp.partiel and exp.partiel[i] or i
+        varlims = varlims if varlims is not None else exp.context.XLIMS
         varx = exp.context.PARAMETERS[componentx]
-        xlim = exp.context.XLIMS[componentx]
+        xlim = varlims[componentx]
         if j is not None:
             componenty = exp.partiel and exp.partiel[j] or j
-            ylim = exp.context.XLIMS[componenty]
+            ylim = varlims[componenty]
             vary = exp.context.PARAMETERS[componenty]
             title = title.format(varx, vary)
         else:
@@ -363,12 +364,13 @@ class VisualisationMesures(Mesures):
         exp = self.experience
         nb_var = len(exp.variables_names)
         graph_datas = []
+        varlims = kwargs.pop("varlims", None)
 
         for i in range(nb_var):
             for j in range(i + 1, nb_var):
                 density, xlim, ylim, modal_pred, trueXij, varx, vary, title = \
                     self._collect_infos_density(density_full, base_title, trueX, i, j=j,
-                                                modal_pred_full=modal_pred_full)
+                                                modal_pred_full=modal_pred_full, varlims=varlims)
                 graph_datas.append((density, xlim, ylim, modal_pred, trueXij, (varx, vary), title))
         fs, xlims, ylims, modal_preds, trueXs, varnames, titles = zip(*graph_datas)
 
@@ -384,10 +386,11 @@ class VisualisationMesures(Mesures):
         nb_var = len(exp.variables_names)
         graph_datas = []
         var_description = kwargs.pop("var_description", "")
-
+        varlims = kwargs.pop("varlims", None)
         for i in range(nb_var):
             density, xlim, ylim, modal_pred, trueXi, varx, vary, title = \
-                self._collect_infos_density(density_full, base_title, trueX, i, j=None, modal_pred_full=modal_pred_full)
+                self._collect_infos_density(density_full, base_title, trueX, i,
+                                            j=None, modal_pred_full=modal_pred_full, varlims=varlims)
             graph_datas.append((density, xlim, ylim, modal_pred, trueXi, varx, title))
         fs, xlims, ylims, modal_preds, trueXs, varnames, titles = zip(*graph_datas)
 

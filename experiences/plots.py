@@ -10,6 +10,7 @@ from PIL import Image
 from Core import training
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
+from experiences import rtls
 from hapke import relation_C
 from plotting import graphiques
 from tools import context
@@ -212,19 +213,19 @@ def comparaison_MCMC():
                                   mode=RETRAIN and "r" or "l", init_local=100, sigma_type="full", gllim_cls=jGLLiM)
 
     MCMC_X, Std = exp.context.get_result()
-    # exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
-    #                                      xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
-    #                                      Xref=MCMC_X, StdRef=Std, with_modal=2)
+    exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+                                         xtitle="wavelength (microns)", savepath=PATHS("results1.png"),
+                                         Xref=MCMC_X, StdRef=Std, with_modal=2)
     # relation c= R(b)
-    xpoints = np.linspace(*exp.context.variables_lims[0], 1000)
-    ypoints = relation_C.Crelation(xpoints)
-    add_curve = (xpoints, ypoints)
-    add_data = {(0, 1): (add_curve, "$c = \mathcal{R}(b)$")}
-
-    exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wavelengths,
-                              Xref=MCMC_X, savepath=PATHS("results2.png"), xtitle="wavelength (microns)",
-                              varlims=np.array([(0.05, 0.4), (-0.3, 0.18), (0.7, 1.1)]), method="mean",
-                              indexes=[0, 1, 3], add_data=add_data)
+    # xpoints = np.linspace(*exp.context.variables_lims[0], 1000)
+    # ypoints = relation_C.Crelation(xpoints)
+    # add_curve = (xpoints, ypoints)
+    # add_data = {(0, 1): (add_curve, "$c = \mathcal{R}(b)$")}
+    #
+    # exp.results.prediction_2D(gllim, exp.context.get_observations(), exp.context.wavelengths,
+    #                           Xref=MCMC_X, savepath=PATHS("results2.png"), xtitle="wavelength (microns)",
+    #                           varlims=np.array([(0.05, 0.4), (-0.3, 0.18), (0.7, 1.1)]), method="mean",
+    #                           indexes=[0, 1, 3], add_data=add_data)
 
 
 def plot_sol_multiples():
@@ -252,7 +253,7 @@ def plot_sol_multiples():
 
 def plot_map():
     exp, gllim = Experience.setup(context.HapkeContext, 100, partiel=None, with_plot=True,
-                                  regenere_data=RETRAIN, with_noise=40, N=100000, method="sobol",
+                                  regenere_data=RETRAIN, with_noise=50, N=100000, method="sobol",
                                   mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
                                   gllim_cls=jGLLiM
                                   )
@@ -270,6 +271,45 @@ def plot_map():
                             custom_context="Moyenne {0:.3f}, écart-type {1:.3f}".format(diff.mean(), diff.std()),
                             write_context=True)
 
+
+def plot_courbe_photometrique():
+    h = context.HapkeContext()
+    Y = h.get_observations()
+    for i in range(5):
+        graphiques.pyplot.plot(Y[i * 8], label=f"Observation {i+1}")
+    graphiques.pyplot.xlabel("Géométries")
+    graphiques.pyplot.ylabel("Reflectance")
+    graphiques.pyplot.legend()
+    graphiques.pyplot.savefig("../latex/slides/images/courbe-photo.png", bbox_inches='tight')
+
+
+def plot_influence_noise():
+    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=False, with_plot=True, with_noise=None,
+                                  N=100000, mode="l", init_local=100,
+                                  gllim_cls=jGLLiM)
+
+    tmp_path = "/scratch/WORK/tmp/noise{}.png"
+    Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+                                                       varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
+                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_path.format(1))
+
+    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=False, with_plot=True, with_noise=None,
+                                  N=100000, mode="l", init_local=100,
+                                  gllim_cls=jGLLiM)
+    Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+                                                       varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
+                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_path.format(2))
+
+    exp, gllim = Experience.setup(rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=False, with_plot=True, with_noise=None,
+                                  N=100000, mode="l", init_local=100,
+                                  gllim_cls=jGLLiM)
+    Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
+                                                       varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
+                                                       xtitle="longueur d'onde $(\mu m)$", savepath=tmp_path.format(3))
+
 def main():
     # exemple_pre_lissage()
     # plot_estimeF_simple()
@@ -281,10 +321,11 @@ def main():
     # regularization()
     # comparaison_MCMC()
     # plot_sol_multiples()
-    plot_map()
+    # plot_map()
+    plot_courbe_photometrique()
 
 
-RETRAIN = True
+RETRAIN = False
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(asctime)s : %(levelname)s : %(message)s",

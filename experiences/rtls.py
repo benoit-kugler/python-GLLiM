@@ -78,8 +78,7 @@ class RtlsH2OPolaire(RtlsH2O):
 
 
 if __name__ == '__main__':
-    # h = RtlsH2O(None)
-    # h.compute_observations()
-    # h = RtlsCO2(None)
-    # h.compute_observations()
-    RtlsH2OPolaire(None).compute_observations()
+    pass
+    # RtlsH2O(None).compute_observations()
+    # RtlsCO2(None).compute_observations()
+    # RtlsH2OPolaire(None).compute_observations()
