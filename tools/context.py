@@ -127,7 +127,7 @@ class abstractFunctionModel:
         N , L = Y.shape
         noise = np.random.multivariate_normal(np.zeros(L),np.eye(L),size=N)
         for i,Yi in enumerate(Y):
-            n = np.sqrt(np.diag(Yi) / std).dot(noise[i])
+            n = (np.diag(Yi) / std).dot(noise[i])
             Y[i] = Y[i] + n
         return Y
 
