@@ -437,11 +437,10 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 
 def main():
-    exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
-
-    exp.load_data(regenere_data=False, with_noise=20, N=100000, method="sobol")
-    gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
-                           sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=True, with_noise=20, N=100000, method="sobol",
+                                  mode="r", init_local=100,
+                                  sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     # n = 1
     # Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]

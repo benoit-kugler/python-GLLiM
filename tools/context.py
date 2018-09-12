@@ -324,7 +324,7 @@ class abstractExpFunction(abstractSimpleFunctionModel):
         return np.exp(X)
 
 
-def InjectiveFunction(d, **kwargs):
+def InjectiveFunction(d, **kwargs) -> type:
     xlims = np.array([[-1, 2]] * d)
     description = abstractExpFunction.DESCRIPTION.format(_xlims_to_P(xlims))
     attrs = dict(D=d,

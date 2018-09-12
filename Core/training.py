@@ -16,7 +16,7 @@ from Core.gllim import GLLiM
 NB_ITER_RNK = 20
 
 """Number of instances to use when choosing rnk."""
-NB_INSTANCES_RNK = 4
+NB_INSTANCES_RNK = 8
 
 """Number of iterations to fit """
 NB_MAX_ITER = 100

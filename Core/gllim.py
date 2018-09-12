@@ -88,6 +88,7 @@ class MyGMM(GaussianMixture):
         return vec_log_prob.sum()
 
     def _print_verbose_msg_iter_end(self, n_iter, diff_ll):
+        self.current_iter = n_iter
         if self.track:
             self.track_params.append((self.weights_, self.means_, self.full_covariances_))
         if self.verbose >= 0:
@@ -905,11 +906,17 @@ class jGLLiM(GLLiM):
         TY = np.concatenate((T, Y), axis=1)
 
         verbose = {None: -1, False: 0, True: 1}[self.verbose]
-        Gmm = MyGMM(n_components=self.K, n_init=1, max_iter=maxIter, reg_covar=self.reg_covar,
-                    tol=np.finfo(np.float64).eps,
-                    weights_init=jGMM_params["rho"], means_init=jGMM_params["m"], precisions_init=precisions,
-                    verbose=verbose, track=self.track_theta)
-        return TY, Gmm
+        self.Gmm = MyGMM(n_components=self.K, n_init=1, max_iter=maxIter, reg_covar=self.reg_covar,
+                         tol=np.finfo(np.float64).eps,
+                         weights_init=jGMM_params["rho"], means_init=jGMM_params["m"], precisions_init=precisions,
+                         verbose=verbose, track=self.track_theta)
+        return TY, self.Gmm
+
+    @property
+    def current_iter(self):
+        if hasattr(self, "Gmm"):
+            return self.Gmm.current_iter
+        return 0
 
     def fit(self, T, Y, init, maxIter=100):
         """Use joint GMM model
