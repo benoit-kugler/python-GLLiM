@@ -439,23 +439,25 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 def main():
     exp = Experience(context.LabContextOlivine, partiel=(0, 1, 2, 3), with_plot=True)
 
-    exp.load_data(regenere_data=False, with_noise=50, N=100000, method="sobol")
+    exp.load_data(regenere_data=False, with_noise=20, N=100000, method="sobol")
     gllim = exp.load_model(100, mode="l", track_theta=False, init_local=100,
                            sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
-    n = 1
-    Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
-    exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2)
+    # n = 1
+    # Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
+    # exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2)
 
-    # exp.results.prediction_by_components(gllim, exp.context.get_observations(),
-    #                                      exp.context.wavelengths, with_modal=3, indexes=(0,),
-    #                                      with_regu=False, xtitle="longeur d'onde ($\mu$m)")
+    MCMC_X, Std = exp.context.get_result()
 
-    # MCMC_X, Std = exp.context.get_result()
-    exp.results.plot_density_sequence(gllim, exp.Ytest[0:30], None,
-                                      index=2, Xref=None, StdRef=None, with_pdf_images=False,
-                                      varlims=None, regul=False, xtitle="wavelength (microns)")
+    exp.results.prediction_by_components(gllim, exp.context.get_observations(),
+                                         exp.context.wavelengths, with_modal=2, indexes=None,
+                                         with_regu=False, xtitle="longeur d'onde ($\mu$m)",
+                                         Xref=MCMC_X, StdRef=Std)
 
+    # exp.results.plot_density_sequence(gllim, exp.Ytest[0:30], None,
+    #                                   index=2, Xref=None, StdRef=None, with_pdf_images=False,
+    #                                   varlims=None, regul=False, xtitle="wavelength (microns)")
+    #
 
 
 def glace():
@@ -620,8 +622,8 @@ def job():
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    RTLS()
-    # main()
+    # RTLS()
+    main()
     # monolearning()
     # test_map()
     # double_learning(Ntest=10, retrain_base=False, retrain_second=False)

@@ -21,9 +21,14 @@ def loggausspdf(X, mu, cov):
 def gausspdf(X, mu, cov):
     return np.exp(loggausspdf(X, mu, cov))
 
-# log of pdf for gaussian distributuion with full covariance matrix (cholesky factorization for stability)
 
 def chol_loggausspdf(X, mu, cov):
+    """log of pdf for gaussian distributuion with full covariance matrix
+    (cholesky factorization for stability)
+    X shape : D,N
+    mu shape : D
+    cov shape : D,D
+    """
     D,N = X.shape
     mu = np.atleast_2d(mu)
     X = X - mu #DxN
@@ -33,14 +38,32 @@ def chol_loggausspdf(X, mu, cov):
     log_det = np.sum(np.log(np.diag(U)))
     return -0.5 * (D * _LOG_2PI + q) - log_det
 
+
 def chol_loggausspdf_iso(X,mu,cov):
-    """Spherical covariance matrix (cov is scalar)"""
+    """Spherical covariance matrix (cov is scalar)
+    X shape : D,N
+    mu shape : D
+    cov shape : ()"""
     D,N = X.shape
     mu = np.atleast_2d(mu)
     X = X - mu #DxN
     Q = X / np.sqrt(cov)
     q = np.sum(Q**2, axis=0)
     log_det = D * np.log(cov) / 2
+    return -0.5 * (D * _LOG_2PI + q) - log_det
+
+
+def chol_loggauspdf_diag(X, mu, cov):
+    """Diagonal covariance matrix (cov is scalar)
+    X shape : D,N
+    mu shape : D
+    cov shape : D"""
+    D, N = X.shape
+    mu = np.atleast_2d(mu)
+    X = X - mu  # DxN
+    Q = X / np.sqrt(cov)
+    q = np.sum(Q ** 2, axis=0)
+    log_det = np.log(cov).sum() / 2
     return -0.5 * (D * _LOG_2PI + q) - log_det
 
 
