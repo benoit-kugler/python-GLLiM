@@ -438,8 +438,8 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 def main():
     exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=True, with_noise=20, N=100000, method="sobol",
-                                  mode="r", init_local=100,
+                                  regenere_data=False, with_noise=20, N=100000, method="sobol",
+                                  mode="l", init_local=100,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     # n = 1
@@ -448,14 +448,14 @@ def main():
 
     MCMC_X, Std = exp.context.get_result()
 
-    exp.results.prediction_by_components(gllim, exp.context.get_observations(),
-                                         exp.context.wavelengths, with_modal=2, indexes=None,
-                                         with_regu=False, xtitle="longeur d'onde ($\mu$m)",
-                                         Xref=MCMC_X, StdRef=Std)
+    # exp.results.prediction_by_components(gllim, exp.context.get_observations(),
+    #                                      exp.context.wavelengths, with_modal=2, indexes=None,
+    #                                      with_regu=False, xtitle="longeur d'onde ($\mu$m)",
+    #                                      Xref=MCMC_X, StdRef=Std)
 
-    # exp.results.plot_density_sequence(gllim, exp.Ytest[0:30], None,
-    #                                   index=2, Xref=None, StdRef=None, with_pdf_images=False,
-    #                                   varlims=None, regul=False, xtitle="wavelength (microns)")
+    exp.results.plot_density_sequence(gllim, exp.context.get_observations(), None,
+                                      index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,
+                                      varlims=None, regul=False, xtitle="wavelength (microns)")
     #
 
 
@@ -500,18 +500,28 @@ def glace():
     # exp.mesures.map(gllim,Y,latlong,0,Xref = None)
 
 
-def RTLS():
-    training.PROCESSES = 4
-    exp, gllim = Experience.setup(experiences.rtls.RtlsCO2, 100, partiel=(0, 1, 2, 3),
-                                  regenere_data=False, with_plot=True, with_noise=None,
+def RTLS(retrain_second=True):
+    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 100, partiel=(0, 1, 2, 3),
+                                  regenere_data=False, with_plot=True, with_noise=50,
                                   N=100000, mode="l", init_local=100,
                                   gllim_cls=jGLLiM)
 
 
     # exp.mesures.plot_mesures(gllim)
     Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
-                                                       varlims=np.array([(0.5, 1.2), (0, 15), (0, 1), (-0.1, 0.5)]),
-                                                       xtitle="longueur d'onde $(\mu m)$")
+                                                       varlims=np.array([(0.91, 1), (0, 30), (0, 1.4), (-0.3, 0.6)]),
+                                                       xtitle="longueur d'onde $(\mu m)$", with_modal=2)
+
+    exp = SecondLearning.from_experience(exp, with_plot=True)
+    if retrain_second:
+        exp.extend_training_parallel(gllim, Y=exp.context.get_observations(), X=None, nb_per_Y=50000, clusters=100)
+    Y, _, gllims = exp.load_second_learning(50000, 100, withX=False)
+    return
+    #
+    a = exp.mesures._relative_error(exp.context.F(Xmean), exp.context.get_observations())
+    exp.results.G.simple_plot([a], ["$||F(x_{pred}) - y_{obs}||_{\infty}$"], exp.context.wavelengths,
+                              None, "longueur d'onde $(\mu m)$", "Erreur", savepath="/scratch/WORK/nrmse.png")
+
 
     # exp.archive.save_resultat({"w_mean":Xmean[:,0],"w_var":Covs[:,0,0],
     #                   "theta_mean": Xmean[:, 1], "theta_var": Covs[:, 1, 1],
@@ -621,8 +631,8 @@ def job():
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    # RTLS()
-    main()
+    RTLS()
+    # main()
     # monolearning()
     # test_map()
     # double_learning(Ntest=10, retrain_base=False, retrain_second=False)

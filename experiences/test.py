@@ -325,6 +325,7 @@ def plot_cks(retrain=False):
 
 
 
+
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
@@ -340,4 +341,4 @@ if __name__ == '__main__':
     # compare_R(sigma_type="full",gamma_type="iso")
     # details_convergence(60, True)
     # double()
-    plot_cks(False)
+    # plot_cks(False)

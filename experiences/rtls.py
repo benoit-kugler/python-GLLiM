@@ -67,10 +67,10 @@ class RtlsCO2(RtlsH2O):
 
 
 class RtlsH2OPolaire(RtlsH2O):
-    RTLS_FILE = "spect_RTLS_weights_H2O_ice_c1b1.txt"
+    RTLS_FILE = "spect_RTLS_weights_polar_dust_c1b1.txt"
 
     _theta0 = 62
-    _theta = [70.527618, 3.273434, 56.591091, 50.084389, 43.954475,
+    _theta = [70.527618, 63.273434, 56.591091, 50.084389, 43.954475,
               1.9700866, 46.234722, 52.013779, 58.038464, 64.573189, 71.497536]
     _phi = [53.704558, 53.569893, 53.468970, 53.316048, 53.137580, 87.005072,
             124.93080, 125.06818, 125.21281, 125.34180, 125.41491]
@@ -78,7 +78,7 @@ class RtlsH2OPolaire(RtlsH2O):
 
 
 if __name__ == '__main__':
-    pass
+    # pass
     # RtlsH2O(None).compute_observations()
     # RtlsCO2(None).compute_observations()
-    # RtlsH2OPolaire(None).compute_observations()
+    RtlsH2OPolaire(None).compute_observations()

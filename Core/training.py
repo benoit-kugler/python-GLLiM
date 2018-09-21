@@ -162,9 +162,6 @@ def job_second_learning(XYK, savepath, params, i):
         json.dump(gllim.theta, f, indent=2)
     logging.debug(f"\tSnd parameters saved in {savepath}")
 
-    if (i + 1) % 10 == 0:
-        logging.info(f"Second learning {i+1} done.")
-
 
 def second_training_parallel(newXYK, savepaths, Lw=0, sigma_type="iso", gamma_type="full"):
     logging.info("Second learning starting...")
