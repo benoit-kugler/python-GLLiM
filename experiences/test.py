@@ -5,6 +5,7 @@
 # cov_chol : Matrice trinagulaire correspondant à la decomp de Cholesky de la matrice de covariance
 # precisions_chol : Matrice triangulaire correspondant à la decomp de Cholesky de la matrice de precisions
 # weights : Pi_k : coefficient de chaque zone
+import h5py
 import json
 import logging
 import time
@@ -13,6 +14,7 @@ import coloredlogs
 import numpy as np
 import scipy.io
 
+from Core import em_is_gllim
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.log_gauss_densities import chol_loggausspdf
@@ -324,6 +326,34 @@ def plot_cks(retrain=False):
                                savepath="../latex/slides/images/density.png")
 
 
+PATH_OUTPUT = "/scratch/WORK/py-to-julia.mat"
+PATH_INPUT = "/scratch/WORK/julia-to-py.mat"
+
+
+def interface_julia():
+    c = context.HapkeContext()
+    X, Y = c.get_data_training(100000)
+    gllim = jGLLiM(100, sigma_type="full")
+    gllim.init_fit(X, Y, "kmeans")
+
+    scipy.io.savemat(PATH_OUTPUT, dict(gllim.dict_julia, X=X, Y=Y))
+
+    gllim.fit(X, Y, {"rnk": gllim.rnk}, maxIter=10)
+
+    scipy.io.loadmat(PATH_OUTPUT)
+    # with h5py.File(PATH_INPUT,"r") as f:
+    #     print(np.array(f["A"]))
+
+
+def test_em_is():
+    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    Yobs = cont.get_observations()
+    em_is_gllim.run_em_is_gllim(Yobs, cont)
+
+
+
+
+
 
 
 if __name__ == '__main__':
@@ -342,3 +372,5 @@ if __name__ == '__main__':
     # details_convergence(60, True)
     # double()
     # plot_cks(False)
+    # interface_julia()
+    test_em_is()

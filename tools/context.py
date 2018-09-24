@@ -120,14 +120,13 @@ class abstractFunctionModel:
         """Should return Y version in [0,1]. Used only in measures."""
         return Y
 
-
-    def add_noise_data(self,Y,std=10):
+    def add_noise_data(self, Y, precision=10):
         """Gaussian Noise"""
         Y = np.copy(Y)
         N , L = Y.shape
         noise = np.random.multivariate_normal(np.zeros(L),np.eye(L),size=N)
         for i,Yi in enumerate(Y):
-            n = (np.diag(Yi) / std).dot(noise[i])
+            n = (np.diag(Yi) / precision).dot(noise[i])
             Y[i] = Y[i] + n
         return Y
 

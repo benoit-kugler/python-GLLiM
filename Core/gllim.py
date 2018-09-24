@@ -169,6 +169,14 @@ class GLLiM():
         )
 
     @property
+    def dict_julia(self):
+        assert self.Lw == 0
+        dic = self.theta
+        dic["K"], dic["L"], dic["D"] = self.K, self.L, self.D
+        dic["Sigma"] = self.full_SigmakList
+        return dic
+
+    @property
     def current_ll(self):
         return self.LLs_[-1]
 
@@ -773,16 +781,20 @@ class GLLiM():
         return X, heights, weights
 
     def _sample_from_mixture(self, meanss, weightss, size):
-        """means shape N,K,L weights shape N,K"""
+        """means shape N,K,L weights shape N,K
+        out : N,size,L
+        """
+        ti = time.time()
         N, K, L = meanss.shape
         out = np.empty((N, size, L))
-        alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), (N, size))
+        alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), size)
         chols = np.linalg.cholesky(self.SigmakListS)
-        for weights, means, Xs, n in zip(weightss, meanss, alea, range(N)):
+        for weights, means, n in zip(weightss, meanss, range(N)):
             clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
             means = np.array([means[k] for k in clusters])
             stds = np.array([chols[k] for k in clusters])
-            out[n] = np.matmul(stds, Xs[:, :, None])[:, :, 0] + means
+            out[n] = np.matmul(stds, alea[:, :, None])[:, :, 0] + means
+        logging.debug(f"Sampling from mixture ({N} series of {size}) done in {time.time()-ti:.3f} s")
         return out
 
     def predict_sample(self, Y, nb_per_Y=10):

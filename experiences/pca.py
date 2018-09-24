@@ -21,8 +21,8 @@ def show_diff_learning():
 
     _, Y = h.get_data_training(100000)
 
-    Ynoise20 = h.add_noise_data(Y, std=20)
-    Ynoise50 = h.add_noise_data(Y, std=50)
+    Ynoise20 = h.add_noise_data(Y, precision=20)
+    Ynoise50 = h.add_noise_data(Y, precision=50)
 
     d1 = np.mean([np.linalg.norm(Y - yobs, axis=1).min() for yobs in Yobs])
     d2 = np.mean([np.linalg.norm(Ynoise20 - yobs, axis=1).min() for yobs in Yobs])

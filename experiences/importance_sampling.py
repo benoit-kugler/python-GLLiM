@@ -1,5 +1,6 @@
 """Implements MCMC-GLLiM hybrid approach (is-GLLiM; FF)"""
 import logging
+import time
 
 import coloredlogs
 import numpy
@@ -24,9 +25,7 @@ def q(Xs: numpy.ndarray, Y: numpy.ndarray, gllim: GLLiM):
     Ny, Nsample, _ = Xs.shape
     meanss, weightss, _ = gllim._helper_forward_conditionnal_density(Y)
     covs = gllim.SigmakListS
-    out = numpy.empty((Ny, Nsample))
-    for i, (means, weights, X) in enumerate(zip(meanss, weightss, Xs)):
-        out[i] = densite_melange(X, weights, means, covs)
+    out = np.array([densite_melange(X, weights, means, covs) for means, weights, X in zip(meanss, weightss, Xs)])
     return out
 
 
@@ -46,13 +45,26 @@ def p_tilde(Xs, Y, F, r):
     return numpy.exp(out)  # we used log pdf so far
 
 
-def mean_IS(Y, gllim, F, r, Nsample=10000):
+def mean_IS(Y, gllim, F, r, Nsample=50000):
+    G = lambda x: x
+    return compute_is(Y, gllim, G, F, r, Nsample=Nsample)
+
+
+def compute_is(Y, gllim, G, F, r, Nsample=50000):
+    """Compute E[ G(X) | Y = y] for given parameters (gllim) and noise (r)
+    G(X) has to be vectoriel (for generality), ie G : shape (Ny, Nsample, _) -> shape (Ny, Nsample,_).
+    Return shape : (Ny, _)
+    """
     Xs = gllim.predict_sample(Y, nb_per_Y=Nsample)
+    ti = time.time()
     ws = p_tilde(Xs, Y, F, r) / q(Xs, Y, gllim)
+    logging.debug(f"Sampling weights computed in {time.time()-ti} s")
     mask = ~ numpy.isfinite(ws)
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / Nsample:.5f}")
     ws[mask] = 0
-    return numpy.sum(Xs * ws[:, :, None], axis=1) / numpy.sum(ws, axis=1, keepdims=True)
+    return numpy.sum(G(Xs) * ws[:, :, None], axis=1) / numpy.sum(ws, axis=1, keepdims=True)
+
+
 
 
 def _test():

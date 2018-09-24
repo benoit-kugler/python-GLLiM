@@ -68,7 +68,7 @@ class Experience():
     def _genere_data(self, Ndata, method, noise):
         X, Y = self.context.get_data_training(Ndata, method=method)
         if noise:
-            Y = self.context.add_noise_data(Y, std=noise)
+            Y = self.context.add_noise_data(Y, precision=noise)
         return X, Y
 
     def load_data(self, regenere_data=False, with_noise=None, N=1000, method="sobol"):
@@ -298,7 +298,7 @@ class SecondLearning(Experience):
             if is_ok:
                 yadd = self.context.F(xadd)
                 if self.with_noise:
-                    yadd = self.context.add_noise_data(yadd,std= self.with_noise)
+                    yadd = self.context.add_noise_data(yadd, precision=self.with_noise)
                 newXYK.append((xadd,yadd,K))
                 Yclean.append(y)
             mask.append(is_ok)
