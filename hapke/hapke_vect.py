@@ -94,9 +94,9 @@ def Hapke_vect (SZA, VZA, DPHI, W, R, BB, CC, HH, B0, variant="2002"):
 
     MUP, MU, S = roughness(theta0r,thetar,phir,R)
 
-
     P = (1 - CC) * (1 - BB**2) / ((1 + 2 * BB * CTHETA + BB**2)**(3/2))
     P = P + CC *(1 - BB**2) / ((1- 2 * BB * CTHETA + BB**2)**(3/2))
+
 
     B = B0 * HH / ( HH + np.tan(THETA/2) )
 
@@ -110,9 +110,8 @@ def Hapke_vect (SZA, VZA, DPHI, W, R, BB, CC, HH, B0, variant="2002"):
         H0 = H_2002(MUP,gamma)
         H = H_2002(MU,gamma)
 
-    REFF = W / 4 / (MU + MUP) * ((1 + B) * P + H0 * H - 1)
-
-    REFF = S * REFF * MUP / np.cos(theta0r)
+    REFF = W / (MU + MUP) * ((1 + B) * P + H0 * H - 1)
+    REFF = REFF * S * MUP / (4 * np.cos(theta0r))
     return REFF
 
 
