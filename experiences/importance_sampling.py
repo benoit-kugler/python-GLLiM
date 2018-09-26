@@ -3,9 +3,9 @@ import logging
 import time
 
 import coloredlogs
+import matplotlib
 import numpy
 import numpy as np
-import matplotlib
 
 matplotlib.use("QT5Agg")
 from matplotlib import pyplot
@@ -97,28 +97,10 @@ def _test():
     pyplot.show()
 
 
-def main():
-    exp, gllim = Experience.setup(context.InjectiveFunction(4), 100, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=False, with_noise=50, N=100000, method="sobol",
-                                  mode="l", init_local=100,
-                                  sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
-    X = exp.Xtest[0:100]
-    Y = exp.Ytest[0:100]
-    r = exp.with_noise
-    F = exp.context.F
 
-    Xmean = gllim.predict_high_low(Y)
-    Xis = mean_IS(Y, gllim, F, r, Nsample=50000)
-
-    su = exp.mesures.sumup_errors
-    nrmse, _, _, _, nrmseY = exp.mesures._nrmse_oneXperY(Xmean, X, Y, F)
-    print("Me : ", su(nrmse), "Ye", su(nrmseY))
-    nrmse, _, _, _, nrmseY = exp.mesures._nrmse_oneXperY(Xis, X, Y, F)
-    print("Me : ", su(nrmse), "Ye", su(nrmseY))
 
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # _test()
-    main()

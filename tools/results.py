@@ -40,6 +40,12 @@ class Results():
         Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
         return Xmean, Covs, Xweight, heights, weights
 
+    def to_prediction_physique(self):
+        """Return"""
+        Xmean2 = exp.context.to_X_physique(Xmean)
+        Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
+        Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
+
 
 class VisualisationResults(Results):
 

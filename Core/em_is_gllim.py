@@ -1,21 +1,24 @@
 """Implements a crossed EM - GLLiM algorith to evaluate noise in observations."""
 import logging
 
+import coloredlogs
 import numpy as np
 
 from Core.gllim import jGLLiM
 from experiences.importance_sampling import compute_is
 from tools import context
 
-Ntrain = 20000
+# GLLiM parameters
+Ntrain = 50000
+K = 30
 init_X_precision_factor = 10
+maxIterGlliM = 5
+
+
 N_sample_IS = 100000
 
-INIT_PREC = 50
-
+INIT_PREC = 50  # initial noise inverse
 maxIter = 5
-maxIterGlliM = 10
-K = 50
 
 
 def _G(Xs, Y, F):
@@ -26,13 +29,14 @@ def _G(Xs, Y, F):
     """
     for X, y in zip(Xs, Y):
         fx = F(X)
-        yield np.square((fx - y[None, :]) / fx).sum(axis=1)[:, None]  # need a 3D array
+        yield np.square(fx - y[None, :] / fx).sum(axis=1)[:, None]  # need a 3D array
 
 
 gllim = jGLLiM(K, sigma_type="full")
 
 
-def _e_step(context, Yobs, current_prec, current_ck):
+def _e_step(context, Yobs, current_prec_2, current_ck):
+    current_prec = np.sqrt(current_prec_2)
     Xtrain, Ytrain = context.get_data_training(Ntrain)
     Ytrain = context.add_noise_data(Ytrain, precision=current_prec)
 
@@ -52,16 +56,26 @@ def _e_step(context, Yobs, current_prec, current_ck):
 
 def _m_step(Yobs, estimated_esp):
     D = Yobs.shape[1]
-    return D / np.sum(estimated_esp)
+    N = estimated_esp.shape[0]
+    return D * N / np.sum(estimated_esp)
 
 
 def run_em_is_gllim(Yobs, contex: context.abstractHapkeModel):
-    current_prec = INIT_PREC
+    logging.info(f"Starting EM-iS for noise (inital precision : {INIT_PREC})")
+    cur_prec_2 = INIT_PREC ** 2
     current_ck = contex.get_X_uniform(K)
     for current_iter in range(maxIter):
-        estimated_esp, current_ck = _e_step(contex, Yobs, current_prec, current_ck)
-        print(estimated_esp)
-        return
-        current_prec = _m_step(Yobs, estimated_esp)
-        logging.debug(f"New estimated noise : {current_prec:.4f}")
-    return current_prec
+        estimated_esp, current_ck = _e_step(contex, Yobs, cur_prec_2, current_ck)
+        cur_prec_2 = _m_step(Yobs, estimated_esp)
+        logging.info(f"New estimated PRECISION : {np.sqrt(cur_prec_2):.4f}")
+    return cur_prec_2
+
+
+if __name__ == '__main__':
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
+    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    # Yobs = cont.get_observations()
+    _, Yobs = cont.get_data_training(1000)
+    Yobs = cont.add_noise_data(Yobs, 30)
+    run_em_is_gllim(Yobs, cont)

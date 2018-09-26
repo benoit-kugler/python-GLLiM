@@ -448,16 +448,20 @@ def main():
     # exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2)
 
     MCMC_X, Std = exp.context.get_result()
+    Yobs = exp.context.get_observations()
+    Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=False)
+    Xmean2 = exp.context.to_X_physique(Xmean)
+    Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
+    Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
 
-    # exp.results.prediction_by_components(gllim, exp.context.get_observations(),
-    #                                      exp.context.wavelengths, with_modal=2, indexes=None,
-    #                                      with_regu=False, xtitle="longeur d'onde ($\mu$m)",
-    #                                      Xref=MCMC_X, StdRef=Std)
+    exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
+                                         xtitle="longeur d'onde ($\mu$m)",
+                                         Xref=MCMC_X, StdRef=Std)
 
-    exp.results.plot_density_sequence(gllim, exp.context.get_observations(), None,
-                                      index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,
-                                      varlims=None, regul=False, xtitle="wavelength (microns)")
-    #
+    # exp.results.plot_density_sequence(gllim, Yobs, None,
+    #                                   index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,
+    #                                   varlims=None, regul=False, xtitle="wavelength (microns)")
+    # #
 
 
 def glace():

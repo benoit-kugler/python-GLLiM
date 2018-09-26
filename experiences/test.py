@@ -20,6 +20,7 @@ from Core.gllim import GLLiM, jGLLiM
 from Core.log_gauss_densities import chol_loggausspdf
 from Core.riemannian import RiemannianjGLLiM
 from Core.sGllim import saGLLiM
+from experiences.importance_sampling import mean_IS
 from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
@@ -358,12 +359,24 @@ def interface_julia():
     #     print(np.array(f["A"]))
 
 
-def test_em_is():
-    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
-    Yobs = cont.get_observations()
-    em_is_gllim.run_em_is_gllim(Yobs, cont)
+def compare_is():
+    exp, gllim = Experience.setup(context.InjectiveFunction(4), 100, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=True, with_noise=50, N=100000, method="sobol",
+                                  mode="r", init_local=100,
+                                  sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+    X = exp.Xtest[0:100]
+    Y = exp.Ytest[0:100]
+    r = exp.with_noise
+    F = exp.context.F
 
+    Xmean = gllim.predict_high_low(Y)
+    Xis = mean_IS(Y, gllim, F, r, Nsample=50000)
 
+    su = exp.mesures.sumup_errors
+    nrmse, _, _, _, nrmseY = exp.mesures._nrmse_oneXperY(Xmean, X, Y, F)
+    print("Me : ", su(nrmse), "Ye", su(nrmseY))
+    nrmse, _, _, _, nrmseY = exp.mesures._nrmse_oneXperY(Xis, X, Y, F)
+    print("Me : ", su(nrmse), "Ye", su(nrmseY))
 
 
 
@@ -386,5 +399,5 @@ if __name__ == '__main__':
 
     # plot_cks(False)
     # interface_julia()
-    test_em_is()
+    # compare_is()
     # test_hapX_vect()

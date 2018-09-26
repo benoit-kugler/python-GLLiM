@@ -80,8 +80,14 @@ class abstractFunctionModel:
 
     def F(self,X):
         """Returns F(X). If partiel, X is only the partial values"""
-        pass
+        X = self._prepare_X(X)
+        return self._F(X)
 
+    def _prepare_X(self, X):
+        return self.to_X_physique(X)
+
+    def _F(self, X):
+        raise NotImplementedError
 
     @property
     def variables_lims(self):
@@ -250,7 +256,7 @@ class SurfaceFunction(abstractSimpleFunctionModel):
 
     LABEL = "$x_1 ,x_2 \mapsto 1 - \\frac{x_1^2 + x_2^3}{2}$ "
 
-    def F(self, X):
+    def _F(self, X):
         return (-(X[:, 0:1] ** 2 + X[:, 1:2] ** 3) / 2) + 1
 
     def Fcoupe(self, z, Y):
@@ -266,7 +272,7 @@ class SquaredFunction(abstractSimpleFunctionModel):
 
     YLIMS = np.array([[0, 0.25]])
 
-    def F(self,X):
+    def _F(self, X):
         return np.square(X - 0.5)
 
 
@@ -276,7 +282,7 @@ class WaveFunction(abstractSimpleFunctionModel):
 
     YLIMS = np.array([[0, 1]])
 
-    def F(self,X):
+    def _F(self, X):
         return np.cos(X * 30)
 
     def dF(self,X):
@@ -287,7 +293,7 @@ class WaveFunction(abstractSimpleFunctionModel):
 
 class MixedFunction(abstractSimpleFunctionModel):
 
-    def F(self, X):
+    def _F(self, X):
         return (X >= 1) * np.cos(X * 10) + (X <= 1) * X
 
 
@@ -302,8 +308,7 @@ class TwoSolutionsFunction(abstractSimpleFunctionModel):
     DESCRIPTION = "$x \mapsto ( (x_{1} - 0.5)^2 , x_{2} , ... , x_{L})$," + f" définie sur ${ _xlims_to_P(XLIMS) }$." \
                   + " Fonction ayant deux antécédants pour chaque $y$."
 
-
-    def F(self, X):
+    def _F(self, X):
         out = np.empty((X.shape[0], self.L))
         out[:, 0] = (X[:, 0] - 0.5) ** 2
         out[:, 1:self.L] = X[:, 1:self.L]
@@ -325,7 +330,7 @@ class abstractExpFunction(abstractSimpleFunctionModel):
 
     YLIMS = np.array([[1, np.exp(1)]])
 
-    def F(self, X):
+    def _F(self, X):
         return np.exp(X)
 
 
@@ -353,7 +358,7 @@ class ExampleFunction(abstractSimpleFunctionModel):
 
     DESCRIPTION = f"$(x,y) \mapsto x_{1}^2 + x_{2}^3$, sur ${ _xlims_to_P(XLIMS) }$"
 
-    def F(self, X):
+    def _F(self, X):
         return X[:, 0:1] ** 2 + X[:, 1:2] ** 3
 
 

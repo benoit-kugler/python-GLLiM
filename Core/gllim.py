@@ -95,9 +95,11 @@ class MyGMM(GaussianMixture):
             logging.debug(f"Iteration {n_iter} : Log-likelihood = {self.current_iter_ll[-1]}")
 
     def _print_verbose_msg_init_end(self, ll):
-        super()._print_verbose_msg_init_end(ll)
         self.log_likelihoods.append(self.current_iter_ll)
         self.current_iter_ll = []
+
+    def _print_verbose_msg_init_beg(self, n_init):
+        pass
 
     @property
     def full_covariances_(self):
