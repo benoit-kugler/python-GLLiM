@@ -13,6 +13,7 @@ from Core.gllim import GLLiM, jGLLiM
 from Core.log_gauss_densities import dominant_components
 from Core.riemannian import RiemannianjGLLiM
 import experiences.rtls
+from experiences import importance_sampling
 from tools import context, regularization
 from tools.archive import Archive
 from tools.context import InjectiveFunction
@@ -438,8 +439,8 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 def main():
     exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=False, with_noise=20, N=100000, method="sobol",
-                                  mode="l", init_local=100,
+                                  regenere_data=True, with_noise=20, N=10000, method="sobol",
+                                  mode="r", init_local=100,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     # n = 1
@@ -501,26 +502,41 @@ def glace():
 
 
 def RTLS(retrain_second=True):
-    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 100, partiel=(0, 1, 2, 3),
+    exp, gllim = Experience.setup(experiences.rtls.RtlsH2OPolaire, 30, partiel=(0, 1, 2, 3),
                                   regenere_data=False, with_plot=True, with_noise=50,
                                   N=100000, mode="l", init_local=100,
                                   gllim_cls=jGLLiM)
 
+    Yobs = exp.context.get_observations()
+    Xis1 = importance_sampling.mean_IS(Yobs, gllim, exp.context.F, 30)
+    Xis = exp.context.to_X_physique(Xis1)
+    # Xis = None
 
     # exp.mesures.plot_mesures(gllim)
-    Xmean, Covs = exp.results.prediction_by_components(gllim, exp.context.get_observations(), exp.context.wavelengths,
-                                                       varlims=np.array([(0.91, 1), (0, 30), (0, 1.4), (-0.3, 0.6)]),
-                                                       xtitle="longueur d'onde $(\mu m)$", with_modal=2)
+    Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=False)
+    Xmean2 = exp.context.to_X_physique(Xmean)
+    Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
+    Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
+    exp.results.prediction_by_components(Xmean2, Covs, exp.context.wavelengths, Xweight=Xweight,
+                                         varlims=None,
+                                         xtitle="longueur d'onde $(\mu m)$",
+                                         Xref=Xis)
 
-    exp = SecondLearning.from_experience(exp, with_plot=True)
-    if retrain_second:
-        exp.extend_training_parallel(gllim, Y=exp.context.get_observations(), X=None, nb_per_Y=50000, clusters=100)
-    Y, _, gllims = exp.load_second_learning(50000, 100, withX=False)
-    return
+    # exp.results.plot_density_sequence(gllim,exp.context.get_observations(),exp.context.wavelengths,0,
+    #                                   varlims=(0.91, 1))
+
+    # exp = SecondLearning.from_experience(exp, with_plot=True)
+    # if retrain_second:
+    #     exp.extend_training_parallel(gllim, Y=exp.context.get_observations(), X=None, nb_per_Y=50000, clusters=100)
+    # Y, _, gllims = exp.load_second_learning(50000, 100, withX=False)
+    # return
     #
     a = exp.mesures._relative_error(exp.context.F(Xmean), exp.context.get_observations())
-    exp.results.G.simple_plot([a], ["$||F(x_{pred}) - y_{obs}||_{\infty}$"], exp.context.wavelengths,
-                              None, "longueur d'onde $(\mu m)$", "Erreur", savepath="/scratch/WORK/nrmse.png")
+    b = exp.mesures._relative_error(exp.context.F(Xis1), exp.context.get_observations())
+    savepath = exp.archive.get_path("figures", "Ynrmse")
+    exp.results.G.simple_plot([a, b], ["$||F(x_{pred}) - y_{obs}||_{\infty}$",
+                                       "$||F(x_{is}) - y_{obs}||_{\infty}$"], exp.context.wavelengths,
+                              None, "longueur d'onde $(\mu m)$", "Erreur", savepath=savepath)
 
 
     # exp.archive.save_resultat({"w_mean":Xmean[:,0],"w_var":Covs[:,0,0],

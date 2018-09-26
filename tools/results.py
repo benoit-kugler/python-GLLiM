@@ -89,13 +89,12 @@ class VisualisationResults(Results):
                                title="Prédiction par les centres - Avec régularisation par fusion",
                                savepath=savepath2)
 
-    def prediction_by_components(self, gllim: GLLiM, Y, labels, xtitle="observations", varlims=None, with_modal=False,
-                                 savepath=None, Xref=None, StdRef=None, with_regu=True, indexes=None):
+    def prediction_by_components(self, Xmean, Covs, labels, xtitle="observations", varlims=None, Xweight=None,
+                                 savepath=None, Xref=None, StdRef=None, indexes=None):
         """Draw one axe by variable, with optionnal reference, standard deviation,
         and modal predictions (with exlu regularization). Return mean predictions with covariances"""
         exp = self.experience
         savepath = savepath or exp.archive.get_path("figures", filecategorie="synthese1D")
-        Xmean, Covs, Xweight, _, _ = self.full_prediction(gllim, Y, with_modal=with_modal, with_regu=with_regu)
         varlims = exp.variables_lims if (varlims == "context") else varlims
         varnames = exp.variables_names
         if indexes is not None:

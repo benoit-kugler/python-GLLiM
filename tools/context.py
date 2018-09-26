@@ -10,6 +10,7 @@ import scipy.io
 from rpy2 import robjects
 
 from hapke.hapke_vect_opt import Hapke_vect
+from hapke.cython import Hapke_cython
 
 randtoolbox = robjects.packages.importr('randtoolbox')
 
@@ -116,6 +117,15 @@ class abstractFunctionModel:
         """Takes X values and returns a version in [0,1]"""
         return (X - self.variables_lims[:,0]) / (self.variables_range)
 
+    def to_X_physique(self, X):
+        """Maps mathematical X valued to physical ones"""
+        return self.variables_lims[:, 0] + self.variables_range * X
+
+    def to_Cov_physique(self, Cov):
+        """Return tA C A """
+        A = np.diag(self.variables_range)
+        return A.T * Cov * A
+
     def normalize_Y(self, Y):
         """Should return Y version in [0,1]. Used only in measures."""
         return Y
@@ -131,7 +141,7 @@ class abstractFunctionModel:
         return Y
 
     def get_X_sampling(self, N, method ='sobol'):
-        """Uniform random generation. Suitable to learn Hapke.
+        """Uniform random generation in [0,1] Suitable to learn Hapke.
         method is one of 'random' 'latin' 'sobol'
         If partiel, returns partial samples."""
 
@@ -144,24 +154,21 @@ class abstractFunctionModel:
         else:
             alea = np.random.random_sample((N,len(xlims)))
 
-        X = alea * (xlims[:,1] - xlims[:,0]) + xlims[:,0]  # Intervalles théoriques
-        return X
+        return alea
 
     def get_data_training(self,N,method="sobol"):
         """Returns training sample X , Y of size N with synthetic X and Y = Hapke(X)
         X shape : (N_train , len(partiel))
         Y_shape : (N_train , len(geometries))"""
-        x_physique = self.get_X_sampling(N, method=method)
-        Y = self.F(x_physique)
-        return x_physique, Y
+        alea = self.get_X_sampling(N, method=method)
+        Y = self.F(alea)
+        return alea, Y
 
 
     def _get_X_grid(self,N):
         x, y = np.meshgrid(np.linspace(0, 1, N), np.linspace(0, 1, N))
         variable = np.array([x.flatten(), y.flatten()]).T
-
-        X = variable * self.variables_range + self.variables_lims[:,0]
-        return X
+        return variable
 
 
     def Fsample(self,N,with_noise=False):
@@ -190,11 +197,10 @@ class abstractFunctionModel:
 
     def is_X_valid(self,X):
         """Returns a mask of theoretically correct values"""
-        var_lims = self.variables_lims
         if type(X) is list:
-            mask = [(np.all((var_lims[:, 0] <= x) * (x <= var_lims[:, 1]),axis=1) if x.shape[0] > 0 else None) for x in X]
+            mask = [(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in X]
         else:
-            mask = np.array([np.all((var_lims[:,0] <= x) * (x <= var_lims[:,1])) for x in X])
+            mask = np.array([np.all((0 <= x) * (x <= 1)) for x in X])
         return mask
 
     def is_Y_valid(self,Y):
@@ -409,6 +415,7 @@ class abstractHapkeModel(abstractFunctionModel):
 
     def _prepare_X(self, X):
         """If partiel, other components are fixed to default values."""
+        X = self.to_X_physique(X)
         if self.partiel:
             N = X.shape[0]
             if N == 0:
@@ -419,12 +426,14 @@ class abstractHapkeModel(abstractFunctionModel):
             Xfull = X
         return Xfull
 
-    def F(self,X):
+    def F(self, X, check=False):
         """If partiel, other components are fixed to default values."""
         Xfull = self._prepare_X(X)
-        GX = self._genere_data_for_Hapke(Xfull)
-        reflec = Hapke_vect(*GX,variant=self.SCATTERING_VARIANT)
-        Y = np.array(np.split(reflec, X.shape[0]))
+        t, t0, p = self.geometries
+        args = (np.array(Xfull[:, i], dtype=np.double) for i in range(Xfull.shape[1]))
+        Y = Hapke_cython(np.array(t0[0], dtype=np.double), np.array(t[0], dtype=np.double),
+                         np.array(p[0], dtype=np.double), *args)
+        assert (not check) or np.isfinite(Y).all()
         return Y
 
 

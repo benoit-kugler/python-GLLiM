@@ -29,6 +29,7 @@ from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, Inj
 from tools.experience import SecondLearning, Experience, _train_K_N
 from tools.interface_R import is_egal
 from tools.measures import Mesures
+from hapke.cython.hapke import Hapke_vect as Hapke_cython
 
 np.set_printoptions(precision=20,suppress=False)
 
@@ -137,16 +138,28 @@ def simple_function():
     # exp.mesures.plot_conditionnal_density(gllim,Y0,X0_obs=X0,dim=1,colorplot=True)
 
 def test_hapke_vect():
-    h= HapkeGonio1468(None)
-    X = h.get_X_sampling(10000)
+    h = HapkeContext(None)
+    X = h.get_X_sampling(100000)
+
     GX = h._genere_data_for_Hapke(X)
     t = time.time()
     y1 = Hapke_vect(*GX)
+    y1 = np.array(np.split(y1, X.shape[0]))
     print("Hapke time ", time.time() - t)
     t = time.time()
     y2 = Hapke_opt(*GX)
+    y2 = np.array(np.split(y2, X.shape[0]))
     print("Hapke opt time ", time.time() - t)
+
+    import pstats, cProfile
+
+    t, t0, p = h.geometries
+    ti = time.time()
+    y3 = Hapke_cython(t0[0], t[0], p[0], *X.T)
+    print("Hapke cython time ", time.time() - ti)
     assert np.allclose(y1, y2)
+
+    assert np.allclose(y1, y3)
 
 
 def test_map(RETRAIN=False):
@@ -355,7 +368,6 @@ def test_em_is():
 
 
 
-
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
@@ -371,6 +383,8 @@ if __name__ == '__main__':
     # compare_R(sigma_type="full",gamma_type="iso")
     # details_convergence(60, True)
     # double()
+
     # plot_cks(False)
     # interface_julia()
     test_em_is()
+    # test_hapX_vect()

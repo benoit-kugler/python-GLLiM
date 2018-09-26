@@ -56,13 +56,20 @@ def compute_is(Y, gllim, G, F, r, Nsample=50000):
     Return shape : (Ny, _)
     """
     Xs = gllim.predict_sample(Y, nb_per_Y=Nsample)
+    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
     ti = time.time()
     ws = p_tilde(Xs, Y, F, r) / q(Xs, Y, gllim)
-    logging.debug(f"Sampling weights computed in {time.time()-ti} s")
-    mask = ~ numpy.isfinite(ws)
+    logging.debug(f"Sampling weights computed in {time.time()-ti:.3f} s")
+    GX = G(Xs)
+    mask1 = ~ numpy.asarray(numpy.isfinite(GX).prod(axis=2), dtype=bool)
+    mask2 = ~ numpy.isfinite(ws)
+    logging.debug(f"Average ratio of G-non-compatible samplings : {mask1.sum(axis=1).mean() / Nsample:.5f}")
+    logging.debug(f"Average ratio of infinite weights : {mask2.sum(axis=1).mean() / Nsample:.5f}")
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / Nsample:.5f}")
+    mask = mask | mask1 | mask2
     ws[mask] = 0
-    return numpy.sum(G(Xs) * ws[:, :, None], axis=1) / numpy.sum(ws, axis=1, keepdims=True)
+    GX[mask, :] = 0
+    return numpy.sum(GX * ws[:, :, None], axis=1) / numpy.sum(ws, axis=1, keepdims=True)
 
 
 

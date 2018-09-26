@@ -95,9 +95,10 @@ class Mesures():
         nb_valid = mask_mean.sum() / len(mask_mean)
         return error_mean, em_clean, nb_valid
 
-    def _normalize_nrmse(self, Xpredicted, Xtrue, normalization):
-        Xtrue = normalization(Xtrue)
-        Xpredicted = normalization(Xpredicted)
+    def _normalize_nrmse(self, Xpredicted, Xtrue, normalization=None):
+        if normalization:
+            Xtrue = normalization(Xtrue)
+            Xpredicted = normalization(Xpredicted)
         nrmse, nrmse_components = self._relative_error(Xpredicted, Xtrue, with_components=True)
         worst_index = np.argmax(nrmse) if len(nrmse) > 0 else 0  # worst prediction
         return nrmse, nrmse_components, worst_index
@@ -116,7 +117,7 @@ class Mesures():
 
         nb_valid = mask.sum() / len(mask)
 
-        nrmse, nrmse_by_components, i = self._normalize_nrmse(Xpredicted, Xtrue, exp.context.normalize_X)
+        nrmse, nrmse_by_components, i = self._normalize_nrmse(Xpredicted, Xtrue)
         # nrmseclean, _, _ = self._normalize_nrmse(Xpredicted[mask], Xtrue[mask], exp.context.normalize_X)
 
         return nrmse, nrmse_by_components, Xtrue[i], nb_valid, nrmseY
@@ -135,7 +136,7 @@ class Mesures():
             i = np.square(diff / exp.variables_range).sum(axis=1).argmin()
             bestX[n] = xs[i]
 
-        nrmse, nrmse_by_components, worst_index = self._normalize_nrmse(bestX, Xtrue, exp.context.normalize_X)
+        nrmse, nrmse_by_components, worst_index = self._normalize_nrmse(bestX, Xtrue)
 
         return nrmse, nrmse_by_components, Xtrue[worst_index], nrmseY, nrmseY_best
 

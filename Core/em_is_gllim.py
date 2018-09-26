@@ -7,15 +7,15 @@ from Core.gllim import jGLLiM
 from experiences.importance_sampling import compute_is
 from tools import context
 
-Ntrain = 1000
+Ntrain = 20000
 init_X_precision_factor = 10
-N_sample_IS = 5000
+N_sample_IS = 100000
 
 INIT_PREC = 50
 
 maxIter = 5
-maxIterGlliM = 3
-K = 20
+maxIterGlliM = 10
+K = 50
 
 
 def _G(Xs, Y, F):
@@ -44,8 +44,9 @@ def _e_step(context, Yobs, current_prec, current_ck):
     assert np.isfinite(rnk).all()
     gllim.fit(Xtrain, Ytrain, {"rnk": rnk}, maxIter=maxIterGlliM)
     gllim.inversion()
-    G = lambda X: np.array(list(_G(X, Yobs, context.F)))
-    esp = compute_is(Yobs, gllim, G, context.F, current_prec, Nsample=N_sample_IS)[:, 0]  # scalar value
+    F = lambda X: context.F(X, check=False)
+    G = lambda X: np.array(list(_G(X, Yobs, F)))
+    esp = compute_is(Yobs, gllim, G, F, current_prec, Nsample=N_sample_IS)[:, 0]  # scalar value
     return esp, gllim.ckList
 
 

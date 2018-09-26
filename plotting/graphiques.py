@@ -689,6 +689,7 @@ def _prediction_1D(axe, xlim, varname, xlabels, Xmean, Xweight, xtitle, StdMean=
 
     if Xref is not None:
         axe.plot(xlabels, Xref, color="g", marker=".", label="Reference")
+    if StdRef is not None:
         axe.fill_between(xlabels, Xref + StdRef, Xref - StdRef, alpha=0.3, color="g", label="Std on reference")
 
 

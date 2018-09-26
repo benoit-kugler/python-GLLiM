@@ -76,9 +76,30 @@ class RtlsH2OPolaire(RtlsH2O):
             124.93080, 125.06818, 125.21281, 125.34180, 125.41491]
 
 
+class RtlsH2OPolaireNormalized(RtlsH2OPolaire):
+
+    def get_X_sampling(self, N, method='sobol'):
+        X = super().get_X_sampling(N, method)
+        X = self.normalize_X(X)
+        return X
+
+    def _prepare_X(self, X):
+        """X = expit( x-a / b-a )"""
+        X = self.to_X_physique(X)
+        return super()._prepare_X(X)
+
+    def _get_X_grid(self, N):
+        X = super()._get_X_grid(N)
+        return self.normalize_X(X)
+
+    def is_X_valid(self, X: np.array):
+        raise NotImplementedError
+
+
 
 if __name__ == '__main__':
     # pass
     # RtlsH2O(None).compute_observations()
     # RtlsCO2(None).compute_observations()
-    RtlsH2OPolaire(None).compute_observations()
+    # RtlsH2OPolaire(None).compute_observations()
+    RtlsH2OPolaireNormalized(None).compute_observations()
