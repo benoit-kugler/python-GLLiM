@@ -7,6 +7,9 @@ import numpy as np
 import pyDOE
 import rpy2.robjects.packages
 import scipy.io
+from matplotlib import pyplot
+from mpl_toolkits.mplot3d import Axes3D
+
 from rpy2 import robjects
 
 from hapke.hapke_vect_opt import Hapke_vect
@@ -136,15 +139,27 @@ class abstractFunctionModel:
         """Should return Y version in [0,1]. Used only in measures."""
         return Y
 
-    def add_noise_data(self, Y, precision=10):
-        """Gaussian Noise"""
+    def add_noise_data(self, Y, covariance=None, mean=None):
+        """Gaussian Noise
+        covariance may be an homotéthie (float), diagonal (1D array), full (2D array)"""
         Y = np.copy(Y)
-        N , L = Y.shape
-        noise = np.random.multivariate_normal(np.zeros(L),np.eye(L),size=N)
-        for i,Yi in enumerate(Y):
-            n = (np.diag(Yi) / precision).dot(noise[i])
-            Y[i] = Y[i] + n
-        return Y
+        N, D = Y.shape
+        if mean is None:
+            mean = np.zeros(D)
+        elif (type(mean) is float) or (type(mean) is int):
+            mean = mean * np.ones(D)
+
+        if (type(covariance) is float) or (type(covariance) is int):
+            std = np.sqrt(covariance) * np.eye(D)
+        elif covariance is None:
+            std = np.zeros((D, D))
+        elif covariance.ndim == 1:
+            std = np.diag(np.sqrt(covariance))
+        else:
+            std = np.linalg.cholesky(covariance)
+        noise = np.random.multivariate_normal(np.zeros(D), np.eye(D), size=N)
+        return Y + std.dot(noise.T).T + mean[None, :]
+
 
     def get_X_sampling(self, N, method ='sobol'):
         """Uniform random generation in [0,1] Suitable to learn Hapke.
@@ -176,18 +191,22 @@ class abstractFunctionModel:
         variable = np.array([x.flatten(), y.flatten()]).T
         return variable
 
-
-    def Fsample(self,N,with_noise=False):
-        """Return array with shape (N,N) corresponding of value of F.
-        If partiel, other components are fixed to default values."""
+    def Fsample(self, N, cov_noise=None, mean_noise=None):
+        """Return value of F over a grid.
+        If partiel, other components are fixed to default values.
+        Returns
+            x : shape(N,N)
+            y : shape(N,N)
+            H : shape(D,N,N) (compent by component)
+        """
         if not (self.partiel and len(self.partiel) == 2 or len(self.XLIMS) == 2):
             raise ValueError("Fsample expects only 2 variables context")
 
         X = self._get_X_grid(N)
         Y = self.F(X)
 
-        if with_noise:
-            Y = self.add_noise_data(Y)
+        if (cov_noise is not None) or (mean_noise is not None):
+            Y = self.add_noise_data(Y, covariance=cov_noise, mean=mean_noise)
 
         H = np.array([y.reshape((N, N)) for y in Y.T])
 
@@ -823,5 +842,8 @@ if __name__ == '__main__':
     # h._test_dF()
     #
     # X = h.get_X_sampling(300)
-    h = HapkeContext(None)
-    print(h.geometries)
+    h = HapkeContext((0, 1))
+    x, y, Z = h.Fsample(200, cov_noise=np.arange(h.D) + 1, mean_noise=4.)
+    axe = pyplot.subplot(projection="3d")
+    axe.plot_surface(x, y, Z[0], color="gray", alpha=0.4, label="True F")
+    pyplot.show()

@@ -85,7 +85,7 @@ def io_scipy_load():
     a = scipy.io.loadmat("_testf.mat")["a"]
 
 
-def test():
+def test_Hapke():
     mu = np.ones(11)
     T = np.tril(np.ones((11, 1&1))) * 0.456
     cov = np.dot(T, T.T)
@@ -361,8 +361,8 @@ def interface_julia():
 
 def compare_is():
     exp, gllim = Experience.setup(context.InjectiveFunction(4), 100, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=True, with_noise=50, N=100000, method="sobol",
-                                  mode="r", init_local=100,
+                                  regenere_data=False, with_noise=50, N=100000, method="sobol",
+                                  mode="l", init_local=100,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
     X = exp.Xtest[0:100]
     Y = exp.Ytest[0:100]
@@ -399,5 +399,5 @@ if __name__ == '__main__':
 
     # plot_cks(False)
     # interface_julia()
-    # compare_is()
+    compare_is()
     # test_hapX_vect()

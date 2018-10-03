@@ -108,18 +108,21 @@ class MyGMM(GaussianMixture):
 
 
 DEFAULT_REG_COVAR = 1e-08
+DEFAULT_STOPPING_RATIO = 0.001
 
 class GLLiM():
     ''' Gaussian Locally-Linear Mapping'''
 
     def __init__(self, K_in, Lw=0, sigma_type='iso', gamma_type='full',
-                 verbose=True, reg_covar=DEFAULT_REG_COVAR):
+                 verbose=True,
+                 reg_covar=DEFAULT_REG_COVAR, stopping_ratio=DEFAULT_STOPPING_RATIO):
 
         self.K = K_in
         self.Lw = Lw
         self.sigma_type = sigma_type
         self.gamma_type = gamma_type
         self.reg_covar = reg_covar
+        self.stopping_ratio = stopping_ratio
         self.verbose = verbose
         self.track_theta = False
         self.nb_init_GMM = 1  # Number of init made by GMM when fit is init with it
@@ -528,6 +531,17 @@ class GLLiM():
 
         return pikList, ckList_T, GammakList_T, AkList, bkList, SigmakList
 
+    def stopping_criteria(self, maxIter):
+        """Return true if we should stop"""
+        if self.current_iter < 3:
+            return False
+        if self.current_iter > maxIter:
+            return True
+        delta_total = max(self.LLs_) - min(self.LLs_)
+        delta = self.current_ll - self.LLs_[-2]
+        return delta < (self.stopping_ratio * delta_total)
+
+
     def fit(self, T, Y, init, maxIter=100):
         '''fit the Gllim
            # Arguments
@@ -551,7 +565,7 @@ class GLLiM():
 
         start_time_EM = time.time()
 
-        while (not converged) and (self.current_iter < maxIter):
+        while not converged:
             self._remove_empty_cluster()
 
             if self.verbose:
@@ -573,6 +587,7 @@ class GLLiM():
             ll = np.sum(lognormrnk)  # EVERY EM Iteration THIS MUST INCREASE
             self.end_iter_callback(ll)
             self.current_iter += 1
+            converged = self.stopping_criteria(maxIter)
 
         if self.verbose:
             logging.debug(f"Final log-likelihood : {self.LLs_[self.current_iter - 1]}")
@@ -592,10 +607,6 @@ class GLLiM():
 
     def inversion(self):
         ''' Bayesian inversion of the parameters'''
-
-        # Inversion step
-        if self.verbose is not None:
-            logging.debug("Proceeding to the inversion")
         start_time_inversion = time.time()
 
         self.ckListS = np.array([Ak.dot(ck) + bk for Ak, bk, ck in zip(self.AkList, self.bkList, self.ckList)])  # (9)
@@ -632,7 +643,7 @@ class GLLiM():
             self.bkListS[k] = bS
 
         if self.verbose is not None:
-            logging.debug(f"--- {time.time() - start_time_inversion} seconds for inversion ---")
+            logging.debug(f"GLLiM inversion done in {time.time()-start_time_inversion:.3f} s")
 
     def inversion_with_null_sigma(self):
         # Inversion step
@@ -921,7 +932,7 @@ class jGLLiM(GLLiM):
 
         verbose = {None: -1, False: 0, True: 1}[self.verbose]
         self.Gmm = MyGMM(n_components=self.K, n_init=1, max_iter=maxIter, reg_covar=self.reg_covar,
-                         tol=np.finfo(np.float64).eps,
+                         tol=self.stopping_ratio,
                          weights_init=jGMM_params["rho"], means_init=jGMM_params["m"], precisions_init=precisions,
                          verbose=verbose, track=self.track_theta)
         return TY, self.Gmm
@@ -964,11 +975,7 @@ class jGLLiM(GLLiM):
             self.track = self.track_from_gmm(Gmm)
 
         rho, m, V = Gmm.weights_, Gmm.means_, Gmm.covariances_
-
-        t = time.time()
         self._init_from_dict(self.GMM_to_GLLiM(rho, m, V, self.L))
-        if self.verbose is not None:
-            logging.debug("--- {:.3f} s to compute correspondance".format(time.time() - t))
 
     def track_from_gmm(self, Gmm):
         tolist = lambda rho, m, V: {c: v.tolist() for c, v in
