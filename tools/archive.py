@@ -1,6 +1,7 @@
 """Implements severals tools to manipulate GLLiM algorithm"""
 import datetime
 import logging
+import zlib
 
 import h5py
 import json
@@ -98,7 +99,8 @@ class Archive():
 
     def _data_name(self):
         exp = self.experience
-        n = exp.with_noise and "noisy:" + str(exp.with_noise) or "notNoisy"
+        noise_tag = zlib.adler32(exp.with_noise.encode('utf8'))
+        n = exp.with_noise and "noisy:" + str(noise_tag) or "notNoisy"
         p = exp.partiel and "partiel:" + str(exp.partiel) or "total"
         s = "meth:{}_{}_{}_N:{}".format(exp.generation_method, n, p, exp.N)
         return s

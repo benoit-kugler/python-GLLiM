@@ -79,12 +79,12 @@ class abstractFunctionModel:
         """partiel is a tuple of indexes of x variable to take in account. None to take all variables"""
         self.partiel = partiel
 
-
-
-    def F(self,X):
+    def F(self, X, check=False):
         """Returns F(X). If partiel, X is only the partial values"""
         X = self._prepare_X(X)
-        return self._F(X)
+        Y = self._F(X)
+        assert (not check) or np.isfinite(Y).all()
+        return Y
 
     def _prepare_X(self, X):
         return self.to_X_physique(X)

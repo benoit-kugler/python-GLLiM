@@ -7,10 +7,10 @@ import time
 import coloredlogs
 import numpy as np
 
-from Core import training
+from Core import training, em_is_gllim
 from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
 from Core.gllim import GLLiM, jGLLiM
-from Core.log_gauss_densities import dominant_components
+from Core.probas_helper import dominant_components
 from Core.riemannian import RiemannianjGLLiM
 import experiences.rtls
 from experiences import importance_sampling
@@ -36,7 +36,8 @@ class Experience():
     @classmethod
     def setup(cls, context_class, K, **kwargs):
         object_kwargs = {i: v for i, v in kwargs.items() if i in ["partiel", "verbose", "with_plot"]}
-        data_kwargs = {i: v for i, v in kwargs.items() if i in ["regenere_data", "with_noise", "N", "method", "save"]}
+        data_kwargs = {i: v for i, v in kwargs.items() if i in ["regenere_data", "noise_mean", "noise_cov",
+                                                                "N", "method", "save"]}
         model_kwargs = {i: v for i, v in kwargs.items() if
                         i in ["Lw", "sigma_type", "gamma_type", "gllim_cls", "rnk_init",
                               "mode", "multi_init", "init_local", "track_theta", "with_time"]}
@@ -66,20 +67,20 @@ class Experience():
             self.mesures = tools.measures.Mesures(self)
             self.results = Results(self)
 
-    def _genere_data(self, Ndata, method, noise):
+    def _genere_data(self, Ndata, method, noise_mean=None, noise_cov=None):
         X, Y = self.context.get_data_training(Ndata, method=method)
-        if noise:
-            Y = self.context.add_noise_data(Y, precision=noise)
+        if (noise_mean is not None) or (noise_cov is not None):
+            Y = self.context.add_noise_data(Y, covariance=noise_cov, mean=noise_mean)
         return X, Y
 
-    def load_data(self, regenere_data=False, with_noise=None, N=1000, method="sobol"):
-        self.with_noise = with_noise
+    def load_data(self, regenere_data=False, noise_mean=None, noise_cov=None, N=1000, method="sobol"):
+        self.with_noise = str(noise_mean) + str(noise_cov)
         self.generation_method = method
         self.N = N
         Ndata = N + self.DEFAULT_NTEST
 
         if regenere_data:
-            X, Y = self._genere_data(Ndata, method, with_noise)
+            X, Y = self._genere_data(Ndata, method, noise_mean, noise_cov)
             self.archive.save_data(X,Y)
         else:
             X,Y = self.archive.load_data()
@@ -438,9 +439,12 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 
 def main():
-    exp, gllim = Experience.setup(context.LabContextOlivine, 100, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=True, with_noise=20, N=10000, method="sobol",
-                                  mode="r", init_local=100,
+    em_is_gllim.INIT_COV_NOISE = 0.01
+    noise_mean, noise_cov = em_is_gllim.get_last_params(context.LabContextOlivine(None), "obs", "full")
+    exp, gllim = Experience.setup(context.LabContextOlivine, 40, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=True, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
+                                  method="sobol",
+                                  mode="r", init_local=10,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     # n = 1
@@ -450,7 +454,7 @@ def main():
     MCMC_X, Std = exp.context.get_result()
     Yobs = exp.context.get_observations()
     Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=False)
-    Xmean2 = exp.context.to_X_physique(Xmean)
+    Xmean = exp.context.to_X_physique(Xmean)
     Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
     Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
 
@@ -651,8 +655,8 @@ def job():
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    RTLS()
-    # main()
+    # RTLS()
+    main()
     # monolearning()
     # test_map()
     # double_learning(Ntest=10, retrain_base=False, retrain_second=False)

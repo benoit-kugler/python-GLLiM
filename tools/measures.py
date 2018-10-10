@@ -3,8 +3,8 @@ import time
 
 import numpy as np
 
-from Core.gllim import GLLiM
-from Core.log_gauss_densities import dominant_components
+from Core.gllim import GLLiM, jGLLiM
+from Core.probas_helper import dominant_components, GMM_sampling
 from tools.archive import Archive
 import tools.experience
 
@@ -94,6 +94,24 @@ class Mesures():
 
         nb_valid = mask_mean.sum() / len(mask_mean)
         return error_mean, em_clean, nb_valid
+
+    def estimate_noise(self, gllim, Nsampling=50000):
+        """Find back the learned noise.
+
+        :param gllim: Learned model. We compute F(X) - Y , with (X,Y) sampled according model
+        :param Nsampling: Number of samples in estimation
+        :return:
+        """
+        L = gllim.L
+        weigths, means, covs = jGLLiM.GLLiM_to_GGM(gllim.pikList, gllim.ckList, gllim.GammakList,
+                                                   gllim.AkList, gllim.bkList, gllim.SigmakList)
+        XYsamples = GMM_sampling(means[None, :, :], weigths[None, :], covs[None, :, :], Nsampling)[0]  # 1 model
+        X, Y = XYsamples[:, 0:L], XYsamples[:, L:]
+        noise_samples = Y - self.experience.context.F(X)
+        noise_mean = noise_samples.mean(axis=0)
+        noise_cov = np.cov(noise_samples, rowvar=False)
+        print(noise_mean, noise_cov)
+        return noise_mean, noise_cov
 
     def _normalize_nrmse(self, Xpredicted, Xtrue, normalization=None):
         if normalization:

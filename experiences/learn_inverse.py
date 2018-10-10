@@ -5,7 +5,7 @@ from scipy.misc import logsumexp
 
 from Core import training
 from Core.gllim import GLLiM
-from Core.log_gauss_densities import chol_loggausspdf, covariance_melange
+from Core.probas_helper import chol_loggausspdf, covariance_melange
 from tools.context import HapkeGonio1468_30
 from tools.experience import Experience
 

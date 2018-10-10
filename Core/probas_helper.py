@@ -1,3 +1,6 @@
+import logging
+import time
+
 import numpy as np
 from scipy import linalg
 
@@ -102,26 +105,56 @@ def dominant_components(weights,means,covs,threshold=None,sort_by="height",dets=
     return sorted(zip(heights,weights,means,covs),key=lambda d: d[i_sort],reverse=True)
 
 
+def GMM_sampling(means_list: np.ndarray, weights_list: np.ndarray,
+                 covs_list: np.ndarray, size: int):
+    """Samples from N Gaussian Mixture Models
 
-# pik = np.arange(2) + 1
-# means = np.arange(2*3).reshape((2,3))
-# covs = np.arange(2*3*3).reshape((2,3,3))  + 1
-# cov = 3 * np.eye(3)
-D = 10
-T = np.tril(np.ones((D, D))) * 0.456
-cov = np.dot(T, T.T)
-U = np.linalg.cholesky(cov).T #DxD
-X = np.random.random_sample((D,100000))
-# print(covs)
-# print(covariance_melange(pik,means,covs))
+    :param means_list: shape N,K,L
+    :param weights_list: shape N,K
+    :param covs_list: shape N,K,L,L or shape K,L,L for N identical covs
+    :param size: Number of sample per point
+    :return: shape N,size,L
+    """
+    ti = time.time()
+    N, K, L = means_list.shape
+    out = np.empty((N, size, L))
+    alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), size)
+    precompute_chols = (covs_list.ndim == 3)
+    if precompute_chols:
+        chols = np.linalg.cholesky(covs_list)
 
-def f1():
-    Q = np.linalg.solve(U.T, X)
+    for weights, means, n in zip(weights_list, means_list, range(N)):
+        if not precompute_chols:
+            chols = np.linalg.cholesky(covs_list[n])
+        clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
+        means = np.array([means[k] for k in clusters])
+        stds = np.array([chols[k] for k in clusters])
+        out[n] = np.matmul(stds, alea[:, :, None])[:, :, 0] + means
+    logging.debug(f"Sampling from mixture ({N} series of {size}) done in {time.time()-ti:.3f} s")
+    return out
 
-def f2():
-    Q2 = linalg.solve_triangular(U.T,X,lower=True)
+
+if __name__ == '__main__':
+    # pik = np.arange(2) + 1
+    # means = np.arange(2*3).reshape((2,3))
+    # covs = np.arange(2*3*3).reshape((2,3,3))  + 1
+    # cov = 3 * np.eye(3)
+    D = 10
+    T = np.tril(np.ones((D, D))) * 0.456
+    cov = np.dot(T, T.T)
+    U = np.linalg.cholesky(cov).T  # DxD
+    X = np.random.random_sample((D, 100000))
 
 
-#
-# assert np.allclose(Q,Q2)
+    # print(covs)
+    # print(covariance_melange(pik,means,covs))
 
+    def f1():
+        Q = np.linalg.solve(U.T, X)
+
+
+    def f2():
+        Q2 = linalg.solve_triangular(U.T, X, lower=True)
+
+    #
+    # assert np.allclose(Q,Q2)

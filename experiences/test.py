@@ -17,7 +17,7 @@ import scipy.io
 from Core import em_is_gllim
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
-from Core.log_gauss_densities import chol_loggausspdf
+from Core.probas_helper import chol_loggausspdf
 from Core.riemannian import RiemannianjGLLiM
 from Core.sGllim import saGLLiM
 from experiences.importance_sampling import mean_IS
@@ -172,22 +172,20 @@ def test_map(RETRAIN=False):
     # graphiques.map_values(latlong, np.ones(len(latlong)))
 
     exp = Experience(context.HapkeContext, partiel=(0, 1, 2, 3), with_plot=True, index_exp=1)
-    exp.load_data(regenere_data=RETRAIN, with_noise=20, N=50000, method="sobol")
-    gllim = exp.load_model(100, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
+    exp.load_data(regenere_data=RETRAIN, noise_cov=0.005, N=50000, method="sobol")
+    gllim = exp.load_model(50, mode=RETRAIN and "r" or "l", track_theta=False, init_local=100,
                            gllim_cls=jGLLiM)
 
     Y = exp.context.get_observations()
+    print(Y)
+    gllim.predict_sample(Y, 10000)
+
+
     # latlong, mask = exp.context.get_spatial_coord()
     # Y = Y[mask]  # cleaning
     # MCMC_X, Std = exp.context.get_result(with_std=True)
     # MCMC_X = MCMC_X[mask]
     # Std = Std[mask]
-    N = 100
-    labels = [str(i) for i in range(N)]
-    exp.results.prediction_by_components(gllim, Y[0:N], labels[0:N],
-                                         xtitle="wavelength (microns)",
-                                         Xref=None, StdRef=None, with_modal=2)
-
 
 def test_dF():
     c = HapkeContext(partiel=(0,1))
@@ -391,7 +389,7 @@ if __name__ == '__main__':
     # equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
-    # test_map(RETRAIN=True)
+    test_map(RETRAIN=False)
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
     # details_convergence(60, True)
@@ -399,5 +397,5 @@ if __name__ == '__main__':
 
     # plot_cks(False)
     # interface_julia()
-    compare_is()
+    # compare_is()
     # test_hapX_vect()

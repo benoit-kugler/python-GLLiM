@@ -9,20 +9,21 @@ import numpy as np
 from matplotlib import pyplot
 
 from Core.gllim import jGLLiM
-from Core.log_gauss_densities import chol_loggauspdf_diag, chol_loggausspdf, densite_melange
+from Core.probas_helper import chol_loggauspdf_diag, chol_loggausspdf, densite_melange
 from tools import context
 
 # GLLiM parameters
-Ntrain = 50000
+Ntrain = 40000
 K = 40
 init_X_precision_factor = 10
 maxIterGlliM = 100
+stoppingRatioGLLiM = 0.005
 
 
 N_sample_IS = 100000
 
 INIT_COV_NOISE = 0.005  # initial noise
-maxIter = 150
+maxIter = 100
 
 
 def _G1(Xs, Y, F):
@@ -53,7 +54,7 @@ def _G3(Xs, Y, F, mu):
 
 
 def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noise_mean, current_theta):
-    gllim = jGLLiM(K, sigma_type="full")
+    gllim = jGLLiM(K, sigma_type="full", stopping_ratio=stoppingRatioGLLiM)
     Xtrain, Ytrain = cont.get_data_training(Ntrain)
     Ytrain = cont.add_noise_data(Ytrain, covariance=current_noise_cov, mean=current_noise_mean)
 
@@ -159,47 +160,106 @@ def run_em_is_gllim(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
     return history
 
 
-PATHS = {"full": "/scratch/WORK/history_IS-EM_full.json",
-         "diag": "/scratch/WORK/history_IS-EM_diag.json"}
+BASE_PATH = "/scratch/WORK/IS_EM/history"
 
 
-def main(cov_type):
-    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
-    Yobs = cont.get_observations()
+def get_path(cont: context.abstractFunctionModel, obs_mode, cov_type, extension):
+    tag = _get_observations_tag(obs_mode)
+    suff = f"{cont.__class__.__name__}-{tag}-covEstim:{cov_type}-initCov:{INIT_COV_NOISE}.{extension}"
+    return BASE_PATH + suff
+
+
+def _get_observations_tag(obs_mode):
+    if obs_mode == "obs":
+        return "trueObs"
+    else:
+        mean_factor = obs_mode.get("mean", None)
+        cov_factor = obs_mode["cov"]
+        return f"mean:{mean_factor:.3f}-cov:{cov_factor:.3f}"
+
+
+def main(cont, obs_mode, cov_type, no_save=True):
+    if obs_mode == "obs":
+        Yobs = cont.get_observations()
+    else:
+        mean_factor = obs_mode.get("mean", None)
+        cov_factor = obs_mode["cov"]
+        _, Yobs = cont.get_data_training(100)
+        Yobs = cont.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
+
     history = run_em_is_gllim(Yobs, cont, cov_type=cov_type)
-    with open(PATHS[cov_type], "w") as f:
+    if no_save:
+        logging.info("No data saved.")
+        return
+    path = get_path(cont, obs_mode, cov_type, "json")
+    with open(path, "w") as f:
         json.dump(history, f, indent=2)
+    logging.info(f"History saved in {path}")
 
 
-def show_history(cov_type):
-    with open(PATHS[cov_type]) as f:
+def show_history(cont, obs_mode, cov_type):
+    path = get_path(cont, obs_mode, cov_type, "json")
+    with open(path) as f:
         d = json.load(f)
     mean_history = np.array([h[0] for h in d])
     covs_history = np.array([h[1] for h in d])
-    axe = pyplot.subplot(1, 2, 1)
-    D = mean_history.shape[1]
+    fig = pyplot.figure(figsize=(20, 15))
+    axe = fig.add_subplot(121)
+    N, D = mean_history.shape
     for i in range(D):
-        axe.plot(range(maxIter), mean_history[:, i], label=f"$G_{ {i+1} }$")
+        axe.plot(range(N), mean_history[:, i], label=f"Mean - $G_{ {i+1} }$")
     axe.set_title("Moyenne du bruit")
+    axe.set_xlabel("EM-iterations")
+    axe.set_ylim(-0.1, 0.17)
     axe.legend()
-    axe = pyplot.subplot(1, 2, 2)
+    axe = fig.add_subplot(122)
     for i in range(D):
         if cov_type == "full":
             p = covs_history[:, i, i]
         else:
             p = covs_history[:, i]
-        axe.plot(range(maxIter), p, label=f"$G_{ {i+1} }$")
-    axe.set_title("Covariance (diagonale)")
+        axe.plot(range(N), p, label=f"Cov - $G_{ {i+1} }$")
+    cov_title = "Covariance (contrainte diagonale)" if cov_type == "diag" else "Covariance (sans contrainte)"
+    axe.set_title(cov_title)
+    # axe.set_ylim(0,0.01)
+    axe.set_xlabel("EM-iterations")
     axe.legend()
-    pyplot.show()
+    title = f"Initialisation : moyenne nulle, $Cov = {INIT_COV_NOISE}I_{{D}}$"
+    title += f"\n Observations : {_get_observations_tag(obs_mode)}"
+    fig.suptitle(title)
+    image_path = get_path(cont, obs_mode, cov_type, "png")
+    pyplot.savefig(image_path)
+    logging.info(f"EM history saved in {image_path}")
 
+
+def get_last_params(cont, obs_mode, cov_type):
+    """Load and returns last values for mean and covariance for the given context"""
+    path = get_path(cont, obs_mode, cov_type, "json")
+    with open(path) as f:
+        d = json.load(f)
+    mean, cov = d[-1]
+    return np.array(mean), np.array(cov)
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    main("full")
-    main("diag")
+
+    cont = context.InjectiveFunction(2)()
+    obs_mode = {"mean": 0.3, "cov": 0.005}
+    INIT_COV_NOISE = 0.01
+    # main(cont,obs_mode,"full",no_save=False)
+    # main(cont,obs_mode,"diag",no_save=False)
+    show_history(cont, obs_mode, "full")
+    show_history(cont, obs_mode, "diag")
+    # INIT_COV_NOISE = 0.01
     # show_history("full")
+    # show_history("diag")
+    # INIT_COV_NOISE = 0.001
+    # show_history("full")
+    # show_history("diag")
+
     # cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
     # h = cont.geometries
     # np.savetxt("geometries_olivine.txt",h[:,0,:].T,fmt="%.1f")
+    # INIT_COV_NOISE = 0.01
+    # mean, cov = get_last_params(cont,"obs","full")

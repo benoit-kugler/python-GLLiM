@@ -16,8 +16,8 @@ from scipy.special import logsumexp
 from sklearn.mixture import GaussianMixture
 from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
 
-from Core.log_gauss_densities import chol_loggausspdf, densite_melange, dominant_components, covariance_melange, \
-    chol_loggausspdf_iso
+from Core.probas_helper import chol_loggausspdf, densite_melange, dominant_components, covariance_melange, \
+    chol_loggausspdf_iso, GMM_sampling
 from tools import regularization
 
 
@@ -793,27 +793,12 @@ class GLLiM():
             X.append(np.array(xs))
         return X, heights, weights
 
-    def _sample_from_mixture(self, meanss, weightss, size):
-        """means shape N,K,L weights shape N,K
-        out : N,size,L
-        """
-        ti = time.time()
-        N, K, L = meanss.shape
-        out = np.empty((N, size, L))
-        alea = np.random.multivariate_normal(np.zeros(L), np.eye(L), size)
-        chols = np.linalg.cholesky(self.SigmakListS)
-        for weights, means, n in zip(weightss, meanss, range(N)):
-            clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
-            means = np.array([means[k] for k in clusters])
-            stds = np.array([chols[k] for k in clusters])
-            out[n] = np.matmul(stds, alea[:, :, None])[:, :, 0] + means
-        logging.debug(f"Sampling from mixture ({N} series of {size}) done in {time.time()-ti:.3f} s")
-        return out
 
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
-        return self._sample_from_mixture(proj, alpha, nb_per_Y)
+        return GMM_sampling(proj, alpha, self.SigmakListS, nb_per_Y)
+
 
     @staticmethod
     def monte_carlo_esperance(samples, centres):

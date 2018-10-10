@@ -12,7 +12,7 @@ matplotlib.use("QT5Agg")
 from matplotlib import pyplot
 
 from Core.gllim import GLLiM, jGLLiM
-from Core.log_gauss_densities import densite_melange, chol_loggauspdf_diag, chol_loggausspdf
+from Core.probas_helper import densite_melange, chol_loggauspdf_diag, chol_loggausspdf
 from tools import context
 from tools.experience import Experience
 
