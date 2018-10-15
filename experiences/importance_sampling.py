@@ -4,11 +4,9 @@ import time
 from typing import Callable
 
 import coloredlogs
-import matplotlib
 import numpy
 import numpy as np
 
-matplotlib.use("QT5Agg")
 from matplotlib import pyplot
 
 from Core.gllim import GLLiM, jGLLiM
@@ -38,25 +36,22 @@ def p_tilde(FXs, Y, noise_cov, noise_mean):
     noise_mean : shape D (offfset)
     return shape Ny, Nsample
     """
-    Ny, Nsample, _ = Xs.shape
+    Ny, Nsample, _ = FXs.shape
     out = numpy.empty((Ny, Nsample))
     if noise_cov.ndim == 1:
-        for i, (y, X) in enumerate(zip(Y, Xs)):
-            out[i] = chol_loggauspdf_diag(F(X).T + noise_mean.T[:, None], y[:, None], noise_cov)
+        for i, (y, FX) in enumerate(zip(Y, FXs)):
+            out[i] = chol_loggauspdf_diag(FX.T + noise_mean.T[:, None], y[:, None], noise_cov)
     else:
         chol = np.linalg.cholesky(noise_cov)
-        for i, (y, X) in enumerate(zip(Y, Xs)):
-            fx = F(X)
-            if np.isfinite(fx).all():
-                out[i] = chol_loggausspdf(F(X).T + noise_mean.T[:, None], y[:, None], _, cholesky=chol)
-            else:
-                out[i] = np.NAN * np.ones(Nsample)
+        for i, (y, FX) in enumerate(zip(Y, FXs)):
+            out[i] = chol_loggausspdf(FX.T + noise_mean.T[:, None], y[:, None], _, cholesky=chol)
+
     return numpy.exp(out)  # we used log pdf so far
 
 
-def mean_IS(Y, gllim, F, r, Nsample=50000):
+def mean_IS(Y, gllim, F, noise_cov, noise_mean, Nsample=50000):
     G = lambda x: x
-    return compute_is(Y, gllim, G, F, r, Nsample=Nsample)
+    return compute_is(Y, gllim, G, F, noise_cov, noise_mean, Nsample=Nsample)
 
 
 def _clean_integrate(G: Callable[[np.ndarray], np.ndarray], Xs, ws):
@@ -86,9 +81,16 @@ def _clean_integrate(G: Callable[[np.ndarray], np.ndarray], Xs, ws):
     return numpy.sum(GX * ws, axis=1) / numpy.sum(ws, axis=1)
 
 
-def _weigth_sample(gllim, Y, F, noise_cov, noise_mean, Nsample):
+def _weight_sample(gllim, Y, F, noise_cov, noise_mean, Nsample):
     Xs = gllim.predict_sample(Y, nb_per_Y=Nsample)
-    ws = p_tilde(Xs, Y, F, noise_cov, noise_mean) / gllim_q(Xs, Y, gllim)
+    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    Ny, Nsample, _ = Xs.shape
+    FXs = np.ones((Ny, Nsample, gllim.D))
+    for i, X in enumerate(Xs):
+        fx = F(X)
+        fx[mask[i], :] = 0
+        FXs[i] = fx
+    ws = p_tilde(FXs, Y, noise_cov, noise_mean) / gllim_q(Xs, Y, gllim)
     return Xs, ws
 
 
@@ -98,7 +100,7 @@ def compute_is(Y, gllim, G, F, noise_cov, noise_mean, Nsample=50000):
     Return shape : (Ny, _)
     """
     ti = time.time()
-    Xs, ws = _weigth_sample(gllim, Y, F, noise_cov, noise_mean, Nsample)
+    Xs, ws = _weight_sample(gllim, Y, F, noise_cov, noise_mean, Nsample)
     logging.debug(f"Samplings and weights computed in {time.time()-ti:.3f} s")
     return _clean_integrate(G, Xs, ws)
 

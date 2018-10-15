@@ -103,14 +103,16 @@ class Mesures():
         :return:
         """
         L = gllim.L
-        weigths, means, covs = jGLLiM.GLLiM_to_GGM(gllim.pikList, gllim.ckList, gllim.GammakList,
-                                                   gllim.AkList, gllim.bkList, gllim.SigmakList)
-        XYsamples = GMM_sampling(means[None, :, :], weigths[None, :], covs[None, :, :], Nsampling)[0]  # 1 model
+        psi = jGLLiM.GLLiM_to_GGM(gllim.pikList, gllim.ckList, gllim.GammakList,
+                                  gllim.AkList, gllim.bkList, gllim.SigmakList)
+        XYsamples = GMM_sampling(psi["m"][None, :, :], psi["rho"][None, :], psi["V"][None, :, :], Nsampling)[
+            0]  # 1 model
         X, Y = XYsamples[:, 0:L], XYsamples[:, L:]
+        mask = self.experience.context.is_X_valid(X)
+        X, Y = X[mask], Y[mask]
         noise_samples = Y - self.experience.context.F(X)
         noise_mean = noise_samples.mean(axis=0)
         noise_cov = np.cov(noise_samples, rowvar=False)
-        print(noise_mean, noise_cov)
         return noise_mean, noise_cov
 
     def _normalize_nrmse(self, Xpredicted, Xtrue, normalization=None):

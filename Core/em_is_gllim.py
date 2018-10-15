@@ -23,34 +23,9 @@ stoppingRatioGLLiM = 0.005
 N_sample_IS = 100000
 
 INIT_COV_NOISE = 0.005  # initial noise
-maxIter = 100
+INIT_MEAN_NOISE = 0  # initial noise offset
+maxIter = 150
 
-
-def _G1(Xs, Y, F):
-    """Estimateur de mu
-    X shape : Ny,N,L
-    Y shape : Ny,D
-    return shape (Ny,N,D)
-    """
-    for X, y in zip(Xs, Y):
-        yield F(X) - y[None, :]
-
-
-def _G2(Xs, Y, F, mu):
-    """Estimateur de Sigma (diagonal)
-    X shape : Ny,N,L
-    Y shape : Ny,D
-    mu: shape D
-    return shape (Ny,N,D)
-    """
-    for X, y in zip(Xs, Y):
-        yield np.square(F(X) + mu[None, :] - y[None, :])
-
-
-def _G3(Xs, Y, F, mu):
-    for X, y in zip(Xs, Y):
-        U = F(X) + mu[None, :] - y[None, :]
-        yield [u[:, None].dot(u[None, :]) for u in U]
 
 
 def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noise_mean, current_theta):
@@ -96,9 +71,9 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
     shape_esp_sigma = (Ny, *current_cov.shape)
     esp_sigma = np.zeros(shape_esp_sigma)
     for i, (y, X, means, weights) in enumerate(zip(Yobs, Xs, meanss, weightss)):
-        FX = F(X)  # Besoin plus tard
+        FX = F(X)  # Needed later
         mask_x = mask[i]
-        FX[mask_x, :] = 0  # de toute façon, ws will be 0
+        FX[mask_x, :] = 0  # anyway, ws will be 0
         FXs[i] = FX
         if current_cov.ndim == 1:
             p_tilde = chol_loggauspdf_diag(FX.T + current_mean.T[:, None], y[:, None], current_cov)
@@ -127,10 +102,10 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
     return maximal_mu, maximal_sigma
 
 
-def _init(cont: context.abstractHapkeModel, init_noise_cov):
+def _init(cont: context.abstractHapkeModel, init_noise_cov, init_noise_mean):
     gllim = jGLLiM(K, sigma_type="full")
     Xtrain, Ytrain = cont.get_data_training(Ntrain)
-    Ytrain = cont.add_noise_data(Ytrain, covariance=init_noise_cov)  # 0 offset
+    Ytrain = cont.add_noise_data(Ytrain, covariance=init_noise_cov, mean=init_noise_mean)  # 0 offset
 
     m = cont.get_X_uniform(K)
     rho = np.ones(gllim.K) / gllim.K
@@ -142,13 +117,13 @@ def _init(cont: context.abstractHapkeModel, init_noise_cov):
 
 
 def run_em_is_gllim(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
-    logging.info(f"Starting EM-iS for noise (inital covariance noise : {INIT_COV_NOISE})")
+    logging.info(f"Starting EM-iS with covariance noise : {INIT_COV_NOISE} and mean noise : {INIT_MEAN_NOISE})")
 
     F = lambda X: cont.F(X, check=False)
-    current_theta = _init(cont, INIT_COV_NOISE)
+    current_theta = _init(cont, INIT_COV_NOISE, INIT_MEAN_NOISE)
     base_cov = np.eye(cont.D) if cov_type == "full" else np.ones(cont.D)
     current_noise_cov, current_noise_mean = INIT_COV_NOISE * base_cov, np.zeros(cont.D)
-    history = []
+    history = [(current_noise_mean.tolist(), current_noise_cov.tolist())]
     for current_iter in range(maxIter):
         gllim = _gllim_step(cont, current_noise_cov, current_noise_mean, current_theta)
         max_mu, max_sigma = _em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean)
@@ -178,14 +153,15 @@ def _get_observations_tag(obs_mode):
         return f"mean:{mean_factor:.3f}-cov:{cov_factor:.3f}"
 
 
-def main(cont, obs_mode, cov_type, no_save=True):
+def main(cont: context.abstractFunctionModel, obs_mode, cov_type, no_save=True):
     if obs_mode == "obs":
         Yobs = cont.get_observations()
     else:
         mean_factor = obs_mode.get("mean", None)
         cov_factor = obs_mode["cov"]
-        _, Yobs = cont.get_data_training(100)
+        _, Yobs = cont.get_data_training(500)
         Yobs = cont.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
+
 
     history = run_em_is_gllim(Yobs, cont, cov_type=cov_type)
     if no_save:
@@ -210,7 +186,7 @@ def show_history(cont, obs_mode, cov_type):
         axe.plot(range(N), mean_history[:, i], label=f"Mean - $G_{ {i+1} }$")
     axe.set_title("Moyenne du bruit")
     axe.set_xlabel("EM-iterations")
-    axe.set_ylim(-0.1, 0.17)
+    axe.set_ylim(-0.005, 0.015)
     axe.legend()
     axe = fig.add_subplot(122)
     for i in range(D):
@@ -224,12 +200,12 @@ def show_history(cont, obs_mode, cov_type):
     # axe.set_ylim(0,0.01)
     axe.set_xlabel("EM-iterations")
     axe.legend()
-    title = f"Initialisation : moyenne nulle, $Cov = {INIT_COV_NOISE}I_{{D}}$"
+    title = f"Initialisation : $\mu = {INIT_MEAN_NOISE}$, $\Sigma = {INIT_COV_NOISE}I_{{D}}$"
     title += f"\n Observations : {_get_observations_tag(obs_mode)}"
     fig.suptitle(title)
     image_path = get_path(cont, obs_mode, cov_type, "png")
     pyplot.savefig(image_path)
-    logging.info(f"EM history saved in {image_path}")
+    logging.info(f"History plot saved in {image_path}")
 
 
 def get_last_params(cont, obs_mode, cov_type):
@@ -244,9 +220,11 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
 
-    cont = context.InjectiveFunction(2)()
-    obs_mode = {"mean": 0.3, "cov": 0.005}
-    INIT_COV_NOISE = 0.01
+    # cont = context.InjectiveFunction(2)()
+    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    # obs_mode = {"mean": 0.3, "cov": 0.005}
+    obs_mode = "obs"
+    INIT_COV_NOISE = 0.005
     # main(cont,obs_mode,"full",no_save=False)
     # main(cont,obs_mode,"diag",no_save=False)
     show_history(cont, obs_mode, "full")

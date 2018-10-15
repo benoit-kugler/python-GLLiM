@@ -92,7 +92,7 @@ class MyGMM(GaussianMixture):
         if self.track:
             self.track_params.append((self.weights_, self.means_, self.full_covariances_))
         if self.verbose >= 0:
-            logging.debug(f"Iteration {n_iter} : Log-likelihood = {self.current_iter_ll[-1]}")
+            logging.debug(f"Iteration {n_iter} : Log-likelihood = {self.current_iter_ll[-1]:.3f}")
 
     def _print_verbose_msg_init_end(self, ll):
         self.log_likelihoods.append(self.current_iter_ll)
@@ -599,7 +599,7 @@ class GLLiM():
 
     def end_iter_callback(self, loglikelihood):
         if self.verbose is not None:
-            logging.debug(f"Iteration {self.current_iter} : Log-likelihood = {loglikelihood} ")
+            logging.debug(f"Iteration {self.current_iter} : Log-likelihood = {loglikelihood:.3f} ")
 
         self.LLs_.append(loglikelihood)
         if self.track_theta:  # Save parameters history
@@ -898,7 +898,7 @@ class jGLLiM(GLLiM):
         :return: (rho,m,V)
         """
         K = pi.shape[0]
-        rho = pi
+        rho = np.array(pi)
         my = np.matmul(A, c[:, :, None])[:, :, 0] + b
         m = np.concatenate((c, my), axis=1)
         AG = np.matmul(A, Gamma)

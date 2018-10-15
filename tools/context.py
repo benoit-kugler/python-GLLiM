@@ -753,7 +753,7 @@ class LabContextOlivine(abstractLabContext):
     COERCIVITE_F = 1
     LIPSCHITZ_F = 1
 
-    def __init__(self,partiel):
+    def __init__(self, partiel=None):
         super().__init__(partiel,1)
 
 

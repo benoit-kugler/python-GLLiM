@@ -440,12 +440,21 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 def main():
     em_is_gllim.INIT_COV_NOISE = 0.01
-    noise_mean, noise_cov = em_is_gllim.get_last_params(context.LabContextOlivine(None), "obs", "full")
+    noise_mean, noise_cov = em_is_gllim.get_last_params(context.LabContextOlivine(None), "obs", "diag")
+    noise_cov = 1 / 100
+    noise_mean = 0
     exp, gllim = Experience.setup(context.LabContextOlivine, 40, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=True, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
+                                  regenere_data=False, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
                                   method="sobol",
-                                  mode="r", init_local=10,
+                                  mode="l", init_local=10,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+    noise_cov = noise_cov * np.ones(exp.context.D)
+    noise_mean = noise_mean * np.ones(exp.context.D)
+
+    # noise_cov = np.diag(noise_cov)
+    # learned_noise_mean, learned_noise_cov = exp.mesures.estimate_noise(gllim)
+
+
 
     # n = 1
     # Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
@@ -453,6 +462,9 @@ def main():
 
     MCMC_X, Std = exp.context.get_result()
     Yobs = exp.context.get_observations()
+
+    Xis1 = importance_sampling.mean_IS(Yobs, gllim, exp.context.F, noise_cov, noise_mean, Nsample=100000)
+    Xis = exp.context.to_X_physique(Xis1)
     Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=False)
     Xmean = exp.context.to_X_physique(Xmean)
     Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
@@ -460,7 +472,7 @@ def main():
 
     exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
                                          xtitle="longeur d'onde ($\mu$m)",
-                                         Xref=MCMC_X, StdRef=Std)
+                                         Xref=Xis, StdRef=None)
 
     # exp.results.plot_density_sequence(gllim, Yobs, None,
     #                                   index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,

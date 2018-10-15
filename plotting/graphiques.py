@@ -9,8 +9,6 @@ import vispy.plot, vispy.io
 from cartopy import crs
 from matplotlib.figure import Figure
 
-matplotlib.use("Qt5Agg")
-
 from matplotlib import cm, ticker, transforms, rc, axes
 from matplotlib import pyplot
 from matplotlib.animation import FuncAnimation
