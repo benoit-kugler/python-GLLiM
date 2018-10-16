@@ -24,6 +24,7 @@ N_sample_IS = 100000
 
 INIT_COV_NOISE = 0.005  # initial noise
 INIT_MEAN_NOISE = 0  # initial noise offset
+Nobs = 500
 maxIter = 150
 
 
@@ -84,7 +85,7 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
         q = densite_melange(X, weights, means, gllim_covs)
         ws[i] = p_tilde / q  # Calcul des poids
 
-        G1 = FX - y[None, :]  # estimateur de mu
+        G1 = y[None, :] - FX  # estimateur de mu
         esp_mu[i] = _clean_mean(G1, ws[i], mask_x)
 
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
@@ -122,7 +123,7 @@ def run_em_is_gllim(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
     F = lambda X: cont.F(X, check=False)
     current_theta = _init(cont, INIT_COV_NOISE, INIT_MEAN_NOISE)
     base_cov = np.eye(cont.D) if cov_type == "full" else np.ones(cont.D)
-    current_noise_cov, current_noise_mean = INIT_COV_NOISE * base_cov, np.zeros(cont.D)
+    current_noise_cov, current_noise_mean = INIT_COV_NOISE * base_cov, INIT_MEAN_NOISE * np.ones(cont.D)
     history = [(current_noise_mean.tolist(), current_noise_cov.tolist())]
     for current_iter in range(maxIter):
         gllim = _gllim_step(cont, current_noise_cov, current_noise_mean, current_theta)
@@ -159,7 +160,7 @@ def main(cont: context.abstractFunctionModel, obs_mode, cov_type, no_save=True):
     else:
         mean_factor = obs_mode.get("mean", None)
         cov_factor = obs_mode["cov"]
-        _, Yobs = cont.get_data_training(500)
+        _, Yobs = cont.get_data_training(Nobs)
         Yobs = cont.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
 
 
@@ -186,7 +187,7 @@ def show_history(cont, obs_mode, cov_type):
         axe.plot(range(N), mean_history[:, i], label=f"Mean - $G_{ {i+1} }$")
     axe.set_title("Moyenne du bruit")
     axe.set_xlabel("EM-iterations")
-    axe.set_ylim(-0.005, 0.015)
+    # axe.set_ylim(-0.005, 0.015)
     axe.legend()
     axe = fig.add_subplot(122)
     for i in range(D):
