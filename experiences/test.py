@@ -14,7 +14,7 @@ import coloredlogs
 import numpy as np
 import scipy.io
 
-from Core import em_is_gllim
+from Core import em_is_gllim, probas_helper
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.probas_helper import chol_loggausspdf
@@ -24,13 +24,14 @@ from experiences.importance_sampling import mean_IS
 from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
-from plotting import graphiques
+# from plotting import graphiques
 from tools import context
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, InjectiveFunction
-from tools.experience import SecondLearning, Experience, _train_K_N
+# from tools.experience import SecondLearning, Experience, _train_K_N
 from tools.interface_R import is_egal
 from tools.measures import Mesures
 from hapke.cython.hapke import Hapke_vect as Hapke_cython
+
 
 np.set_printoptions(precision=20,suppress=False)
 
@@ -57,10 +58,47 @@ def test_equivalence_GMM_GGLim():
     assert np.allclose(t[5], t2[5])
 
 
+def test_GMM_sampling():
+    D = 10
+    K = 40
+    N = 200
+    size = 100000
+    T = np.tril(np.ones((D, D))) * 0.456
+    cov = np.dot(T, T.T)
+    covs = np.array([cov] * K)
+    wks = np.random.random_sample((N, K))
+    wks /= wks.sum(axis=1, keepdims=True)
+    meanss = np.random.random_sample((N, K, D))
+
+    ti = time.time()
+    probas_helper.GMM_sampling(meanss, wks, covs, size)
+    print(time.time() - ti, "s for basic + cython")
+
+    # ti = time.time()
+    # probas_helper.GMM_sampling(meanss,wks,covs,size)
+    # print(time.time() - ti ,"s for basic")
 
 
+def test_custom_multinomial():
+    K = 40
+    size = 10000
+    wks = np.random.random_sample((200, K))
+    wks /= wks.sum(axis=1, keepdims=True)
 
+    ti = time.time()
+    samples = multinomial_sampling_cython(wks, size)
+    print(time.time() - ti, "s for cython")
+    # wks_hat = (samples[:,:,None] == (np.arange(1,K+1)[None, None, :])).sum(axis=1) / size
+    # print(wks - wks_hat)
 
+    ti = time.time()
+    samples = probas_helper.multinomial_sampling(wks, size)
+    print(time.time() - ti, "s for custom")
+
+    # ti = time.time()
+    # samples = [np.random.multinomial(1, weights, size=size).argmax(axis=1)
+    #            for weights in wks]
+    # print(time.time() - ti ,"s for routine")
 
 # compare_EM()
 # test_GGLiM()
@@ -389,7 +427,7 @@ if __name__ == '__main__':
     # equivalence_jGLLiM_GLLIM()  # OK
     # test_dF()
     # _compare_Fsym()   #OK 27 /6 /2018
-    test_map(RETRAIN=False)
+    # test_map(RETRAIN=False)
     # plusieurs_K_N(False,imax=200,Nfixed=False,Kfixed=False)
     # compare_R(sigma_type="full",gamma_type="iso")
     # details_convergence(60, True)
@@ -399,3 +437,5 @@ if __name__ == '__main__':
     # interface_julia()
     # compare_is()
     # test_hapX_vect()
+    # test_custom_multinomial() #OK
+    test_GMM_sampling()

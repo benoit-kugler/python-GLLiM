@@ -17,7 +17,7 @@ Ntrain = 40000
 K = 40
 init_X_precision_factor = 10
 maxIterGlliM = 100
-stoppingRatioGLLiM = 0.005
+stoppingRatioGLLiM = 0.001
 
 
 N_sample_IS = 100000
@@ -25,7 +25,10 @@ N_sample_IS = 100000
 INIT_COV_NOISE = 0.005  # initial noise
 INIT_MEAN_NOISE = 0  # initial noise offset
 Nobs = 500
-maxIter = 150
+maxIter = 1
+
+WITH_IS = True
+"""Setting it to fasle uses direct GLLiM conditionnal law"""
 
 
 
@@ -65,7 +68,7 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
 
     meanss, weightss, _ = gllim._helper_forward_conditionnal_density(Yobs)
     gllim_covs = gllim.SigmakListS
-
+    gllim_chol_covs = np.linalg.cholesky(gllim_covs)
     chol_cov = np.linalg.cholesky(current_cov) if current_cov.ndim == 2 else None
 
     ws, FXs, esp_mu = np.zeros((Ny, N_sample_IS)), np.zeros((Ny, N_sample_IS, D)), np.zeros((Ny, D))
@@ -82,7 +85,7 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
             p_tilde = chol_loggausspdf(FX.T + current_mean.T[:, None], y[:, None], _, cholesky=chol_cov)
 
         p_tilde = np.exp(p_tilde)  # we used log pdf so far
-        q = densite_melange(X, weights, means, gllim_covs)
+        q = densite_melange(X, weights, means, None, chol_covs=gllim_chol_covs)
         ws[i] = p_tilde / q  # Calcul des poids
 
         G1 = y[None, :] - FX  # estimateur de mu
@@ -217,19 +220,28 @@ def get_last_params(cont, obs_mode, cov_type):
     mean, cov = d[-1]
     return np.array(mean), np.array(cov)
 
+
+def _profile():
+    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    obs_mode = {"mean": 0.3, "cov": 0.005}
+    main(cont, obs_mode, "full", no_save=True)
+
+
+
+
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
 
     # cont = context.InjectiveFunction(2)()
     cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
-    # obs_mode = {"mean": 0.3, "cov": 0.005}
-    obs_mode = "obs"
+    obs_mode = {"mean": 0.3, "cov": 0.005}
+    # obs_mode = "obs"
     INIT_COV_NOISE = 0.005
-    # main(cont,obs_mode,"full",no_save=False)
+    main(cont, obs_mode, "full", no_save=True)
     # main(cont,obs_mode,"diag",no_save=False)
-    show_history(cont, obs_mode, "full")
-    show_history(cont, obs_mode, "diag")
+    # show_history(cont, obs_mode, "full")
+    # show_history(cont, obs_mode, "diag")
     # INIT_COV_NOISE = 0.01
     # show_history("full")
     # show_history("diag")

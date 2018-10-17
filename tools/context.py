@@ -819,6 +819,21 @@ class VoieL(abstractGlaceContext):
     LABEL = "Config. Glace - Voie L"
 
 if __name__ == '__main__':
+    def test_bruit(N=10000):
+        h = HapkeContext(None)
+        X, Y = h.get_data_training(N)
+        Y = h.add_noise_data(Y, 0.02, 0.2)
+        FX = h.F(X)
+        mu_hat = (Y - FX).sum(axis=0) / N
+        diff = Y - FX - mu_hat
+        sigma_hat = np.array([d[:, None].dot(d[None, :]) for d in diff]).sum(axis=0) * (N - 1) / N
+        print(mu_hat)
+        print(sigma_hat)
+
+
+    test_bruit()
+
+
     # h = abstractExpFunction(None)
     # X = h.get_X_sampling(10000)
     # print(X.min(),X.max())
@@ -842,8 +857,8 @@ if __name__ == '__main__':
     # h._test_dF()
     #
     # X = h.get_X_sampling(300)
-    h = HapkeContext((0, 1))
-    x, y, Z = h.Fsample(200, cov_noise=np.arange(h.D) + 1, mean_noise=4.)
-    axe = pyplot.subplot(projection="3d")
-    axe.plot_surface(x, y, Z[0], color="gray", alpha=0.4, label="True F")
-    pyplot.show()
+    # h = HapkeContext((0, 1))
+    # x, y, Z = h.Fsample(200, cov_noise=np.arange(h.D) + 1, mean_noise=4.)
+    # axe = pyplot.subplot(projection="3d")
+    # axe.plot_surface(x, y, Z[0], color="gray", alpha=0.4, label="True F")
+    # pyplot.show()

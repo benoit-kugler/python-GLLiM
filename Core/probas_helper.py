@@ -4,6 +4,8 @@ import time
 import numpy as np
 from scipy import linalg
 
+from Core import cython
+
 _LOG_2PI = np.log(2 * np.pi)
 
 # log of pdf for gaussian distributuion with diagonal covariance matrix
@@ -71,7 +73,7 @@ def chol_loggauspdf_diag(X, mu, cov):
     return -0.5 * (D * _LOG_2PI + q) - log_det
 
 
-def densite_melange(x_points,weights,means,covs):
+def densite_melange(x_points, weights, means, covs, chol_covs=None):
     """
     Compute the density of Gaussian mixture given at given points.
     :param x_points: shape (N,L)
@@ -80,7 +82,10 @@ def densite_melange(x_points,weights,means,covs):
     :param covs: shape (K,L,L)
     :return: Array of densities, shape (N,)
     """
-    r = [chol_loggausspdf(x_points.T,m[:,None],c)  for m,c in zip(means,covs) ]
+    if chol_covs is not None:
+        r = [chol_loggausspdf(x_points.T, m[:, None], None, cholesky=chol_cov) for m, chol_cov in zip(means, chol_covs)]
+    else:
+        r = [chol_loggausspdf(x_points.T, m[:, None], c) for m, c in zip(means, covs)]
     return np.sum(weights * np.exp(np.array(r).T) , axis = 1)
 
 def covariance_melange(weigths,means,covs):
@@ -105,6 +110,7 @@ def dominant_components(weights,means,covs,threshold=None,sort_by="height",dets=
     return sorted(zip(heights,weights,means,covs),key=lambda d: d[i_sort],reverse=True)
 
 
+
 def GMM_sampling(means_list: np.ndarray, weights_list: np.ndarray,
                  covs_list: np.ndarray, size: int):
     """Samples from N Gaussian Mixture Models
@@ -123,13 +129,12 @@ def GMM_sampling(means_list: np.ndarray, weights_list: np.ndarray,
     if precompute_chols:
         chols = np.linalg.cholesky(covs_list)
 
-    for weights, means, n in zip(weights_list, means_list, range(N)):
+    clusters_list = cython.multinomial_sampling_cython(weights_list, size)
+
+    for clusters, means, n in zip(clusters_list, means_list, range(N)):
         if not precompute_chols:
             chols = np.linalg.cholesky(covs_list[n])
-        clusters = np.random.multinomial(1, weights, size=size).argmax(axis=1)
-        means = np.array([means[k] for k in clusters])
-        stds = np.array([chols[k] for k in clusters])
-        out[n] = np.matmul(stds, alea[:, :, None])[:, :, 0] + means
+        out[n] = np.matmul(chols[clusters], alea[:, :, None])[:, :, 0] + means[clusters]
     logging.debug(f"Sampling from mixture ({N} series of {size}) done in {time.time()-ti:.3f} s")
     return out
 
