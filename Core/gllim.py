@@ -8,17 +8,21 @@ The equation numbers refer to _High-Dimensional Regression with Gaussian Mixture
 """
 import logging
 import time
+import warnings
 
 import numpy as np
 import scipy
 from numpy.linalg import inv
 from scipy.special import logsumexp
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.mixture import GaussianMixture
 from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
 
 from Core.probas_helper import chol_loggausspdf, densite_melange, dominant_components, covariance_melange, \
     chol_loggausspdf_iso, GMM_sampling
 from tools import regularization
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 
 class CovarianceTypeError(NotImplementedError):
@@ -797,8 +801,10 @@ class GLLiM():
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
-        return GMM_sampling(proj, alpha, self.SigmakListS, nb_per_Y)
-
+        ti = time.time()
+        s = GMM_sampling(proj, alpha, self.SigmakListS, nb_per_Y)
+        logging.debug(f"Sampling from mixture ({len(Y)} series of {nb_per_Y}) done in {time.time()-ti:.3f} s")
+        return s
 
     @staticmethod
     def monte_carlo_esperance(samples, centres):
@@ -944,9 +950,6 @@ class jGLLiM(GLLiM):
         self.init_fit(T, Y, init)
         TY, Gmm = self._Gmm_setup(T, Y, maxIter)
 
-        if self.verbose is not None:
-            logging.info("Done. jGMM fitting...")
-
         start_time_EM = time.time()
 
         Gmm.fit(TY)
@@ -954,7 +957,7 @@ class jGLLiM(GLLiM):
 
         if self.verbose is not None:
             t = int(time.time() - start_time_EM)
-            logging.info("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
+            logging.info("jGMM fit done in {} mins, {} secs".format(t // 60, t - 60 * (t // 60)))
 
         if self.track_theta:
             self.track = self.track_from_gmm(Gmm)
