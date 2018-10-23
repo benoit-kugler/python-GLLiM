@@ -368,19 +368,3 @@ if __name__ == '__main__':
                         datefmt="%H:%M:%S")
     # _profile()
     _debug()
-    # cont = context.InjectiveFunction(2)()
-    # main(cont,obs_mode,"diag",no_save=False)
-    # show_history(cont, obs_mode, "full")
-    # show_history(cont, obs_mode, "diag")
-    # INIT_COV_NOISE = 0.01
-    # show_history("full")
-    # show_history("diag")
-    # INIT_COV_NOISE = 0.001
-    # show_history("full")
-    # show_history("diag")
-
-    # cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
-    # h = cont.geometries
-    # np.savetxt("geometries_olivine.txt",h[:,0,:].T,fmt="%.1f")
-    # INIT_COV_NOISE = 0.01
-    # mean, cov = get_last_params(cont,"obs","full")

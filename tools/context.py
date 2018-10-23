@@ -738,7 +738,7 @@ class abstractLabContext(abstractHapkeModel):
 class LabContextNontronite(abstractLabContext):
     LABEL = "$F_{hapke}$ Nontronite"
 
-    def __init__(self,partiel):
+    def __init__(self, partiel=None):
         super().__init__(partiel,0)
 
     DESCRIPTION = abstractLabContext.DESCRIPTION + " - sur échantillon de nontronite."

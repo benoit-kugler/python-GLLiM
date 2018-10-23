@@ -9,10 +9,14 @@ import numba as nb
 import scipy.optimize
 import scipy.optimize.linesearch
 
+from tools import context
+
+
 Ntrain = 100000  # number of samples to estimate d(y, Im F)
 
-# ----------------------- JITTED ----------------------- #
-from tools import context
+TOL = 0.000001  # diff in distance between two iter to stop
+
+INIT_MEAN_NOISE = 0  # initial noise offset
 
 
 @nb.njit(nogil=True, fastmath=True, parallel=True)
@@ -69,7 +73,7 @@ def sigma_estimator_full(b, Ydiff):
 @nb.njit(nogil=True, fastmath=True, parallel=True)
 def sigma_estimator_diag(b, Ydiff):
     N, Nobs, D = Ydiff.shape
-    s = np.zeros((D, D))
+    s = np.zeros(D)
     for i in nb.prange(Nobs):
         dist_min = np.inf
         n_min = 0
@@ -84,14 +88,18 @@ def sigma_estimator_diag(b, Ydiff):
     return s / Nobs
 
 
-def gradient_descent(Ytrain, Yobs, cov_type="full", tol=0.00001):
+def gradient_descent(Ytrain, Yobs, cov_type="full"):
     Ydiff = Ytrain[:, None, :] - Yobs[None, :, :]
 
-    Nobs, D = Yobs.shape
-    current_noise_mean = np.zeros(D)
-    logging.info(f"Starting noise mean estimation with gradient descent (tol. = {tol})")
+    N, Nobs, D = Ydiff.shape
+    current_noise_mean = INIT_MEAN_NOISE * np.ones(D)
+    logging.info(f"""Starting noise mean estimation with gradient descent.
+                    Ntrain = {N}, Nobs = {Nobs}
+                    tol. = {TOL}
+                    Covariance constraint : {cov_type}""")
     sigma_estimator = sigma_estimator_diag if cov_type == "diag" else sigma_estimator_full
     history = []
+    Jinit = J(current_noise_mean, Ydiff)
     while True:
         direction = - dJ(current_noise_mean, Ydiff)
         ti = time.time()
@@ -101,7 +109,7 @@ def gradient_descent(Ytrain, Yobs, cov_type="full", tol=0.00001):
         if alpha is None:
             break
         new_b = current_noise_mean + alpha * direction
-        diff = J(current_noise_mean, Ydiff) - J(new_b, Ydiff)
+        diff = (J(current_noise_mean, Ydiff) - J(new_b, Ydiff)) / Jinit
         logging.debug(f"J progress : {diff:.8f}")
         current_noise_mean = new_b
         sigma = sigma_estimator(current_noise_mean, Ydiff)
@@ -111,7 +119,7 @@ def gradient_descent(Ytrain, Yobs, cov_type="full", tol=0.00001):
         New estimated COVARIANCE : {log_sigma}""")
 
         history.append((current_noise_mean.tolist(), sigma.tolist()))
-        if diff < tol:
+        if diff < TOL:
             break
     return history
 
@@ -119,6 +127,11 @@ def gradient_descent(Ytrain, Yobs, cov_type="full", tol=0.00001):
 def fit(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
     Xtrain, Ytrain = cont.get_data_training(Ntrain)
     return gradient_descent(Ytrain, Yobs, cov_type=cov_type)
+
+
+def verifie_J(b, Yobs, Ytrain):
+    Ydiff = Ytrain[:, None, :] - Yobs[None, :, :]
+    return J(b, Ydiff)
 
 
 ## --------------------- maintenance purpose --------------------- ##
