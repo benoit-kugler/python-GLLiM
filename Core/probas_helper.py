@@ -15,7 +15,7 @@ def loggausspdf(X, mu, cov):
         D=1
     else:
         D = X.shape[1]
-    
+
     logDetCov = D*np.log(cov)
     dxM = X - mu
     L = np.sqrt(cov)
@@ -328,7 +328,6 @@ def GMM_sampling(means_list: np.ndarray, weights_list: np.ndarray,
         return _GMM_sampling_sameCov(means_list, clusters_list, covs_list, alea)
     else:
         return _GMM_sampling_Covs(means_list, clusters_list, covs_list, alea)
-
 
 
 if __name__ == '__main__':

@@ -1,13 +1,11 @@
 """Implements a crossed EM - GLLiM algorith to evaluate noise in model.
 Diagonal covariance is assumed"""
-import json
 import logging
 import time
 
 import coloredlogs
 import numba as nb
 import numpy as np
-from matplotlib import pyplot
 
 from Core.gllim import jGLLiM
 from Core.probas_helper import chol_loggauspdf_diag, chol_loggausspdf_precomputed, \
@@ -26,7 +24,6 @@ N_sample_IS = 100000
 
 INIT_COV_NOISE = 0.005  # initial noise
 INIT_MEAN_NOISE = 0  # initial noise offset
-Nobs = 200
 maxIter = 100
 
 NO_IS = False
@@ -309,7 +306,7 @@ def _init(cont: context.abstractHapkeModel, init_noise_cov, init_noise_mean):
     return gllim.theta
 
 
-def run_em_is_gllim(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
+def fit(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
     logging.info(f"""Starting noise estimation ({cov_type}) 
     With IS : {not NO_IS}
     Nobs = {len(Yobs)} , NSampleIS = {N_sample_IS}
@@ -336,85 +333,7 @@ def run_em_is_gllim(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
     return history
 
 
-BASE_PATH = "/scratch/WORK/IS_EM/history"
 
-
-def get_path(cont: context.abstractFunctionModel, obs_mode, cov_type, extension):
-    tag = _get_observations_tag(obs_mode)
-    suff = f"{cont.__class__.__name__}-{tag}-covEstim:{cov_type}-withIS:{not NO_IS}-initCov:{INIT_COV_NOISE}.{extension}"
-    return BASE_PATH + suff
-
-
-def _get_observations_tag(obs_mode):
-    if obs_mode == "obs":
-        return "trueObs"
-    else:
-        mean_factor = obs_mode.get("mean", None)
-        cov_factor = obs_mode["cov"]
-        return f"mean:{mean_factor:.3f}-cov:{cov_factor:.3f}"
-
-
-def main(cont: context.abstractFunctionModel, obs_mode, cov_type, save=False):
-    if obs_mode == "obs":
-        Yobs = cont.get_observations()
-    else:
-        mean_factor = obs_mode.get("mean", None)
-        cov_factor = obs_mode["cov"]
-        _, Yobs = cont.get_data_training(Nobs)
-        Yobs = cont.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
-    Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
-    history = run_em_is_gllim(Yobs, cont, cov_type=cov_type)
-    if not save:
-        logging.info("No data saved.")
-        return
-    path = get_path(cont, obs_mode, cov_type, "json")
-    with open(path, "w") as f:
-        json.dump(history, f, indent=2)
-    logging.info(f"History saved in {path}")
-
-
-def show_history(cont, obs_mode, cov_type):
-    path = get_path(cont, obs_mode, cov_type, "json")
-    with open(path) as f:
-        d = json.load(f)
-    mean_history = np.array([h[0] for h in d])
-    covs_history = np.array([h[1] for h in d])
-    fig = pyplot.figure(figsize=(20, 15))
-    axe = fig.add_subplot(121)
-    N, D = mean_history.shape
-    for i in range(D):
-        axe.plot(range(N), mean_history[:, i], label=f"Mean - $G_{ {i+1} }$")
-    axe.set_title("Moyenne du bruit")
-    axe.set_xlabel("EM-iterations")
-    # axe.set_ylim(-0.005, 0.015)
-    axe.legend()
-    axe = fig.add_subplot(122)
-    for i in range(D):
-        if cov_type == "full":
-            p = covs_history[:, i, i]
-        else:
-            p = covs_history[:, i]
-        axe.plot(range(N), p, label=f"Cov - $G_{ {i+1} }$")
-    cov_title = "Covariance (contrainte diagonale)" if cov_type == "diag" else "Covariance (sans contrainte)"
-    axe.set_title(cov_title)
-    # axe.set_ylim(0,0.01)
-    axe.set_xlabel("EM-iterations")
-    axe.legend()
-    title = f"Initialisation : $\mu = {INIT_MEAN_NOISE}$, $\Sigma = {INIT_COV_NOISE}I_{{D}}$"
-    title += f"\n Observations : {_get_observations_tag(obs_mode)}"
-    fig.suptitle(title)
-    image_path = get_path(cont, obs_mode, cov_type, "png")
-    pyplot.savefig(image_path)
-    logging.info(f"History plot saved in {image_path}")
-
-
-def get_last_params(cont, obs_mode, cov_type):
-    """Load and returns last values for mean and covariance for the given context"""
-    path = get_path(cont, obs_mode, cov_type, "json")
-    with open(path) as f:
-        d = json.load(f)
-    mean, cov = d[-1]
-    return np.array(mean), np.array(cov)
 
 
 def _profile():
@@ -423,9 +342,12 @@ def _profile():
     Nobs = 500
     N_sample_IS = 100000
     cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
-    obs_mode = {"mean": 0.1, "cov": 0.005}
-    main(cont, obs_mode, "full", save=False)
 
+    _, Yobs = cont.get_data_training(Nobs)
+    Yobs = cont.add_noise_data(Yobs, covariance=0.005, mean=0.1)
+    Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
+
+    fit(Yobs, cont, cov_type="full")
 
 def _debug():
     global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
@@ -434,10 +356,12 @@ def _debug():
     Nobs = 20
     N_sample_IS = 10000
     cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
-    obs_mode = {"mean": 0.1, "cov": 0.005}
     INIT_COV_NOISE = 0.005
-    main(cont, obs_mode, "diag", save=False)
+    _, Yobs = cont.get_data_training(Nobs)
+    Yobs = cont.add_noise_data(Yobs, covariance=0.005, mean=0.1)
+    Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
+    fit(Yobs, cont, cov_type="full")
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
