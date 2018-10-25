@@ -9,7 +9,7 @@ import numpy as np
 
 from Core.gllim import jGLLiM
 from Core.probas_helper import chol_loggauspdf_diag, chol_loggausspdf_precomputed, \
-    densite_melange_precomputed, cholesky_list
+    densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, _chol_loggauspdf_diag
 from tools import context
 
 # GLLiM parameters
@@ -115,7 +115,7 @@ def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
         FX = FXs[i]
         mask_x = mask[i]
         arg = FX + current_mean_broad
-        log_p_tilde = chol_loggauspdf_diag(arg.T, y, current_cov)
+        log_p_tilde = _chol_loggauspdf_diag(arg.T, y, current_cov)
         esp_mu[i], ws[i] = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
     return maximal_mu, ws
@@ -152,7 +152,7 @@ def _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
         FX = FXs[i]
         mask_x = mask[i]
         arg = FX + current_mean_broad
-        log_p_tilde = chol_loggausspdf_precomputed(arg.T, y, chol_cov)
+        log_p_tilde = _chol_loggausspdf_precomputed(arg.T, y, chol_cov)
         esp_mu[i], ws[i] = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
     return maximal_mu, ws
@@ -325,9 +325,10 @@ def fit(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
         else:
             max_mu, max_sigma = _em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean)
         log_sigma = max_sigma if cov_type == "diag" else np.diag(max_sigma)
-        logging.info(f"""Iteration {current_iter+1}/{maxIter}. 
-        New estimated OFFSET : {max_mu}
-        New estimated COVARIANCE : {log_sigma}""")
+        logging.info(f"""
+Iteration {current_iter+1}/{maxIter}. 
+    New estimated OFFSET : {max_mu}
+    New estimated COVARIANCE : {log_sigma}""")
         current_noise_cov, current_noise_mean = max_sigma, max_mu
         history.append((current_noise_mean.tolist(), current_noise_cov.tolist()))
     return history
