@@ -24,12 +24,12 @@ class NoiseEstimation:
         self.method = method
 
     def _is_gllim_tag(self):
-        s = f"covEstim:{self.cov_type}-withIS:{not em_is_gllim.NO_IS}-" \
+        s = f"isGLLiM-withIS:{not em_is_gllim.NO_IS}-" \
             f"initCov:{em_is_gllim.INIT_COV_NOISE}-initMean:{em_is_gllim.INIT_MEAN_NOISE}"
         return s
 
     def _gd_tag(self):
-        s = f"initMean: {noise_GD.INIT_MEAN_NOISE}"
+        s = f"gradientD-initMean:{noise_GD.INIT_MEAN_NOISE}-Ntrain:{noise_GD.Ntrain:.1E}"
         return s
 
     def get_path(self, extension):
@@ -87,7 +87,7 @@ class NoiseEstimation:
             axe.plot(range(N), mean_history[:, i], label=f"Mean - $G_{ {i+1} }$")
         axe.set_title("Moyenne du bruit")
         axe.set_xlabel("Iterations")
-        # axe.set_ylim(-0.005, 0.015)
+        axe.set_ylim(-0.14, 0.12)
         axe.legend()
         axe = fig.add_subplot(122)
         for i in range(D):
@@ -108,13 +108,18 @@ class NoiseEstimation:
         pyplot.savefig(image_path)
         logging.info(f"History plot saved in {image_path}")
 
-    def get_last_params(self):
-        """Load and returns last values for mean and covariance for the given context"""
+    def get_last_params(self, average_over=None):
+        """Load and returns last values for mean and covariance for the given context
+        If average is given, average over given iterations.
+        """
         path = self.get_path("json")
         with open(path) as f:
             d = json.load(f)
-        mean, cov = d[-1]
-        return np.array(mean), np.array(cov)
+        average_over = average_over or 1
+        means, covs = zip(*d[:-average_over])
+        mean = np.mean(means, axis=0)
+        cov = np.mean(covs, axis=0)
+        return mean, cov
 
 
 def launch_tests():
@@ -123,30 +128,45 @@ def launch_tests():
     em_is_gllim.maxIterGlliM = 100
     em_is_gllim.stoppingRatioGLLiM = 0.001
     em_is_gllim.maxIter = 150
+    em_is_gllim.INIT_MEAN_NOISE = 0
+    em_is_gllim.INIT_COV_NOISE = 0.001
 
-    NoiseEstimation.Nobs = 200
-    obs_mode = {"mean": 1, "cov": 0.001}
+    # NoiseEstimation.Nobs = 200
+    # obs_mode = {"mean": 1, "cov": 0.001}
 
-    exp = NoiseEstimation(context.LabContextOlivine, obs_mode, "diag", "gd")
-    exp.run_noise_estimator(True)
-    exp.show_history()
+    # exp = NoiseEstimation(context.LabContextOlivine, obs_mode, "diag", "gd")
+    # exp.run_noise_estimator(True)
+    # exp.show_history()
+    #
+    # NoiseEstimation.Nobs = 500
+    # exp.run_noise_estimator(True)
+    # exp.show_history()
 
-    NoiseEstimation.Nobs = 5000
-    exp.run_noise_estimator(True)
-    exp.show_history()
+    # exp = NoiseEstimation(context.LabContextOlivine, "obs", "diag", "gd")
+    # exp.run_noise_estimator(save=True)
+    # exp.show_history()
+    # #
+    # exp = NoiseEstimation(context.LabContextNontronite, "obs", "diag", "gd")
+    # exp.run_noise_estimator(True)
+    # exp.show_history()
+    #
+    # exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "dg")
+    # exp.run_noise_estimator(save=True)
+    # exp.show_history()
 
-    exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "gd")
-    exp.run_noise_estimator(True)
-    exp.show_history()
-
+    # return
     exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
     exp.run_noise_estimator(True)
     exp.show_history()
+    return
 
 
 if __name__ == '__main__':
-    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
+    coloredlogs.install(level=logging.INFO, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
+
+    launch_tests()
+
 
     # em_is_gllim.Ntrain = 20000
     # em_is_gllim.N_sample_IS = 50000

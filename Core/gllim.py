@@ -672,14 +672,15 @@ class GLLiM():
         """
         N = Y.shape[0]
         Y = Y.reshape((N, self.D))
+        YT = np.array(Y.T, dtype=float)
 
         proj = np.empty((self.L, N, self.K))  # AkS * Y + BkS
         logalpha = np.zeros((N, self.K))  # log N(ckS,GammakS)(Y)
 
         for (k, pik, Ak, bk, ck, Gammak) in zip(range(self.K), self.pikList, self.AkListS,
                                                 self.bkListS, self.ckListS, self.GammakListS):
-            proj[:, :, k] = Ak.dot(Y.T) + np.expand_dims(bk, axis=1)
-            logalpha[:, k] = np.log(pik) + chol_loggausspdf(Y.T, ck.reshape((self.D, 1)), Gammak)
+            proj[:, :, k] = Ak.dot(YT) + np.expand_dims(bk, axis=1)
+            logalpha[:, k] = np.log(pik) + chol_loggausspdf(YT, ck.reshape((self.D, 1)), Gammak)
 
         log_density = logsumexp(logalpha, axis=1, keepdims=True)
         logalpha -= log_density
@@ -829,7 +830,7 @@ class GLLiM():
         k_choosen = []
         agg = np.max if agg_method == "max" else np.mean
         for n, X, weights, y, xmean, means in zip(range(N), meanss, weightss, Y, Xmeans, meanss):
-            samples = self._sample_from_mixture(means[None, :], weights[None, :], size_sampling)[0]
+            samples = GMM_sampling(means[None, :], weights[None, :], self.SigmakListS, size_sampling)[0]
             y_accuracy, xs = [np.square(F(xmean[None, :])[0] - y).sum()], [xmean[None, :]]
             for nb_preds in range(2, nb_predsMax + 1):
                 w = regularization.WeightedKMeans(nb_preds)

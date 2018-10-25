@@ -14,6 +14,7 @@ from Core.probas_helper import dominant_components
 from Core.riemannian import RiemannianjGLLiM
 import experiences.rtls
 from experiences import importance_sampling
+from experiences.noise_estimation import NoiseEstimation
 from tools import context, regularization
 from tools.archive import Archive
 from tools.context import InjectiveFunction
@@ -74,7 +75,7 @@ class Experience():
         return X, Y
 
     def load_data(self, regenere_data=False, noise_mean=None, noise_cov=None, N=1000, method="sobol"):
-        self.with_noise = str(noise_mean) + str(noise_cov)
+        self.with_noise = str(0 if noise_mean is None else noise_mean) + str(noise_cov)
         self.generation_method = method
         self.N = N
         Ndata = N + self.DEFAULT_NTEST
@@ -439,14 +440,15 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 
 def main():
-    em_is_gllim.INIT_COV_NOISE = 0.01
-    noise_mean, noise_cov = em_is_gllim.get_last_params(context.LabContextOlivine(None), "obs", "diag")
-    noise_cov = 1 / 100
+    # exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
+
+    # noise_mean, noise_cov = exp.get_last_params(average_over=800)
+    noise_cov = 0.001
     noise_mean = 0
-    exp, gllim = Experience.setup(context.LabContextOlivine, 40, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=False, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
+    exp, gllim = Experience.setup(context.LabContextNontronite, 40, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=True, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
                                   method="sobol",
-                                  mode="l", init_local=10,
+                                  mode="r", init_local=10,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
     noise_cov = noise_cov * np.ones(exp.context.D)
     noise_mean = noise_mean * np.ones(exp.context.D)
@@ -463,16 +465,16 @@ def main():
     MCMC_X, Std = exp.context.get_result()
     Yobs = exp.context.get_observations()
 
-    Xis1 = importance_sampling.mean_IS(Yobs, gllim, exp.context.F, noise_cov, noise_mean, Nsample=100000)
-    Xis = exp.context.to_X_physique(Xis1)
+    # Xis1 = importance_sampling.mean_IS(Yobs, gllim, exp.context.F, noise_cov, noise_mean, Nsample=100000)
+    # Xis = exp.context.to_X_physique(Xis1)
     Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=False)
     Xmean = exp.context.to_X_physique(Xmean)
     Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
     Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
 
     exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
-                                         xtitle="longeur d'onde ($\mu$m)",
-                                         Xref=Xis, StdRef=None)
+                                         xtitle="longeur d'onde ($\mu$m)", varlims="context",
+                                         Xref=MCMC_X, StdRef=Std)
 
     # exp.results.plot_density_sequence(gllim, Yobs, None,
     #                                   index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,

@@ -307,12 +307,12 @@ def _init(cont: context.abstractHapkeModel, init_noise_cov, init_noise_mean):
 
 
 def fit(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
-    logging.info(f"""Starting noise estimation ({cov_type}) 
-    With IS : {not NO_IS}
+    logging.info(f"""Starting noise estimation with IS-GLLiM
+    With IS : {not NO_IS} ; Covariance constraint : {cov_type}
     Nobs = {len(Yobs)} , NSampleIS = {N_sample_IS}
     Initial covariance noise : {INIT_COV_NOISE} 
     Initial mean noise : {INIT_MEAN_NOISE}""")
-
+    Yobs = np.asarray(Yobs, dtype=float)
     F = lambda X: cont.F(X, check=False)
     current_theta = _init(cont, INIT_COV_NOISE, INIT_MEAN_NOISE)
     base_cov = np.eye(cont.D) if cov_type == "full" else np.ones(cont.D)

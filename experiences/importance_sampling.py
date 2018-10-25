@@ -10,7 +10,7 @@ import numpy as np
 from matplotlib import pyplot
 
 from Core.gllim import GLLiM, jGLLiM
-from Core.probas_helper import densite_melange, chol_loggauspdf_diag, chol_loggausspdf
+from Core.probas_helper import densite_melange, chol_loggauspdf_diag, chol_loggausspdf, chol_loggausspdf_precomputed
 from tools import context
 from tools.experience import Experience
 
@@ -38,13 +38,14 @@ def p_tilde(FXs, Y, noise_cov, noise_mean):
     """
     Ny, Nsample, _ = FXs.shape
     out = numpy.empty((Ny, Nsample))
+    Y = np.asarray(Y, dtype=float)
     if noise_cov.ndim == 1:
         for i, (y, FX) in enumerate(zip(Y, FXs)):
             out[i] = chol_loggauspdf_diag(FX.T + noise_mean.T[:, None], y[:, None], noise_cov)
     else:
         chol = np.linalg.cholesky(noise_cov)
         for i, (y, FX) in enumerate(zip(Y, FXs)):
-            out[i] = chol_loggausspdf(FX.T + noise_mean.T[:, None], y[:, None], _, cholesky=chol)
+            out[i] = chol_loggausspdf_precomputed(FX.T + noise_mean.T[:, None], y[:, None], chol)
 
     return numpy.exp(out)  # we used log pdf so far
 

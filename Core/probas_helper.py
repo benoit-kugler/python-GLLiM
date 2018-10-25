@@ -28,7 +28,6 @@ def gausspdf(X, mu, cov):
     return np.exp(loggausspdf(X, mu, cov))
 
 
-@nb.njit(nogil=True, cache=True)
 def chol_loggausspdf(X, mu, cov):
     if mu.ndim == 2:
         return _chol_loggausspdf2(X, mu, cov)
@@ -36,7 +35,6 @@ def chol_loggausspdf(X, mu, cov):
         return _chol_loggausspdf(X, mu, cov)
 
 
-@nb.njit(nogil=True, cache=True)
 def chol_loggausspdf_precomputed(X, mu, cov):
     if mu.ndim == 2:
         return _chol_loggausspdf_precomputed2(X, mu, cov)
@@ -44,7 +42,6 @@ def chol_loggausspdf_precomputed(X, mu, cov):
         return _chol_loggausspdf_precomputed(X, mu, cov)
 
 
-@nb.njit(nogil=True, cache=True)
 def chol_loggausspdf_iso(X, mu, cov):
     if mu.ndim == 2:
         return _chol_loggausspdf_iso2(X, mu, cov)
@@ -52,7 +49,6 @@ def chol_loggausspdf_iso(X, mu, cov):
         return _chol_loggausspdf_iso(X, mu, cov)
 
 
-@nb.njit(nogil=True, cache=True)
 def chol_loggauspdf_diag(X, mu, cov):
     if mu.ndim == 2:
         return _chol_loggauspdf_diag2(X, mu, cov)
@@ -114,7 +110,7 @@ def _chol_loggausspdf_precomputed(X, mu, cov_cholesky):
     return -0.5 * (D * _LOG_2PI + q) - log_det
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+@nb.njit((nb.float64[:, :], nb.float64[:, :], nb.float64[:, :]), nogil=True, fastmath=True, cache=True)
 def _chol_loggausspdf_precomputed2(X, mu, cov_cholesky):
     """log of pdf for gaussian distributuion with full covariance matrix (cholesky factorization for stability)
     X shape : D,N
@@ -206,7 +202,7 @@ def densite_melange(x_points, weights, means, covs):
     K = weights.shape[0]
     r = np.empty((K, N))
     for i in range(len(means)):
-        s = chol_loggausspdf(x_points.T, means[i], covs[i])
+        s = _chol_loggausspdf(x_points.T, means[i], covs[i])
         r[i] = np.exp(s) * weights[i]
     return np.sum(r, axis=0)
 
@@ -225,7 +221,7 @@ def densite_melange_precomputed(x_points, weights, means, chol_covs):
     K = weights.shape[0]
     r = np.zeros((K, N))
     for i in range(len(means)):
-        s = chol_loggausspdf_precomputed(x_points.T, means[i], chol_covs[i])
+        s = _chol_loggausspdf_precomputed(x_points.T, means[i], chol_covs[i])
         r[i] = np.exp(s) * weights[i]
     return np.sum(r, axis=0)
 

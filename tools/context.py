@@ -21,7 +21,7 @@ randtoolbox = robjects.packages.importr('randtoolbox')
 def test_random(u):
     tol = 10**-16
     if (u+tol>1.).any() or (u-tol<0.).any():
-        print("Generation SOBOL -> ERROR: outside 0 1 ! ")
+        logging.debug("Generation SOBOL -> ERROR: outside 0 1 ! ")
         return True
     else:
         return False
@@ -757,6 +757,13 @@ class LabContextOlivine(abstractLabContext):
         super().__init__(partiel,1)
 
 
+class MergedLabObservations(LabContextOlivine):
+
+    def get_observations(self):
+        obs1 = super(MergedLabObservations, self).get_observations()
+        obs2 = LabContextNontronite().get_observations()
+        return np.concatenate((obs1, obs2), axis=0)
+
 
 class abstractGlaceContext(abstractHapkeModel):
 
@@ -831,7 +838,7 @@ if __name__ == '__main__':
         print(sigma_hat)
 
 
-    test_bruit()
+    # test_bruit()
 
 
     # h = abstractExpFunction(None)
@@ -862,3 +869,12 @@ if __name__ == '__main__':
     # axe = pyplot.subplot(projection="3d")
     # axe.plot_surface(x, y, Z[0], color="gray", alpha=0.4, label="True F")
     # pyplot.show()
+
+    h = LabContextNontronite()
+    # print(h.get_observations().shape)
+    # print(h.geometries)
+    # h = LabContextOlivine()
+    y = h.get_observations()
+    pyplot.plot(h.wavelengths, y)
+    pyplot.show()
+    # print(h.geometries)

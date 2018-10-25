@@ -112,6 +112,10 @@ class Archive():
                                                                             exp.multi_init, exp.init_local, exp.sigma_type, exp.gamma_type)
         return file
 
+    def make_dir_if_need(self, subdir):
+        if not os.path.isdir(subdir):
+            os.makedirs(subdir)
+        return subdir
 
     def get_path(self,mode,filecategorie=None,with_track=False,fig_extension=".png",filename=None):
         """If filename is not None, use it instead of suffixe."""
@@ -120,13 +124,12 @@ class Archive():
         subdir = os.path.join(basedir,dataname)
 
         if mode == "data":
-            return subdir
+            return self.make_dir_if_need(subdir)
 
         if mode == "second_models":
             subdir = os.path.join(subdir, str(self.experience.number))
 
-        if not os.path.isdir(subdir):
-            os.makedirs(subdir)
+        self.make_dir_if_need(subdir)
 
         if filename:
             return os.path.join(subdir, filename)
