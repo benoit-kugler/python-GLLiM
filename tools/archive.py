@@ -124,7 +124,8 @@ class Archive():
         subdir = os.path.join(basedir,dataname)
 
         if mode == "data":
-            return self.make_dir_if_need(subdir)
+            self.make_dir_if_need(basedir)
+            return subdir  # it's actuallaly the file path
 
         if mode == "second_models":
             subdir = os.path.join(subdir, str(self.experience.number))
