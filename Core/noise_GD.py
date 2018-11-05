@@ -127,8 +127,8 @@ Starting noise mean estimation with gradient descent.
         Covariance constraint : {cov_type}""")
     sigma_estimator = sigma_estimator_diag if cov_type == "diag" else sigma_estimator_full
     sigma = sigma_estimator(current_noise_mean, _Ytrain, Yobs)
-    history = [(current_noise_mean.tolist(), sigma.tolist())]
     Jinit = J(current_noise_mean, _Ytrain, Yobs)
+    history = [(current_noise_mean.tolist(), sigma.tolist(), Jinit)]
     c_iter = 0
     while c_iter < maxIter:
         direction = - dJ(current_noise_mean, _Ytrain, Yobs)
@@ -140,7 +140,8 @@ Starting noise mean estimation with gradient descent.
         if alpha is None:
             break
         new_b = current_noise_mean + alpha * direction
-        diff = (J(current_noise_mean, _Ytrain, Yobs) - J(new_b, _Ytrain, Yobs)) / Jinit
+        current_J = J(current_noise_mean, _Ytrain, Yobs)
+        diff = (current_J - J(new_b, _Ytrain, Yobs)) / Jinit
         logging.debug(f"J relative progress : {diff:.8f}")
         current_noise_mean = new_b
         sigma = sigma_estimator(current_noise_mean, _Ytrain, Yobs)
@@ -151,7 +152,7 @@ Starting noise mean estimation with gradient descent.
     New estimated OFFSET : {current_noise_mean}
     New estimated COVARIANCE : {log_sigma}""")
 
-        history.append((current_noise_mean.tolist(), sigma.tolist()))
+        history.append((current_noise_mean.tolist(), sigma.tolist(), current_J))
         if diff < TOL:
             break
 

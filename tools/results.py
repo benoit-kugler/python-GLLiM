@@ -40,12 +40,6 @@ class Results():
         Xmean, Covs = gllim.predict_high_low(Y, with_covariance=True)
         return Xmean, Covs, Xweight, heights, weights
 
-    def to_prediction_physique(self):
-        """Return"""
-        Xmean2 = exp.context.to_X_physique(Xmean)
-        Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
-        Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
-
 
 class VisualisationResults(Results):
 
@@ -96,7 +90,7 @@ class VisualisationResults(Results):
                                savepath=savepath2)
 
     def prediction_by_components(self, Xmean, Covs, labels, xtitle="observations", varlims=None, Xweight=None,
-                                 savepath=None, Xref=None, StdRef=None, indexes=None):
+                                 savepath=None, Xref=None, StdRef=None, indexes=None, title=None):
         """Draw one axe by variable, with optionnal reference, standard deviation,
         and modal predictions (with exlu regularization). Return mean predictions with covariances"""
         exp = self.experience
@@ -112,9 +106,10 @@ class VisualisationResults(Results):
             varlims = varlims[list(indexes)] if varlims is not None else None
             varnames = varnames[list(indexes)]
         StdMean = np.sqrt(Covs)
+        title = title or "Prédiction - Vue par composants"
         self.G.Results_1D(Xmean, StdMean, Xweight, labels, xtitle, varnames,
                           varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
-                          title="Prédiction - Vue par composants",
+                          title=title,
                           savepath=savepath, write_context=True)
         return Xmean, StdMean
 

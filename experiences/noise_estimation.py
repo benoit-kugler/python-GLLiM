@@ -48,6 +48,7 @@ class NoiseEstimation:
             return f"({self.Nobs}) $\mu$:{mean_factor:.3f}-$\Sigma$:{cov_factor:.3f}"
 
     def run_noise_estimator(self, save=False):
+        logging.info(f"Starting noise estimation for {self.context.__class__name__}")
         if self.obs_mode == "obs":
             Yobs = self.context.get_observations()
         else:
@@ -66,20 +67,20 @@ class NoiseEstimation:
             json.dump(history, f, indent=2)
         logging.info(f"History saved in {path}")
 
-    def _label_initialisation(self):
+    def _title(self):
         s = "Initialisation : "
         if self.method == "is_gllim":
             s += f"$\mu = {em_is_gllim.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim.INIT_COV_NOISE}I_{{D}}$"
         else:
+            s = f"N = {noise_GD.Ntrain:,} \n" + s
             s += f"$\mu = {noise_GD.INIT_MEAN_NOISE}$"
         return s
 
-    def show_history(self):
+    def show_history(self, fst_ylims=None, snd_ylims=None):
         path = self.get_path("json")
         with open(path) as f:
             d = json.load(f)
         mean_history = np.array([h[0] for h in d])
-        covs_history = np.array([h[1] for h in d])
         fig = pyplot.figure(figsize=(20, 15))
         axe = fig.add_subplot(121)
         N, D = mean_history.shape
@@ -87,21 +88,32 @@ class NoiseEstimation:
             axe.plot(range(N), mean_history[:, i], label=f"Mean - $G_{ {i+1} }$")
         axe.set_title("Moyenne du bruit")
         axe.set_xlabel("Iterations")
-        axe.set_ylim(-0.14, 0.12)
+        if fst_ylims is not None:
+            axe.set_ylim(fst_ylims)
         axe.legend()
         axe = fig.add_subplot(122)
-        for i in range(D):
-            if self.cov_type == "full":
-                p = covs_history[:, i, i]
-            else:
-                p = covs_history[:, i]
-            axe.plot(range(N), p, label=f"Cov - $G_{ {i+1} }$")
-        cov_title = "Covariance (contrainte diagonale)" if self.cov_type == "diag" else "Covariance (sans contrainte)"
-        axe.set_title(cov_title)
-        # axe.set_ylim(0,0.01)
+
+        if self.method == "gd":
+            Jvalues = np.array([h[2] for h in d])
+            axe.plot(range(N), Jvalues, label="Distance aux observations")
+            axe_title = "Objectif ($J$)"
+        else:
+            covs_history = np.array([h[1] for h in d])
+
+            for i in range(D):
+                if self.cov_type == "full":
+                    p = covs_history[:, i, i]
+                else:
+                    p = covs_history[:, i]
+                axe.plot(range(N), p, label=f"Cov - $G_{ {i+1} }$")
+            axe_title = "Covariance (contrainte diagonale)" if self.cov_type == "diag" else "Covariance (sans contrainte)"
+        axe.set_title(axe_title)
+        if snd_ylims is not None:
+            axe.set_ylim(snd_ylims)
         axe.set_xlabel("Iterations")
         axe.legend()
-        title = self._label_initialisation()
+
+        title = self._title()
         title += f"\n Observations : {self._get_observations_tag()}"
         fig.suptitle(title)
         image_path = self.get_path("png")
@@ -142,22 +154,22 @@ def launch_tests():
     # exp.run_noise_estimator(True)
     # exp.show_history()
 
+    noise_GD.Ntrain = 1000000
     # exp = NoiseEstimation(context.LabContextOlivine, "obs", "diag", "gd")
-    # exp.run_noise_estimator(save=True)
-    # exp.show_history()
-    # #
+    # # exp.run_noise_estimator(save=True)
+    # exp.show_history(fst_ylims=(-0.14, 0.14),snd_ylims=(0,0.001))
+    # # # #
     # exp = NoiseEstimation(context.LabContextNontronite, "obs", "diag", "gd")
+    # # exp.run_noise_estimator(True)
+    # exp.show_history(fst_ylims=(-0.14, 0.14),snd_ylims=(0,0.001))
+    #
+    exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
+    # exp.run_noise_estimator(save=True)
+    exp.show_history()
+
+    # exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
     # exp.run_noise_estimator(True)
     # exp.show_history()
-    #
-    # exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "dg")
-    # exp.run_noise_estimator(save=True)
-    # exp.show_history()
-
-    # return
-    exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
-    exp.run_noise_estimator(True)
-    exp.show_history()
     return
 
 

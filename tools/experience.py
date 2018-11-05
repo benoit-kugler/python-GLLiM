@@ -6,6 +6,7 @@ import time
 
 import coloredlogs
 import numpy as np
+from matplotlib import pyplot
 
 from Core import training, em_is_gllim
 from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
@@ -440,41 +441,53 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 
 def main():
-    # exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
+    exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
 
-    # noise_mean, noise_cov = exp.get_last_params(average_over=800)
-    noise_cov = 0.001
-    noise_mean = 0
-    exp, gllim = Experience.setup(context.LabContextNontronite, 40, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=True, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
+    noise_mean, noise_cov = exp.get_last_params(average_over=500)
+    # noise_cov = 0.001
+    # noise_mean = 0
+    exp, gllim = Experience.setup(context.LabContextOlivine, 40, partiel=(0, 1, 2, 3), with_plot=True,
+                                  regenere_data=False, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
                                   method="sobol",
                                   mode="r", init_local=10,
-                                  sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
-    noise_cov = noise_cov * np.ones(exp.context.D)
-    noise_mean = noise_mean * np.ones(exp.context.D)
+                                  sigma_type="full", gamma_type="full", gllim_cls=dGLLiM)
+
+    # noise_cov = noise_cov * np.ones(exp.context.D)
+    # noise_mean = noise_mean * np.ones(exp.context.D)
 
     # noise_cov = np.diag(noise_cov)
     # learned_noise_mean, learned_noise_cov = exp.mesures.estimate_noise(gllim)
 
-
-
-    # n = 1
-    # Y0_obs, X0_obs = exp.Ytest[n:n + 1], exp.Xtest[n]
-    # exp.mesures.plot_conditionnal_density(gllim, Y0_obs, X0_obs, with_modal=2)
-
     MCMC_X, Std = exp.context.get_result()
     Yobs = exp.context.get_observations()
 
+    # pyplot.plot(Yobs)
+    # pyplot.show()
+
     # Xis1 = importance_sampling.mean_IS(Yobs, gllim, exp.context.F, noise_cov, noise_mean, Nsample=100000)
     # Xis = exp.context.to_X_physique(Xis1)
-    Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=False)
+    Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=True)
     Xmean = exp.context.to_X_physique(Xmean)
     Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
     Covs = np.array([exp.context.to_Cov_physique(C) for C in Covs])
 
+    # a = exp.mesures._relative_error(exp.context.F(MCMC_X), Yobs)
+    # b = exp.mesures._relative_error(exp.context.F(Xmean), Yobs)
+    c = exp.mesures._relative_error(exp.context.F(exp.context.normalize_X(Xmean)) + noise_mean, Yobs)
+    print(exp.context.normalize_X(Xmean))
+    y_error_mean = np.mean(c)
+
+    varlims = [(0, 0.6), (-0.2, 0.7), (0, 20), (0.55, 1.1)]
     exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
-                                         xtitle="longeur d'onde ($\mu$m)", varlims="context",
-                                         Xref=MCMC_X, StdRef=Std)
+                                         xtitle="longeur d'onde ($\mu$m)", varlims=varlims,
+                                         Xref=MCMC_X, StdRef=Std, title=f"Y error : {y_error_mean:.4f}")
+
+    # pyplot.scatter(range(len(Yobs)),a,label="Ref")
+    # pyplot.scatter(range(len(Yobs)),b,label="GLLiM mean")
+    # pyplot.scatter(range(len(Yobs)),c,label="GLLiM mean + offset")
+    # pyplot.ylim(0,5)
+    # pyplot.legend()
+    # pyplot.show()
 
     # exp.results.plot_density_sequence(gllim, Yobs, None,
     #                                   index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,
