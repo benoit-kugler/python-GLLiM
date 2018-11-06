@@ -1,6 +1,7 @@
 import json
 import logging
 import os.path
+import zlib
 
 from matplotlib import pyplot
 import coloredlogs
@@ -24,8 +25,18 @@ class NoiseEstimation:
         self.method = method
 
     def _is_gllim_tag(self):
+        if type(em_is_gllim.INIT_COV_NOISE) is int or type(em_is_gllim.INIT_COV_NOISE) is float:
+            initcov = em_is_gllim.INIT_COV_NOISE
+        else:
+            initcov = zlib.adler32(str(em_is_gllim.INIT_COV_NOISE).encode('utf8'))
+
+        if type(em_is_gllim.INIT_MEAN_NOISE) is int or type(em_is_gllim.INIT_MEAN_NOISE) is float:
+            initmean = em_is_gllim.INIT_MEAN_NOISE
+        else:
+            initmean = zlib.adler32(str(em_is_gllim.INIT_MEAN_NOISE).encode('utf8'))
+
         s = f"isGLLiM-withIS:{not em_is_gllim.NO_IS}-" \
-            f"initCov:{em_is_gllim.INIT_COV_NOISE}-initMean:{em_is_gllim.INIT_MEAN_NOISE}"
+            f"initCov:{initcov}-initMean:{initmean}"
         return s
 
     def _gd_tag(self):
@@ -48,7 +59,7 @@ class NoiseEstimation:
             return f"({self.Nobs}) $\mu$:{mean_factor:.3f}-$\Sigma$:{cov_factor:.3f}"
 
     def run_noise_estimator(self, save=False):
-        logging.info(f"Starting noise estimation for {self.context.__class__name__}")
+        logging.info(f"Starting noise estimation for {self.context.__class__.__name__}")
         if self.obs_mode == "obs":
             Yobs = self.context.get_observations()
         else:
@@ -128,20 +139,26 @@ class NoiseEstimation:
         with open(path) as f:
             d = json.load(f)
         average_over = average_over or 1
-        means, covs = zip(*d[:-average_over])
+        means, covs, J = zip(*d[:-average_over])
         mean = np.mean(means, axis=0)
         cov = np.mean(covs, axis=0)
         return mean, cov
 
 
 def launch_tests():
+    noise_GD.Ntrain = 1000000
+    exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
+
+    noise_mean, noise_cov = exp.get_last_params(average_over=500)
+
+
     em_is_gllim.Ntrain = 50000
     em_is_gllim.N_sample_IS = 100000
     em_is_gllim.maxIterGlliM = 100
     em_is_gllim.stoppingRatioGLLiM = 0.001
     em_is_gllim.maxIter = 150
-    em_is_gllim.INIT_MEAN_NOISE = 0
-    em_is_gllim.INIT_COV_NOISE = 0.001
+    em_is_gllim.INIT_MEAN_NOISE = noise_mean
+    em_is_gllim.INIT_COV_NOISE = noise_cov
 
     # NoiseEstimation.Nobs = 200
     # obs_mode = {"mean": 1, "cov": 0.001}
@@ -154,7 +171,7 @@ def launch_tests():
     # exp.run_noise_estimator(True)
     # exp.show_history()
 
-    noise_GD.Ntrain = 1000000
+
     # exp = NoiseEstimation(context.LabContextOlivine, "obs", "diag", "gd")
     # # exp.run_noise_estimator(save=True)
     # exp.show_history(fst_ylims=(-0.14, 0.14),snd_ylims=(0,0.001))
@@ -163,14 +180,14 @@ def launch_tests():
     # # exp.run_noise_estimator(True)
     # exp.show_history(fst_ylims=(-0.14, 0.14),snd_ylims=(0,0.001))
     #
-    exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
+    # exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
     # exp.run_noise_estimator(save=True)
+    # exp.show_history()
+
+    exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
+    exp.run_noise_estimator(True)
     exp.show_history()
 
-    # exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
-    # exp.run_noise_estimator(True)
-    # exp.show_history()
-    return
 
 
 if __name__ == '__main__':
