@@ -138,8 +138,9 @@ class NoiseEstimation:
         path = self.get_path("json")
         with open(path) as f:
             d = json.load(f)
+        logging.debug(f" Noise estimation loaded from {path}")
         average_over = average_over or 1
-        means, covs, J = zip(*d[:-average_over])
+        means, covs, *_ = zip(*d[:-average_over])
         mean = np.mean(means, axis=0)
         cov = np.mean(covs, axis=0)
         return mean, cov

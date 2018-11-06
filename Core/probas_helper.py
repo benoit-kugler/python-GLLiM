@@ -235,11 +235,65 @@ def cholesky_list(Cs):
     return out
 
 
+@nb.njit(cache=True)
 def covariance_melange(weigths,means,covs):
     """Returns a matrix of same shape as covs[0]"""
-    sc = (weigths[:,None] * means).sum(axis=0)
-    p1 = weigths[:,None,None] * (covs + np.matmul(means[:,:,None],means[:,None,:]))
-    return p1.sum(axis=0) - (sc[None,:] * sc[:,None])
+    sc = (weigths.reshape((-1, 1)) * means).sum(axis=0)
+    p1 = np.zeros(covs[0].shape)
+    for k in range(len(weigths)):
+        wk = weigths[k]
+        mk = np.copy(means[k])
+        c = mk.reshape((-1, 1)).dot(mk.reshape((1, -1)))
+        p1 += (c + covs[k]) * wk
+    return p1 - sc.reshape((-1, 1)).dot(sc.reshape((1, -1)))
+
+
+@nb.njit(cache=True)
+def _mean_melange(weights, means):
+    return np.sum(weights.reshape((-1, 1)) * means, axis=0)
+
+
+@nb.njit(cache=True)
+def mean_melange(weightss, meanss):
+    N, K, L = meanss.shape
+    mean = np.zeros((N, L))
+    for n in range(N):
+        mean[n] = _mean_melange(weightss[n], meanss[n])
+    return mean
+
+
+def mean_cov_melange(weightss, meanss, covs):
+    if covs.ndim == 4:  # diferrents covs for each obs
+        return _mean_cov_melange_pluriCov(weightss, meanss, covs)
+    else:
+        return _mean_cov_melange_monoCov(weightss, meanss, covs)
+
+
+@nb.njit(cache=True)
+def _mean_cov_melange_monoCov(weightss, meanss, covs):
+    N, K, L = meanss.shape
+    mean_mel = np.zeros((N, L))
+    t = covs[0].shape
+    covs_mel = np.empty((N, *t))
+    for n in range(N):
+        wn, mn = weightss[n], meanss[n]
+        mean_mel[n] = _mean_melange(wn, mn)
+        covs_mel[n] = covariance_melange(wn, mn, covs)
+    return mean_mel, covs_mel
+
+
+@nb.njit(cache=True)
+def _mean_cov_melange_pluriCov(weightss, meanss, covs):
+    N, K, L = meanss.shape
+    mean_mel = np.zeros((N, L))
+    t = covs[0, 0].shape
+    covs_mel = np.empty((N, *t))
+    for n in range(N):
+        wn, mn, cn = weightss[n], meanss[n], covs[n]
+        mmm = _mean_melange(wn, mn)
+        mean_mel[n] = mmm
+        covs_mel[n] = covariance_melange(wn, mn, cn)
+    return mean_mel, covs_mel
 
 
 def dominant_components(weights,means,covs,threshold=None,sort_by="height",dets=None):

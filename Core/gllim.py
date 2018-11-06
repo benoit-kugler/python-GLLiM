@@ -18,6 +18,7 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.mixture import GaussianMixture
 from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
 
+from Core import probas_helper, mixture_merging
 from Core.probas_helper import chol_loggausspdf, densite_melange, dominant_components, covariance_melange, \
     chol_loggausspdf_iso, GMM_sampling
 from tools import regularization
@@ -610,7 +611,7 @@ class GLLiM():
             self.track.append(self.theta)
 
     def inversion(self):
-        ''' Bayesian inversion of the parameters'''
+        """ Bayesian inversion of the parameters"""
         start_time_inversion = time.time()
 
         self.ckListS = np.array([Ak.dot(ck) + bk for Ak, bk, ck in zip(self.AkList, self.bkList, self.ckList)])  # (9)
@@ -657,8 +658,6 @@ class GLLiM():
             self.SigmakList = np.array([np.eye(self.D) * 1e-12] * self.K)
         self.inversion()
 
-
-
     @property
     def norm2_SigmaSGammaInv(self):
         return np.array([np.linalg.norm(x, 2) for x in
@@ -687,22 +686,16 @@ class GLLiM():
         alpha, normalisation = np.exp(logalpha), np.exp(log_density)
         return proj.transpose((1, 2, 0)), alpha, normalisation
 
-    @staticmethod
-    def _mean_melange(meanss, weightss):
-        return np.sum(weightss.reshape((1, *weightss.shape)) * meanss.transpose((2, 0, 1)), axis=2).T
-
     def predict_high_low(self, Y, with_covariance=False):
         """Forward prediction.
         If with_covariance, returns covariance matrix of the mixture, shape (len(Y),L,L)"""
-        N = Y.shape[0]
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
-        Xpred = self._mean_melange(proj, alpha)  # (16)
         if with_covariance:
-            covs = np.empty((N, self.Lt, self.Lt))
-            for n, meann, alphan in zip(range(N), proj, alpha):
-                covs[n] = covariance_melange(alphan, meann, self.SigmakListS)
-            return Xpred, covs
-        return Xpred  # N x L
+            Xpred, Covs = probas_helper.mean_cov_melange(alpha, proj, self.SigmakListS)
+            return Xpred, Covs
+        else:
+            Xpred = probas_helper.mean_melange(alpha, proj)
+            return Xpred
 
     def predict_cluster(self, X, with_covariance=False):
         """Backward prediction
@@ -824,7 +817,7 @@ class GLLiM():
         Number of x to predict is choosen according to F criteria."""
         meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
         # sampless = self._sample_from_mixture(meanss, weightss, size)  # too large when N is big
-        Xmeans = self._mean_melange(meanss, weightss)  # avoid recomp
+        Xmeans = probas_helper.mean_melange(meanss, weightss)  # avoid recomp
         preds = []
         N = len(Y)
         k_choosen = []
@@ -855,6 +848,13 @@ class GLLiM():
         props = (np.array(k_choosen)[:, None] == np.arange(0, nb_predsMax)[None, :]).sum(axis=0) / N
         logging.info(f"Number of prediction proporations : {props}")
         return preds
+
+    def merged_prediction(self, Y):
+        meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
+        ti = time.time()
+        Xmean, Covs, Xweight = mixture_merging.merge_predict(weightss, meanss, self.SigmakListS)
+        logging.info(f"Merging of GMM mixture done in {time.time() - ti:.3f} s")
+        return Xmean, Covs, Xweight
 
 
 class jGLLiM(GLLiM):

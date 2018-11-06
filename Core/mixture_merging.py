@@ -6,33 +6,49 @@ import logging
 import coloredlogs
 import numpy as np
 import numba as nb
-from matplotlib import pyplot
 
 from Core import probas_helper
 
 
-def merge_to_2components(weights, means, covs):
+def merge_predict(weights, means, covs):
     """Entry point
 
     :param weights: shape N,K
     :param means: shape N,K,L
     :param covs: shape K,L,L
-    :return: tuple ( N,2 ; N,2,L ; N,2,L,L)
+    :return: tuple ( N,L ; N,L,L ; N,2,L)
     """
     N, _ = weights.shape
-    _merge(weights, means, np.array([covs] * N))
+    ws, ms, covs = _merge(weights, means, np.array([covs] * N))
+    Xpred, Covs = probas_helper.mean_cov_melange(ws, ms, covs)
+    Xweights = ms  # "modes"
+    return Xpred, Covs, Xweights
+
+
+def _merge(weightss, meanss, covss, with_plot=False):
+    N, K, L = meanss.shape
+    current_ws, current_ms, current_covs = weightss, meanss, covss
+    while K > 2:
+        current_ws, current_ms, current_covs = _K_step(current_ws, current_ms, current_covs)
+        K -= 1
+        logging.debug("Current mixture size : {}".format(K))
+        if with_plot:
+            _show_density(current_ws, current_ms, current_covs)
+    return current_ws, current_ms, current_covs
 
 
 @nb.njit(cache=True, fastmath=True, nogil=True)
 def merge_2_gaussians(w1, w2, m1, m2, C1, C2):
     """Return weight, mean and cov of merged gaussians eq (2-3-4)"""
-    w = w1 + w2
-    w1s = w1 / w
-    w2s = w2 / w
+    logw = np.log(w1 + w2)
+    if logw == - np.inf:  # extreme case, no influence on the mixture anyway
+        return 0, m1, C1
+    w1s = np.exp(np.log(w1) - logw)
+    w2s = np.exp(np.log(w2) - logw)
     m = w1s * m1 + w2s * m2
     diff = m1 - m2
     C = w1s * C1 + w2s * C2 + w1s * w2s * diff.reshape((-1, 1)).dot(diff.reshape((1, -1)))
-    return w, m, C
+    return np.exp(logw), m, C
 
 
 @nb.njit(cache=True, fastmath=True, nogil=True)
@@ -68,7 +84,7 @@ def find_pair_to_merge(weights, means, covs):
 def _K_step(current_ws, current_ms, current_covs):
     N, K, L = current_ms.shape
     new_weights, new_means, new_covs = np.zeros((N, K - 1)), np.zeros((N, K - 1, L)), np.zeros((N, K - 1, L, L))
-    for n in nb.prange(N):
+    for n in range(N):
         weights, means, covs = current_ws[n], current_ms[n], current_covs[n]
         i, j, merged_w, merged_m, merged_cov = find_pair_to_merge(weights, means, covs)
         keep_w = [weights[k] for k in range(K) if not (k == i or k == j)]
@@ -92,21 +108,13 @@ def _K_step(current_ws, current_ms, current_covs):
 #         sorted(zip(weights, means, covs), key=lambda t: t[0])[threshold:]
 
 
-def _merge(weightss, meanss, covss, with_plot=False):
-    N, K, L = meanss.shape
-    current_ws, current_ms, current_covs = weightss, meanss, covss
-    while K > 2:
-        current_ws, current_ms, current_covs = _K_step(current_ws, current_ms, current_covs)
-        K -= 1
-        logging.debug("Current mixture size : {}".format(K))
-        if with_plot:
-            _show_density(current_ws, current_ms, current_covs)
-    return current_ws, current_ms, current_covs
+
 
 
 # ---------------------- DEBUG Tools ---------------------- #
 
 def _show_density(current_ws, current_ms, current_covs):
+    from matplotlib import pyplot
     pyplot.clf()
     xlim = ylim = (0, 1)
     RESOLUTION = 200
@@ -131,14 +139,14 @@ def _test():
     cov = np.dot(T, T.T)
     U = np.linalg.cholesky(cov).T  # DxD
 
-    N = 10000
-    K = 60
+    N = 1000
+    K = 5
     covs = np.array([cov] * K)
     wks = np.arange(N * K, dtype=float).reshape((N, K)) + 1
     wks /= wks.sum(axis=1, keepdims=True)
     meanss = np.random.random_sample((N, K, L))
 
-    merge_to_2components(wks, meanss, covs)
+    a, b, c = merge_predict(wks, meanss, covs)
 
 
 if __name__ == '__main__':

@@ -90,11 +90,14 @@ class VisualisationResults(Results):
                                savepath=savepath2)
 
     def prediction_by_components(self, Xmean, Covs, labels, xtitle="observations", varlims=None, Xweight=None,
-                                 savepath=None, Xref=None, StdRef=None, indexes=None, title=None):
+                                 savepath=None, Xref=None, StdRef=None, indexes=None, title=None,
+                                 is_merged_pred=False):
         """Draw one axe by variable, with optionnal reference, standard deviation,
-        and modal predictions (with exlu regularization). Return mean predictions with covariances"""
+        and modal predictions (with exlu regularization). Return mean predictions with covariances.
+        If is_merged_pred , add tag in filename and title"""
         exp = self.experience
-        savepath = savepath or exp.archive.get_path("figures", filecategorie="synthese1D")
+        fc = "synthese1D_mergedPred" if is_merged_pred else "synthese1D"
+        savepath = savepath or exp.archive.get_path("figures", filecategorie=fc)
         varlims = exp.variables_lims if (varlims == "context") else varlims
         varnames = exp.variables_names
         if indexes is not None:
@@ -106,7 +109,10 @@ class VisualisationResults(Results):
             varlims = varlims[list(indexes)] if varlims is not None else None
             varnames = varnames[list(indexes)]
         StdMean = np.sqrt(Covs)
-        title = title or "Prédiction - Vue par composants"
+        default_title = "Prédiction - Vue par composants"
+        if is_merged_pred:
+            default_title += " - GMM-Merged"
+        title = title or default_title
         self.G.Results_1D(Xmean, StdMean, Xweight, labels, xtitle, varnames,
                           varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
                           title=title,
