@@ -442,9 +442,10 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 def main():
     noise_GD.Ntrain = 1000000
-
-    exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
-    noise_mean, noise_cov = exp.get_last_params(average_over=500)
+    em_is_gllim.INIT_MEAN_NOISE = 2243303186
+    em_is_gllim.INIT_COV_NOISE = 2308448170
+    exp = NoiseEstimation(context.LabContextNontronite, "obs", "full", "is_gllim")
+    noise_mean, noise_cov = exp.get_last_params(average_over=1)
     # em_is_gllim.INIT_MEAN_NOISE = noise_mean
     # em_is_gllim.INIT_COV_NOISE = noise_cov
     #
@@ -452,12 +453,13 @@ def main():
     # exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
     #
     # noise_mean, noise_cov = exp.get_last_params(average_over=40)
-    # noise_cov = 0.001
-    # noise_mean = 0
+    noise_cov = 0.001
+    noise_mean = 0
+    # training.DISABLE_MP = True
     exp, gllim = Experience.setup(context.LabContextNontronite, 40, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=False, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
+                                  regenere_data=True, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
                                   method="sobol",
-                                  mode="l", init_local=10,
+                                  mode="r", init_local=10,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
 
     # noise_cov = noise_cov * np.ones(exp.context.D)
@@ -474,8 +476,8 @@ def main():
 
     # Xis1 = importance_sampling.mean_IS(Yobs, gllim, exp.context.F, noise_cov, noise_mean, Nsample=100000)
     # Xis = exp.context.to_X_physique(Xis1)
-    Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=True)
-    # Xmean, Covs, Xweight = gllim.merged_prediction(Yobs)
+    # Xmean, Covs, Xweight, _, _ = exp.results.full_prediction(gllim, Yobs, with_modal=2, with_regu=True)
+    Xmean, Covs, Xweight = gllim.merged_prediction(Yobs)
 
     Xmean = exp.context.to_X_physique(Xmean)
     Xweight = np.array([exp.context.to_X_physique(X) for X in Xweight])
@@ -483,15 +485,16 @@ def main():
 
     # a = exp.mesures._relative_error(exp.context.F(MCMC_X), Yobs)
     # b = exp.mesures._relative_error(exp.context.F(Xmean), Yobs)
-    c = exp.mesures._relative_error(exp.context.F(exp.context.normalize_X(Xmean)) + noise_mean, Yobs)
+    corrected_X = exp.context.normalize_X(Xmean * (Xmean <= 1) + 1 * (Xmean > 1))
+    c = exp.mesures._relative_error(exp.context.F(corrected_X) + noise_mean, Yobs)
     y_error_mean = np.mean(c)
     title = f"Y error : {y_error_mean:.4f}"
 
     varlims = [(0, 0.6), (-0.2, 0.7), (0, 20), (0.55, 1.1)]
     exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
                                          xtitle="longeur d'onde ($\mu$m)", varlims=varlims,
-                                         Xref=MCMC_X, StdRef=Std,
-                                         is_merged_pred=False)
+                                         Xref=MCMC_X, StdRef=Std, title=title,
+                                         is_merged_pred=True)
 
     # pyplot.scatter(range(len(Yobs)),a,label="Ref")
     # pyplot.scatter(range(len(Yobs)),b,label="GLLiM mean")
@@ -695,6 +698,11 @@ if __name__ == '__main__':
                         datefmt="%H:%M:%S")
     # RTLS()
     main()
+    # exp = Experience(context.LabContextOlivine)
+    # p = exp.archive._base_dir("figures")
+    # Yobs = exp.context.get_observations()
+    # pyplot.plot(Yobs)
+    # pyplot.savefig(p + "/observations.png")
     # monolearning()
     # test_map()
     # double_learning(Ntest=10, retrain_base=False, retrain_second=False)

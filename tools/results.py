@@ -110,9 +110,9 @@ class VisualisationResults(Results):
             varnames = varnames[list(indexes)]
         StdMean = np.sqrt(Covs)
         default_title = "Prédiction - Vue par composants"
-        if is_merged_pred:
-            default_title += " - GMM-Merged"
         title = title or default_title
+        if is_merged_pred:
+            title += " - GMM-Merged"
         self.G.Results_1D(Xmean, StdMean, Xweight, labels, xtitle, varnames,
                           varlims, Xref, StdRef, context=exp.get_infos(Ntest="-"),
                           title=title,

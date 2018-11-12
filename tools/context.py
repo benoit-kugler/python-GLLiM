@@ -825,6 +825,34 @@ class VoieL(abstractGlaceContext):
 
     LABEL = "Config. Glace - Voie L"
 
+
+# ------------- Dummy Linear Injective F ------------- #
+class LinearFunction(abstractFunctionModel):
+    F_matrix = np.diag(1 + 0.5 * np.arange(10))[:, :4]
+
+    D = 10
+
+    PRIOR_COV = 0.2 * np.eye(4)
+
+    LABEL = "Fonction linéaire injective"
+
+    def _F(self, X):
+        return self.F_matrix.dot(X.T).T
+
+    def get_X_sampling(self, N, method='sobol'):
+        return np.random.multivariate_normal(np.zeros(4), self.PRIOR_COV, size=N)
+
+    def normalize_X(self, X):
+        """Takes X values and returns a version in [0,1]"""
+        return X
+
+    def to_X_physique(self, X):
+        """Maps mathematical X valued to physical ones"""
+        return X
+
+
+
+
 if __name__ == '__main__':
     def test_bruit(N=10000):
         h = HapkeContext(None)
@@ -870,11 +898,21 @@ if __name__ == '__main__':
     # axe.plot_surface(x, y, Z[0], color="gray", alpha=0.4, label="True F")
     # pyplot.show()
 
-    h = LabContextNontronite()
-    # print(h.get_observations().shape)
-    # print(h.geometries)
+    # h = LabContextNontronite()
+    # # print(h.get_observations().shape)
+    # # print(h.geometries)
+    # # h = LabContextOlivine()
+    # y = h.get_observations()
+    # print(h.geometries.shape)
+    # np.savetxt("/home/bkugler/Documents/reunion8_11/olivine_geom.txt",h.geometries[:,0,:],fmt="%.2f")
+    # pyplot.plot(h.wavelengths, y)
+    # pyplot.savefig("/home/bkugler/Documents/reunion8_11/nontronite.png")
+    #
     # h = LabContextOlivine()
-    y = h.get_observations()
-    pyplot.plot(h.wavelengths, y)
-    pyplot.show()
+    # y = h.get_observations()
+    # pyplot.clf()
+    # pyplot.plot(h.wavelengths, y)
+    # pyplot.savefig("/home/bkugler/Documents/reunion8_11/olivine.png")
     # print(h.geometries)
+
+    print(LinearFunction.F_matrix)

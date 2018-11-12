@@ -527,6 +527,7 @@ class GLLiM():
 
         # M-mapping-step
         SkList_X = self._get_SkList_X(SkList_W)
+
         AkList = self._compute_Ak(Xnk, Y, SkList_X)
 
         bkList = self._compute_bk(Y, Xnk, AkList)

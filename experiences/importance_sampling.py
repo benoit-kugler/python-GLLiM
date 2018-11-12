@@ -7,12 +7,8 @@ import coloredlogs
 import numpy
 import numpy as np
 
-from matplotlib import pyplot
-
-from Core.gllim import GLLiM, jGLLiM
-from Core.probas_helper import densite_melange, chol_loggauspdf_diag, chol_loggausspdf, chol_loggausspdf_precomputed
-from tools import context
-from tools.experience import Experience
+from Core.gllim import GLLiM
+from Core.probas_helper import densite_melange, chol_loggauspdf_diag, chol_loggausspdf_precomputed
 
 
 def gllim_q(Xs: numpy.ndarray, Y: numpy.ndarray, gllim: GLLiM):
@@ -106,28 +102,27 @@ def compute_is(Y, gllim, G, F, noise_cov, noise_mean, Nsample=50000):
     return _clean_integrate(G, Xs, ws)
 
 
-
-def _test():
-    c: context.abstractExpFunction = context.InjectiveFunction(1)()
-
-    exp, gllim = Experience.setup(context.InjectiveFunction(1), 30, partiel=None, with_plot=True,
-                                  regenere_data=False, with_noise=50, N=10000, method="sobol",
-                                  mode="l", init_local=100,
-                                  sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
-
-    X = c.get_X_sampling(1)
-    Y = c.F(X)
-    Xs = c.get_X_sampling(200)[None, :]
-    dens = p_tilde(Xs, Y, c.F, 50)[0]
-    dens2 = gllim_q(Xs, Y, gllim)[0]
-    pyplot.scatter(Xs[0, :, 0], np.log(dens), label="p_tilde")
-    pyplot.scatter(Xs[0, :, 0], np.log(dens2), label="q")
-    pyplot.axvline(X[0])
-    ws = p_tilde(Xs, Y, c.F, 50) / gllim_q(Xs, Y, gllim)
-    ws[~ numpy.isfinite(ws)] = 0
-    pyplot.scatter(Xs[0, :, 0], np.log(ws), label="w_i")
-    pyplot.legend()
-    pyplot.show()
+# def _test():
+#     c: context.abstractExpFunction = context.InjectiveFunction(1)()
+#
+#     exp, gllim = Experience.setup(context.InjectiveFunction(1), 30, partiel=None, with_plot=True,
+#                                   regenere_data=False, with_noise=50, N=10000, method="sobol",
+#                                   mode="l", init_local=100,
+#                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
+#
+#     X = c.get_X_sampling(1)
+#     Y = c.F(X)
+#     Xs = c.get_X_sampling(200)[None, :]
+#     dens = p_tilde(Xs, Y, c.F, 50)[0]
+#     dens2 = gllim_q(Xs, Y, gllim)[0]
+#     pyplot.scatter(Xs[0, :, 0], np.log(dens), label="p_tilde")
+#     pyplot.scatter(Xs[0, :, 0], np.log(dens2), label="q")
+#     pyplot.axvline(X[0])
+#     ws = p_tilde(Xs, Y, c.F, 50) / gllim_q(Xs, Y, gllim)
+#     ws[~ numpy.isfinite(ws)] = 0
+#     pyplot.scatter(Xs[0, :, 0], np.log(ws), label="w_i")
+#     pyplot.legend()
+#     pyplot.show()
 
 
 

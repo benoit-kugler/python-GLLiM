@@ -39,6 +39,12 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
     return gllim
 
 
+def _gllim_step_lin():
+    pass
+
+
+
+
 @nb.jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def _clean_mean_vector(Gx, w, mask_x):
     N, L = Gx.shape
@@ -71,6 +77,7 @@ def _clean_mean_matrix(Gx, w, mask_x):
 
 @nb.njit(nogil=True, fastmath=True, cache=True)
 def _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y):
+    """Returns weights and mu expectancy"""
     q = densite_melange_precomputed(X, weights, means, gllim_chol_covs)
     p_tilde = np.exp(log_p_tilde)
     wsi = p_tilde / q  # Calcul des poids
@@ -86,6 +93,11 @@ def _helper_mu_NoIS(FX, mask_x, y):
     wsi = np.ones(Ns) / Ns
     esp_mui = _clean_mean_vector(G1, wsi, mask_x)
     return esp_mui
+
+
+@nb.njit(cache=True)
+def _helper_mu_lin(y, F, K, inverse_current_cov, current_mean):
+    return y - F.dot(K).dot(F.T).dot(inverse_current_cov).dot(y - current_mean)
 
 
 @nb.njit(nogil=True, cache=True)
@@ -131,6 +143,39 @@ def _mu_step_NoIS(Yobs, FXs, mask):
         esp_mu[i] = _helper_mu_NoIS(FX, mask_x, y)
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
     return maximal_mu
+
+
+@nb.njit(cache=True)
+def _mu_step_lin(Yobs, F, prior_cov, current_mean, current_cov):
+    Ny, D = Yobs.shape
+
+    esp_mu = np.zeros((Ny, D))
+
+    invsig = np.linalg.inv(current_cov)
+    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
+
+    for i in nb.prange(Ny):
+        y = Yobs[i]
+        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
+    maximal_mu = np.sum(esp_mu, axis=0) / Ny
+    return maximal_mu, K, esp_mu
+
+
+@nb.njit(cache=True)
+def _mu_step_diag_lin(Yobs, F, prior_cov, current_mean, current_cov):
+    Ny, D = Yobs.shape
+
+    esp_mu = np.zeros((Ny, D))
+
+    invsig = np.diag(1 / current_cov)
+    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
+
+    for i in nb.prange(Ny):
+        y = Yobs[i]
+        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
+    maximal_mu = np.sum(esp_mu, axis=0) / Ny
+    return maximal_mu, K, esp_mu
+
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
@@ -189,6 +234,34 @@ def _sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu):
         esp_sigma[i] = _clean_mean_vector(G3, wsi, mask[i])
 
     maximal_sigma = np.sum(esp_sigma, axis=0) / Ny
+    return maximal_sigma
+
+
+@nb.njit(cache=True)
+def _sigma_step_full_lin(F, K, esp_mu, max_mu):
+    base_cov = F.dot(K).dot(F.T)
+    Ny, D = esp_mu.shape
+    esp_sigma = np.zeros((Ny, D, D))
+
+    for i in range(Ny):
+        u = max_mu - esp_mu[i]
+        esp_sigma[i] = u.reshape((-1, 1)).dot(u.reshape((1, -1)))
+
+    maximal_sigma = base_cov + (np.sum(esp_sigma, axis=0) / Ny)
+    return maximal_sigma
+
+
+@nb.njit(cache=True)
+def _sigma_step_diag_lin(F, K, esp_mu, max_mu):
+    base_cov = F.dot(K).dot(F.T)
+    Ny, D = esp_mu.shape
+    esp_sigma = np.zeros((Ny, D))
+
+    for i in range(Ny):
+        u = max_mu - esp_mu[i]
+        esp_sigma[i] = np.square(u)
+
+    maximal_sigma = np.diag(base_cov) + (np.sum(esp_sigma, axis=0) / Ny)
     return maximal_sigma
 
 
@@ -290,6 +363,19 @@ def _em_step_NoIS(gllim, F, Yobs, current_cov, current_mean):
     return maximal_mu, maximal_sigma
 
 
+def _em_step_lin(F, Yobs, prior_cov, current_cov, current_mean):
+    ti = time.time()
+
+    _mu_step = _mu_step_diag_lin if current_cov.ndim == 1 else _mu_step_lin
+
+    maximal_mu, K, esp_mu = _mu_step(Yobs, F, prior_cov, current_mean, current_cov)
+    logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
+
+    ti = time.time()
+    _sigma_step = _sigma_step_diag_lin if current_cov.ndim == 1 else _sigma_step_full_lin
+    maximal_sigma = _sigma_step(F, K, esp_mu, maximal_mu)
+    logging.debug(f"Noise covariance estimation done in {time.time()-ti:.3f} s")
+    return maximal_mu, maximal_sigma
 
 
 def _init(cont: context.abstractHapkeModel, init_noise_cov, init_noise_mean):
@@ -306,7 +392,7 @@ def _init(cont: context.abstractHapkeModel, init_noise_cov, init_noise_mean):
     return gllim.theta
 
 
-def fit(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
+def run_em_gllim(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
     logging.info(f"""Starting noise estimation with IS-GLLiM
     With IS : {not NO_IS} ; Covariance constraint : {cov_type}
     Nobs = {len(Yobs)} , NSampleIS = {N_sample_IS}
@@ -326,14 +412,44 @@ def fit(Yobs, cont: context.abstractHapkeModel, cov_type="diag"):
             max_mu, max_sigma = _em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean)
         log_sigma = max_sigma if cov_type == "diag" else np.diag(max_sigma)
         logging.info(f"""
-Iteration {current_iter+1}/{maxIter}. 
-    New estimated OFFSET : {max_mu}
-    New estimated COVARIANCE : {log_sigma}""")
+    Iteration {current_iter+1}/{maxIter}. 
+        New estimated OFFSET : {max_mu}
+        New estimated COVARIANCE : {log_sigma}""")
         current_noise_cov, current_noise_mean = max_sigma, max_mu
         history.append((current_noise_mean.tolist(), current_noise_cov.tolist()))
     return history
 
 
+def run_em_lin(Yobs, cont, cov_type="diag"):
+    logging.info(f"""Starting noise estimation with IS-GLLiM (Linear case)
+    Covariance constraint : {cov_type}
+    Nobs = {len(Yobs)} 
+    Initial covariance noise : {INIT_COV_NOISE} 
+    Initial mean noise : {INIT_MEAN_NOISE}""")
+    Yobs = np.asarray(Yobs, dtype=float)
+    F = cont.F_matrix
+    prior_cov = cont.PRIOR_COV
+    base_cov = np.eye(cont.D) if cov_type == "full" else np.ones(cont.D)
+    current_noise_cov, current_noise_mean = INIT_COV_NOISE * base_cov, INIT_MEAN_NOISE * np.ones(cont.D)
+    history = [(current_noise_mean.tolist(), current_noise_cov.tolist())]
+    for current_iter in range(maxIter):
+        max_mu, max_sigma = _em_step_lin(F, Yobs, prior_cov, current_noise_cov, current_noise_mean)
+
+        log_sigma = max_sigma if cov_type == "diag" else np.diag(max_sigma)
+        logging.debug(f"""
+    Iteration {current_iter+1}/{maxIter}. 
+        New estimated OFFSET : {max_mu}
+        New estimated COVARIANCE : {log_sigma}""")
+        current_noise_cov, current_noise_mean = max_sigma, max_mu
+        history.append((current_noise_mean.tolist(), current_noise_cov.tolist()))
+    return history
+
+
+def fit(Yobs, cont: context.abstractFunctionModel, cov_type="diag", with_F_lin=False):
+    if with_F_lin:
+        return run_em_lin(Yobs, cont, cov_type)
+    else:
+        return run_em_gllim(Yobs, cont, cov_type)
 
 
 
@@ -356,13 +472,14 @@ def _debug():
     maxIter = 2
     Nobs = 20
     N_sample_IS = 10000
-    cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    # cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    cont = context.LinearFunction()
     INIT_COV_NOISE = 0.005
     _, Yobs = cont.get_data_training(Nobs)
-    Yobs = cont.add_noise_data(Yobs, covariance=0.005, mean=0.1)
+    Yobs = cont.add_noise_data(Yobs, covariance=0.05, mean=2)
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
-    fit(Yobs, cont, cov_type="full")
+    fit(Yobs, cont, cov_type="full", with_F_lin=True)
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",

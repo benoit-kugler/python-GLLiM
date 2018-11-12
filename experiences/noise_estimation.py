@@ -18,11 +18,12 @@ class NoiseEstimation:
 
     context: context
 
-    def __init__(self, context_class, obs_mode, cov_type, method):
+    def __init__(self, context_class, obs_mode, cov_type, method, assume_linear=False):
         self.context = context_class()
         self.obs_mode = obs_mode
         self.cov_type = cov_type
         self.method = method
+        self.assume_linear = assume_linear
 
     def _is_gllim_tag(self):
         if type(em_is_gllim.INIT_COV_NOISE) is int or type(em_is_gllim.INIT_COV_NOISE) is float:
@@ -46,6 +47,8 @@ class NoiseEstimation:
     def get_path(self, extension):
         obs_tag = self._get_observations_tag()
         method_tag = self._is_gllim_tag() if self.method == "is_gllim" else self._gd_tag()
+        if self.assume_linear:
+            method_tag += "-LIN"
         suff = f"{self.context.__class__.__name__}-{obs_tag}-covEstim:{self.cov_type}-{method_tag}.{extension}"
         return os.path.join(self.BASE_PATH, suff)
 
@@ -69,7 +72,7 @@ class NoiseEstimation:
             Yobs = self.context.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
         Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
         fit = em_is_gllim.fit if self.method == "is_gllim" else noise_GD.fit
-        history = fit(Yobs, self.context, cov_type=self.cov_type)
+        history = fit(Yobs, self.context, cov_type=self.cov_type, with_F_lin=self.assume_linear)
         if not save:
             logging.info("No data saved.")
             return history
@@ -81,10 +84,15 @@ class NoiseEstimation:
     def _title(self):
         s = "Initialisation : "
         if self.method == "is_gllim":
+            s = "IS-EM-GLLiM \n " + s
             s += f"$\mu = {em_is_gllim.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim.INIT_COV_NOISE}I_{{D}}$"
         else:
-            s = f"N = {noise_GD.Ntrain:,} \n" + s
+            s = "Gradient descent \n " + s
             s += f"$\mu = {noise_GD.INIT_MEAN_NOISE}$"
+            if self.assume_linear:
+                s += "\n Cas Linéaire"
+            else:
+                s += f" \n N = {noise_GD.Ntrain:,}"
         return s
 
     def show_history(self, fst_ylims=None, snd_ylims=None):
@@ -185,10 +193,18 @@ def launch_tests():
     # exp.run_noise_estimator(save=True)
     # exp.show_history()
 
+    mean_ylims = (-0.12, 0.12)
     exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
-    exp.run_noise_estimator(True)
-    exp.show_history()
+    # exp.run_noise_estimator(True)
+    exp.show_history(fst_ylims=mean_ylims)
 
+    exp = NoiseEstimation(context.LabContextNontronite, "obs", "full", "is_gllim")
+    # exp.run_noise_estimator(True)
+    exp.show_history(fst_ylims=mean_ylims)
+
+    exp = NoiseEstimation(context.MergedLabObservations, "obs", "full", "is_gllim")
+    # exp.run_noise_estimator(True)
+    exp.show_history(fst_ylims=mean_ylims)
 
 
 if __name__ == '__main__':

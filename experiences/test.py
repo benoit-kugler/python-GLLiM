@@ -31,7 +31,7 @@ from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, Inj
 from tools.interface_R import is_egal
 from tools.measures import Mesures
 from hapke.cython.hapke import Hapke_vect as Hapke_cython
-
+from hapke.hapke_vect_jit import Hapke_vect as Hapke_jit
 
 np.set_printoptions(precision=20,suppress=False)
 
@@ -178,28 +178,29 @@ def simple_function():
 
 def test_hapke_vect():
     h = HapkeContext(None)
-    X = h.get_X_sampling(100000)
+    X = h.get_X_sampling(200000)
+    t, t0, p = h.geometries
 
     GX = h._genere_data_for_Hapke(X)
-    t = time.time()
+    ti = time.time()
     y1 = Hapke_vect(*GX)
     y1 = np.array(np.split(y1, X.shape[0]))
-    print("Hapke time ", time.time() - t)
-    t = time.time()
+    print("Hapke time ", time.time() - ti)
+
+    ti = time.time()
     y2 = Hapke_opt(*GX)
     y2 = np.array(np.split(y2, X.shape[0]))
-    print("Hapke opt time ", time.time() - t)
+    print("Hapke opt time ", time.time() - ti)
 
     import pstats, cProfile
 
-    t, t0, p = h.geometries
     ti = time.time()
     y3 = Hapke_cython(t0[0], t[0], p[0], *X.T)
     print("Hapke cython time ", time.time() - ti)
     assert np.allclose(y1, y2)
-
     assert np.allclose(y1, y3)
 
+    assert np.allclose(y1, y4)
 
 def test_map(RETRAIN=False):
     # h = VoieS(None)
@@ -436,6 +437,6 @@ if __name__ == '__main__':
     # plot_cks(False)
     # interface_julia()
     # compare_is()
-    # test_hapX_vect()
+    test_hapke_vect()
     # test_custom_multinomial() #OK
-    test_GMM_sampling()
+    # test_GMM_sampling()

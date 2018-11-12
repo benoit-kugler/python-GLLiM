@@ -117,9 +117,12 @@ class Archive():
             os.makedirs(subdir)
         return subdir
 
+    def _base_dir(self, mode):
+        return os.path.join(self.directory, mode)
+
     def get_path(self,mode,filecategorie=None,with_track=False,fig_extension=".png",filename=None):
         """If filename is not None, use it instead of suffixe."""
-        basedir = os.path.join(self.directory,mode)
+        basedir = self._base_dir(mode)
         dataname = self._data_name()
         subdir = os.path.join(basedir,dataname)
 

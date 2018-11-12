@@ -27,6 +27,8 @@ NB_MAX_ITER_SECOND = 20
 """Number of used processes"""
 PROCESSES = 8
 
+"""Disable multi-processing"""
+DISABLE_MP = False
 
 # warnings.filterwarnings("ignore")
 
@@ -55,8 +57,14 @@ def _best_rnk(Ttrain,Ytrain,K, Lw, sigma_type, gamma_type,
     gllims = [(i, gllim_cls(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=verbose)) for i in
               range(NB_INSTANCES_RNK)]
 
-    with Pool(processes=PROCESSES, initializer=initialize_process, initargs=(Ttrain, Ytrain)) as p:
-        r = p.starmap(run_gllim, gllims)
+    if DISABLE_MP:
+        initialize_process(Ttrain, Ytrain)
+        r = []
+        for arg in gllims:
+            r.append(run_gllim(*arg))
+    else:
+        with Pool(processes=PROCESSES, initializer=initialize_process, initargs=(Ttrain, Ytrain)) as p:
+            r = p.starmap(run_gllim, gllims)
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])
     minll = min(g[0] for g in r)
@@ -95,8 +103,14 @@ def _best_rnk_precisions(Ttrain, Ytrain, K, ck_init_function, precision_rate,
         (i, gllim_cls(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, verbose=verbose), ck_init, precision_rate)
         for i, ck_init in enumerate(ck_inits)]
 
-    with Pool(processes=PROCESSES, initializer=initialize_process, initargs=(Ttrain, Ytrain)) as p:
-        r = p.starmap(run_gllim_precisions,gllims)
+    if DISABLE_MP:
+        initialize_process(Ttrain, Ytrain)
+        r = []
+        for arg in gllims:
+            r.append(run_gllim_precisions(*arg))
+    else:
+        with Pool(processes=PROCESSES, initializer=initialize_process, initargs=(Ttrain, Ytrain)) as p:
+            r = p.starmap(run_gllim_precisions, gllims)
 
     maxll, rnk, gllim = max(r, key=lambda x: x[0])
     minll = min(g[0] for g in r)
