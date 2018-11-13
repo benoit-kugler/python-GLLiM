@@ -828,11 +828,11 @@ class VoieL(abstractGlaceContext):
 
 # ------------- Dummy Linear Injective F ------------- #
 class LinearFunction(abstractFunctionModel):
-    F_matrix = np.diag(1 + 0.5 * np.arange(10))[:, :4]
+    F_matrix = 0.5 * np.diag(1 + 1 * np.arange(10))[:, :4]
 
     D = 10
 
-    PRIOR_COV = 0.2 * np.eye(4)
+    PRIOR_COV = 0.02 * np.eye(4)
 
     LABEL = "Fonction linéaire injective"
 

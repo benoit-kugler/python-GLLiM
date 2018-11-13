@@ -8,8 +8,8 @@ import numba as nb
 import numpy as np
 
 from Core.gllim import jGLLiM
-from Core.probas_helper import chol_loggauspdf_diag, chol_loggausspdf_precomputed, \
-    densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, _chol_loggauspdf_diag
+from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
+    _chol_loggauspdf_diag
 from tools import context
 
 # GLLiM parameters
@@ -39,15 +39,15 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
     return gllim
 
 
-def _gllim_step_lin():
-    pass
-
-
-
 
 @nb.jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def _clean_mean_vector(Gx, w, mask_x):
     N, L = Gx.shape
+
+    s = np.sum(w)
+    if s == 0:
+        return np.zeros(L)
+
     mask1 = np.empty(N, dtype=np.bool_)
     for i in range(N):
         mask1[i] = not np.isfinite(Gx[i]).all()
@@ -56,13 +56,18 @@ def _clean_mean_vector(Gx, w, mask_x):
     mask = mask_x | mask1 | mask2
     w[mask] = 0
     Gx[mask] = np.zeros(L)
-    w = w.reshape((-1, 1))
-    return np.sum(Gx * w, axis=0) / np.sum(w)
+    w2 = w.reshape((-1, 1))
+    return np.sum(Gx * w2, axis=0) / s
 
 
 @nb.jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def _clean_mean_matrix(Gx, w, mask_x):
     N, L, _ = Gx.shape
+
+    s = np.sum(w)
+    if s == 0:
+        return np.zeros((L, L))
+
     mask1 = np.empty(N, dtype=np.bool_)
     for i in range(N):
         mask1[i] = not np.isfinite(Gx[i]).all()
@@ -71,8 +76,8 @@ def _clean_mean_matrix(Gx, w, mask_x):
     mask = mask_x | mask1 | mask2
     w[mask] = 0
     Gx[mask] = np.zeros((L, L))
-    w = w.reshape((-1, 1, 1))
-    return np.sum(Gx * w, axis=0) / np.sum(w)
+    w2 = w.reshape((-1, 1, 1))
+    return np.sum(Gx * w2, axis=0) / s
 
 
 @nb.njit(nogil=True, fastmath=True, cache=True)
@@ -133,6 +138,7 @@ def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
     return maximal_mu, ws
 
 
+@nb.njit(nogil=True, parallel=True, fastmath=True)
 def _mu_step_NoIS(Yobs, FXs, mask):
     Ny, Ns, D = FXs.shape
     esp_mu = np.zeros((Ny, D))
@@ -143,39 +149,6 @@ def _mu_step_NoIS(Yobs, FXs, mask):
         esp_mu[i] = _helper_mu_NoIS(FX, mask_x, y)
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
     return maximal_mu
-
-
-@nb.njit(cache=True)
-def _mu_step_lin(Yobs, F, prior_cov, current_mean, current_cov):
-    Ny, D = Yobs.shape
-
-    esp_mu = np.zeros((Ny, D))
-
-    invsig = np.linalg.inv(current_cov)
-    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
-
-    for i in nb.prange(Ny):
-        y = Yobs[i]
-        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
-    maximal_mu = np.sum(esp_mu, axis=0) / Ny
-    return maximal_mu, K, esp_mu
-
-
-@nb.njit(cache=True)
-def _mu_step_diag_lin(Yobs, F, prior_cov, current_mean, current_cov):
-    Ny, D = Yobs.shape
-
-    esp_mu = np.zeros((Ny, D))
-
-    invsig = np.diag(1 / current_cov)
-    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
-
-    for i in nb.prange(Ny):
-        y = Yobs[i]
-        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
-    maximal_mu = np.sum(esp_mu, axis=0) / Ny
-    return maximal_mu, K, esp_mu
-
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
@@ -204,6 +177,39 @@ def _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
+def _mu_step_lin(Yobs, F, prior_cov, current_mean, current_cov):
+    Ny, D = Yobs.shape
+
+    esp_mu = np.zeros((Ny, D))
+
+    invsig = np.linalg.inv(current_cov)
+    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
+
+    for i in nb.prange(Ny):
+        y = Yobs[i]
+        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
+    maximal_mu = np.sum(esp_mu, axis=0) / Ny
+    return maximal_mu, K, esp_mu
+
+
+@nb.njit(nogil=True, parallel=True, fastmath=True)
+def _mu_step_diag_lin(Yobs, F, prior_cov, current_mean, current_cov):
+    Ny, D = Yobs.shape
+
+    esp_mu = np.zeros((Ny, D))
+
+    invsig = np.diag(1 / current_cov)
+    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
+
+    for i in nb.prange(Ny):
+        y = Yobs[i]
+        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
+    maximal_mu = np.sum(esp_mu, axis=0) / Ny
+    return maximal_mu, K, esp_mu
+
+
+
+@nb.njit(nogil=True, parallel=True, fastmath=True)
 def _sigma_step_diag(Yobs, FXs, ws, mask, maximal_mu):
     Ny, Ns, D = FXs.shape
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
@@ -220,6 +226,7 @@ def _sigma_step_diag(Yobs, FXs, ws, mask, maximal_mu):
     return maximal_sigma
 
 
+@nb.njit(nogil=True, parallel=True, fastmath=True)
 def _sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu):
     Ny, Ns, D = FXs.shape
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
@@ -237,13 +244,13 @@ def _sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu):
     return maximal_sigma
 
 
-@nb.njit(cache=True)
+@nb.njit(nogil=True, parallel=True, fastmath=True)
 def _sigma_step_full_lin(F, K, esp_mu, max_mu):
     base_cov = F.dot(K).dot(F.T)
     Ny, D = esp_mu.shape
     esp_sigma = np.zeros((Ny, D, D))
 
-    for i in range(Ny):
+    for i in nb.prange(Ny):
         u = max_mu - esp_mu[i]
         esp_sigma[i] = u.reshape((-1, 1)).dot(u.reshape((1, -1)))
 
@@ -251,13 +258,13 @@ def _sigma_step_full_lin(F, K, esp_mu, max_mu):
     return maximal_sigma
 
 
-@nb.njit(cache=True)
+@nb.njit(nogil=True, parallel=True, fastmath=True)
 def _sigma_step_diag_lin(F, K, esp_mu, max_mu):
     base_cov = F.dot(K).dot(F.T)
     Ny, D = esp_mu.shape
     esp_sigma = np.zeros((Ny, D))
 
-    for i in range(Ny):
+    for i in nb.prange(Ny):
         u = max_mu - esp_mu[i]
         esp_sigma[i] = np.square(u)
 
@@ -286,6 +293,7 @@ def _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu):
     return maximal_sigma
 
 
+@nb.njit(nogil=True, parallel=True, fastmath=True)
 def _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu):
     Ny, Ns, D = FXs.shape
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
@@ -309,7 +317,9 @@ def _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu):
 
 def _em_step(gllim, F, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
-    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    assert np.isfinite(Xs).all()
+    # mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    mask = ~ np.array([[True] * x.shape[0] for x in Xs])
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -324,6 +334,8 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
         FXs[i] = FX
     logging.debug(f"Computation of F done in {time.time()-ti:.3f} s")
     ti = time.time()
+
+    assert np.isfinite(FXs).all()
 
     if current_cov.ndim == 1:
         maximal_mu, ws = _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov)
@@ -340,7 +352,8 @@ def _em_step(gllim, F, Yobs, current_cov, current_mean):
 
 def _em_step_NoIS(gllim, F, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
-    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    # mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    mask = ~ np.array([[True] * x.shape[0] for x in Xs])
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -479,7 +492,7 @@ def _debug():
     Yobs = cont.add_noise_data(Yobs, covariance=0.05, mean=2)
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
-    fit(Yobs, cont, cov_type="full", with_F_lin=True)
+    fit(Yobs, cont, cov_type="diag", with_F_lin=True)
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",

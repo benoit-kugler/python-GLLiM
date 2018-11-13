@@ -232,8 +232,8 @@ class Archive():
         logging.debug(f"\tModel parameters and additional data loaded from {path}")
         return Y, X, thetas
 
-
-    def save_resultat(self,dic):
-        path = os.path.join(self.directory, "RES_" + self._suffixe())
+    def save_resultat(self, dic, path=None):
+        if path is None:
+            path = os.path.join(self.directory, "RES_" + self._suffixe())
         scipy.io.savemat(path,dic)
         logging.debug(f"Results saved in {path}")

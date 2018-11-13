@@ -1,1 +1,2 @@
 from .multinomial import multinomial_sampling as multinomial_sampling_cython
+from .sampling import sampling_sameCov_chols

@@ -15,8 +15,8 @@ from tools.experience import Experience
 SAVEPATH = "/scratch/WORK/comparaison"
 
 
-def train_predict(noise_mean, noise_cov, filename, retrain=True):
-    exp, gllim = Experience.setup(context.LabContextOlivine, 40, partiel=(0, 1, 2, 3), with_plot=True,
+def train_predict(noise_mean, noise_cov, base_fn, retrain=True):
+    exp, gllim = Experience.setup(context.LabContextNontronite, 40, partiel=(0, 1, 2, 3), with_plot=True,
                                   regenere_data=retrain, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
                                   method="sobol",
                                   mode="r" if retrain else "l", init_local=10,
@@ -36,13 +36,19 @@ def train_predict(noise_mean, noise_cov, filename, retrain=True):
     y_error_mean = np.mean(c)
     title = f"Y error : {y_error_mean:.4f}"
 
-    path = os.path.join(SAVEPATH, filename)
+    path = os.path.join(SAVEPATH, exp.context.__class__.__name__, base_fn)
 
     varlims = [(0, 0.6), (-0.2, 0.7), (0, 20), (0.55, 1.1)]
-    exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
-                                         xtitle="longeur d'onde ($\mu$m)", varlims=varlims,
-                                         Xref=MCMC_X, StdRef=Std, title=title, savepath=path,
-                                         is_merged_pred=True)
+    # exp.results.prediction_by_components(Xmean, Covs, exp.context.wavelengths, Xweight=Xweight,
+    #                                      xtitle="longeur d'onde ($\mu$m)", varlims=varlims,
+    #                                      Xref=MCMC_X, StdRef=Std, title=title, savepath=path + ".png",
+    #                                      is_merged_pred=True)
+
+    exp.archive.save_resultat({"w_mean": Xmean[:, 3], "w_var": Covs[:, 3, 3],
+                               "theta_mean": Xmean[:, 2], "theta_var": Covs[:, 2, 2],
+                               "b_mean": Xmean[:, 0], "b_var": Covs[:, 0, 0],
+                               "c_mean": Xmean[:, 1], "c_var": Covs[:, 1, 1],
+                               }, path=path)
 
 
 noise_GD.Ntrain = 1000000
@@ -52,13 +58,13 @@ em_is_gllim.INIT_COV_NOISE = 2308448170
 noise_cov0 = 0.001
 noise_mean0 = 0
 
-exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
+exp = NoiseEstimation(context.LabContextNontronite, "obs", "full", "is_gllim")
 noise_mean1, noise_cov1 = exp.get_last_params(average_over=1)
 
 exp = NoiseEstimation(context.MergedLabObservations, "obs", "full", "is_gllim")
 noise_mean2, noise_cov2 = exp.get_last_params(average_over=1)
 
-exp = NoiseEstimation(context.LabContextOlivine, "obs", "diag", "gd")
+exp = NoiseEstimation(context.LabContextNontronite, "obs", "diag", "gd")
 noise_mean3, noise_cov3 = exp.get_last_params(average_over=400)
 
 exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
@@ -68,8 +74,8 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
 
-    train_predict(noise_mean0, noise_cov0, "Olivine-sansBiais.png", retrain=True)
-    train_predict(noise_mean1, noise_cov1, "Olivine-GD-biaisOlivine.png", retrain=True)
-    train_predict(noise_mean2, noise_cov2, "Olivine-GD-biaisCommun.png", retrain=True)
-    train_predict(noise_mean3, noise_cov3, "Olivine-ISGLLiM-biaisOlivine.png", retrain=True)
-    train_predict(noise_mean4, noise_cov4, "Olivine-ISGLLiM-biaisCommun.png", retrain=True)
+    train_predict(noise_mean0, noise_cov0, "Nontronite-sansBiais", retrain=False)
+    train_predict(noise_mean1, noise_cov1, "Nontronite-GD-biaisNontronite", retrain=False)
+    train_predict(noise_mean2, noise_cov2, "Nontronite-GD-biaisCommun", retrain=False)
+    train_predict(noise_mean3, noise_cov3, "Nontronite-ISGLLiM-biaisNontronite", retrain=False)
+    train_predict(noise_mean4, noise_cov4, "Nontronite-ISGLLiM-biaisCommun", retrain=False)

@@ -457,7 +457,7 @@ def main():
     noise_mean = 0
     # training.DISABLE_MP = True
     exp, gllim = Experience.setup(context.LabContextNontronite, 40, partiel=(0, 1, 2, 3), with_plot=True,
-                                  regenere_data=True, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
+                                  regenere_data=False, noise_mean=noise_mean, noise_cov=noise_cov, N=50000,
                                   method="sobol",
                                   mode="r", init_local=10,
                                   sigma_type="full", gamma_type="full", gllim_cls=jGLLiM)
@@ -496,17 +496,7 @@ def main():
                                          Xref=MCMC_X, StdRef=Std, title=title,
                                          is_merged_pred=True)
 
-    # pyplot.scatter(range(len(Yobs)),a,label="Ref")
-    # pyplot.scatter(range(len(Yobs)),b,label="GLLiM mean")
-    # pyplot.scatter(range(len(Yobs)),c,label="GLLiM mean + offset")
-    # pyplot.ylim(0,5)
-    # pyplot.legend()
-    # pyplot.show()
 
-    # exp.results.plot_density_sequence(gllim, Yobs, None,
-    #                                   index=0, Xref=MCMC_X, StdRef=Std, with_pdf_images=False,
-    #                                   varlims=None, regul=False, xtitle="wavelength (microns)")
-    # #
 
 
 def glace():

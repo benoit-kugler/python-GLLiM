@@ -311,7 +311,29 @@ def dominant_components(weights,means,covs,threshold=None,sort_by="height",dets=
     return sorted(zip(heights,weights,means,covs), key=lambda d: d[i_sort], reverse=True)
 
 
-@nb.njit(cache=True, fastmath=True)
+# @nb.njit(cache=True, fastmath=True, parallel=True)
+# def _GMM_sampling_sameCov(means_list: np.ndarray, clusters_list: np.ndarray,
+#                           covs_list: np.ndarray, alea: np.ndarray):
+#     """Samples from N Gaussian Mixture Models
+#
+#     :param means_list: shape N,K,L
+#     :param clusters_list: shape N,size
+#     :param covs_list: shape K,L,L
+#     :return: shape N,size,L
+#     """
+#     N, K, L = means_list.shape
+#     size, _ = alea.shape
+#     out = np.empty((N, size, L))
+#     chols = cholesky_list(covs_list)
+#
+#     for n in nb.prange(N):
+#         clusters = clusters_list[n]
+#         means = means_list[n]
+#         for s in range(size):
+#             k = clusters[s]
+#             out[n, s] = chols[k].dot(alea[s]) + means[k]
+#     return out
+
 def _GMM_sampling_sameCov(means_list: np.ndarray, clusters_list: np.ndarray,
                           covs_list: np.ndarray, alea: np.ndarray):
     """Samples from N Gaussian Mixture Models
@@ -323,15 +345,9 @@ def _GMM_sampling_sameCov(means_list: np.ndarray, clusters_list: np.ndarray,
     """
     N, K, L = means_list.shape
     size, _ = alea.shape
-    out = np.empty((N, size, L))
     chols = cholesky_list(covs_list)
 
-    for n in range(N):
-        clusters = clusters_list[n]
-        means = means_list[n]
-        for s in range(size):
-            k = clusters[s]
-            out[n, s] = chols[k].dot(alea[s]) + means[k]
+    out = cython.sampling_sameCov_chols(means_list, clusters_list, chols, alea)
     return out
 
 
@@ -374,6 +390,7 @@ def GMM_sampling(means_list: np.ndarray, weights_list: np.ndarray,
 
     clusters_list = cython.multinomial_sampling_cython(weights_list, size)
 
+
     if covs_list.ndim == 3:
         return _GMM_sampling_sameCov(means_list, clusters_list, covs_list, alea)
     else:
@@ -412,4 +429,9 @@ if __name__ == '__main__':
     wks /= wks.sum(axis=1, keepdims=True)
     meanss = np.random.random_sample((N, K, D))
 
-    GMM_sampling(meanss, wks, covs, size)
+    ti = time.time()
+    print(time.time() - ti)
+
+    GMM_sampling(meanss, wks, covs, 1)
+
+    print(GMM_sampling(meanss, wks, covs, size))

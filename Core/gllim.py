@@ -19,8 +19,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
 
 from Core import probas_helper, mixture_merging
-from Core.probas_helper import chol_loggausspdf, densite_melange, dominant_components, covariance_melange, \
-    chol_loggausspdf_iso, GMM_sampling
+from Core.probas_helper import chol_loggausspdf, densite_melange, dominant_components, chol_loggausspdf_iso, \
+    GMM_sampling
 from tools import regularization
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -797,7 +797,8 @@ class GLLiM():
         """Compute law of X knowing Y and nb_per_Y points following this law"""
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
         ti = time.time()
-        s = GMM_sampling(proj, alpha, self.SigmakListS, nb_per_Y)
+        covs = self.SigmakListS
+        s = GMM_sampling(proj, alpha, covs, nb_per_Y)
         logging.debug(f"Sampling from mixture ({len(Y)} series of {nb_per_Y}) done in {time.time()-ti:.3f} s")
         return s
 

@@ -48,7 +48,7 @@ class NoiseEstimation:
         obs_tag = self._get_observations_tag()
         method_tag = self._is_gllim_tag() if self.method == "is_gllim" else self._gd_tag()
         if self.assume_linear:
-            method_tag += "-LIN"
+            method_tag += "-LIN-cov:" + str(zlib.adler32(context.LinearFunction.PRIOR_COV))
         suff = f"{self.context.__class__.__name__}-{obs_tag}-covEstim:{self.cov_type}-{method_tag}.{extension}"
         return os.path.join(self.BASE_PATH, suff)
 
@@ -83,16 +83,17 @@ class NoiseEstimation:
 
     def _title(self):
         s = "Initialisation : "
+        if self.assume_linear:
+            s = f"Cas Linéaire. Prior Cov : {context.LinearFunction.PRIOR_COV[0,0]} \n" + s
+
         if self.method == "is_gllim":
             s = "IS-EM-GLLiM \n " + s
             s += f"$\mu = {em_is_gllim.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim.INIT_COV_NOISE}I_{{D}}$"
         else:
             s = "Gradient descent \n " + s
             s += f"$\mu = {noise_GD.INIT_MEAN_NOISE}$"
-            if self.assume_linear:
-                s += "\n Cas Linéaire"
-            else:
-                s += f" \n N = {noise_GD.Ntrain:,}"
+            if not self.assume_linear:
+                s += f"\n N = {noise_GD.Ntrain:,}"
         return s
 
     def show_history(self, fst_ylims=None, snd_ylims=None):
@@ -207,13 +208,23 @@ def launch_tests():
     exp.show_history(fst_ylims=mean_ylims)
 
 
+def case_linear():
+    em_is_gllim.maxIter = 100
+    NoiseEstimation.Nobs = 200
+    em_is_gllim.NO_IS = True
+    obs_mode = {"mean": 1, "cov": 0.1}
+    exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=False)
+    exp.run_noise_estimator(True)
+    exp.show_history()
+
+
 if __name__ == '__main__':
-    coloredlogs.install(level=logging.INFO, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
 
-    launch_tests()
+    # launch_tests()
 
-
+    case_linear()
     # em_is_gllim.Ntrain = 20000
     # em_is_gllim.N_sample_IS = 50000
     # em_is_gllim.maxIterGlliM = 30

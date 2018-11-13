@@ -16,11 +16,37 @@ def test_gd():
     exp.show_history()
 
 
-def test_em():
-    em_is_gllim.maxIter = 2000
-    NoiseEstimation.Nobs = 2000
-    obs_mode = {"mean": 1, "cov": 0.0001}
+def test_em_linear():
+    NoiseEstimation.BASE_PATH += "LinearyGaussian/"
+    em_is_gllim.maxIter = 500
+    NoiseEstimation.Nobs = 20000
+
+    obs_mode = {"mean": 1, "cov": 0.1}
     exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=True)
+    exp.run_noise_estimator(True)
+    exp.show_history()
+
+    obs_mode = {"mean": 1, "cov": 0.01}
+    exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=True)
+    exp.run_noise_estimator(True)
+    exp.show_history()
+
+    obs_mode = {"mean": 1, "cov": 0.001}
+    exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=True)
+    exp.run_noise_estimator(True)
+    exp.show_history()
+
+    context.LinearFunction.PRIOR_COV /= 10
+    exp.run_noise_estimator(True)
+    exp.show_history()
+
+
+def test_em():
+    em_is_gllim.maxIter = 300
+    NoiseEstimation.Nobs = 1000
+    em_is_gllim.NO_IS = True
+    obs_mode = {"mean": 1, "cov": 0.1}
+    exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=False)
     exp.run_noise_estimator(True)
     exp.show_history()
 
