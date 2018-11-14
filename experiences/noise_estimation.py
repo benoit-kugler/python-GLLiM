@@ -36,7 +36,14 @@ class NoiseEstimation:
         else:
             initmean = zlib.adler32(str(em_is_gllim.INIT_MEAN_NOISE).encode('utf8'))
 
-        s = f"isGLLiM-withIS:{not em_is_gllim.NO_IS}-" \
+        if self.assume_linear:
+            mode = "LIN"
+        else:
+            if em_is_gllim.NO_IS:
+                mode = "GLLiM"
+            else:
+                mode = "GLLiM-IS"
+        s = f"isGLLiM-mode:{mode}-" \
             f"initCov:{initcov}-initMean:{initmean}"
         return s
 
@@ -55,11 +62,11 @@ class NoiseEstimation:
     def _get_observations_tag(self):
         if self.obs_mode == "obs":
             nobs = len(self.context.get_observations())
-            return f"trueObs ({nobs})"
+            return f"trueObs({nobs})"
         else:
             mean_factor = self.obs_mode.get("mean", None)
             cov_factor = self.obs_mode["cov"]
-            return f"({self.Nobs}) $\mu$:{mean_factor:.3f}-$\Sigma$:{cov_factor:.3f}"
+            return f"simuObs({self.Nobs})mu:{mean_factor:.3f}-Sigma:{cov_factor:.3f}"
 
     def run_noise_estimator(self, save=False):
         logging.info(f"Starting noise estimation for {self.context.__class__.__name__}")
@@ -72,7 +79,7 @@ class NoiseEstimation:
             Yobs = self.context.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
         Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
         fit = em_is_gllim.fit if self.method == "is_gllim" else noise_GD.fit
-        history = fit(Yobs, self.context, cov_type=self.cov_type, with_F_lin=self.assume_linear)
+        history = fit(Yobs, self.context, cov_type=self.cov_type, assume_linear=self.assume_linear)
         if not save:
             logging.info("No data saved.")
             return history
@@ -156,7 +163,7 @@ class NoiseEstimation:
 
 
 def launch_tests():
-    noise_GD.Ntrain = 1000000
+    noise_GD.Ntrain = 100000
     exp = NoiseEstimation(context.MergedLabObservations, "obs", "diag", "gd")
 
     noise_mean, noise_cov = exp.get_last_params(average_over=500)
@@ -181,9 +188,8 @@ def launch_tests():
     # exp.run_noise_estimator(True)
     # exp.show_history()
 
-
-    # exp = NoiseEstimation(context.LabContextOlivine, "obs", "diag", "gd")
-    # # exp.run_noise_estimator(save=True)
+    exp = NoiseEstimation(context.LabContextOlivine, "obs", "diag", "gd")
+    exp.run_noise_estimator(save=False)
     # exp.show_history(fst_ylims=(-0.14, 0.14),snd_ylims=(0,0.001))
     # # # #
     # exp = NoiseEstimation(context.LabContextNontronite, "obs", "diag", "gd")
@@ -194,18 +200,18 @@ def launch_tests():
     # exp.run_noise_estimator(save=True)
     # exp.show_history()
 
-    mean_ylims = (-0.12, 0.12)
-    exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
-    # exp.run_noise_estimator(True)
-    exp.show_history(fst_ylims=mean_ylims)
-
-    exp = NoiseEstimation(context.LabContextNontronite, "obs", "full", "is_gllim")
-    # exp.run_noise_estimator(True)
-    exp.show_history(fst_ylims=mean_ylims)
-
-    exp = NoiseEstimation(context.MergedLabObservations, "obs", "full", "is_gllim")
-    # exp.run_noise_estimator(True)
-    exp.show_history(fst_ylims=mean_ylims)
+    # mean_ylims = (-0.12, 0.12)
+    # exp = NoiseEstimation(context.LabContextOlivine, "obs", "full", "is_gllim")
+    # # exp.run_noise_estimator(True)
+    # exp.show_history(fst_ylims=mean_ylims)
+    #
+    # exp = NoiseEstimation(context.LabContextNontronite, "obs", "full", "is_gllim")
+    # # exp.run_noise_estimator(True)
+    # exp.show_history(fst_ylims=mean_ylims)
+    #
+    # exp = NoiseEstimation(context.MergedLabObservations, "obs", "full", "is_gllim")
+    # # exp.run_noise_estimator(True)
+    # exp.show_history(fst_ylims=mean_ylims)
 
 
 def case_linear():

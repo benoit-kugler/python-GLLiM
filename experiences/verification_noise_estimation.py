@@ -43,10 +43,15 @@ def test_em_linear():
 
 def test_em():
     em_is_gllim.maxIter = 300
-    NoiseEstimation.Nobs = 1000
+    noise_GD.maxIter = 200
+    NoiseEstimation.Nobs = 2000
     em_is_gllim.NO_IS = True
     obs_mode = {"mean": 1, "cov": 0.1}
-    exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=False)
+    # exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=False)
+    # exp.run_noise_estimator(True)
+    # exp.show_history()
+
+    exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "gd", assume_linear=False)
     exp.run_noise_estimator(True)
     exp.show_history()
 

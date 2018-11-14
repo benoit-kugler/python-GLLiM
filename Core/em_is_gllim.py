@@ -7,6 +7,7 @@ import coloredlogs
 import numba as nb
 import numpy as np
 
+from Core import cython
 from Core.gllim import jGLLiM
 from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
     _chol_loggauspdf_diag
@@ -127,12 +128,14 @@ def _init(cont: context.abstractHapkeModel):
 
 
 def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noise_mean, current_theta):
+    ti = time.time()
     gllim = jGLLiM(K, sigma_type="full", stopping_ratio=stoppingRatioGLLiM)
     Xtrain, Ytrain = cont.get_data_training(Ntrain)
     Ytrain = cont.add_noise_data(Ytrain, covariance=current_noise_cov, mean=current_noise_mean)
 
     gllim.fit(Xtrain, Ytrain, current_theta, maxIter=maxIterGlliM)
     gllim.inversion()
+    logging.debug(f"GLLiM step done in {time.time() -ti:.3f} s")
     return gllim
 
 
@@ -140,18 +143,20 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
 def _clean_mean_vector(Gx, w, mask_x):
     N, L = Gx.shape
 
-    s = np.sum(w)
-    if s == 0:
-        return np.zeros(L)
-
     mask1 = np.empty(N, dtype=np.bool_)
     for i in range(N):
         mask1[i] = not np.isfinite(Gx[i]).all()
 
     mask2 = ~ np.isfinite(w)
-    mask = mask_x | mask1 | mask2
+    mask = (mask_x | mask1 | mask2) != 0
+
     w[mask] = 0
     Gx[mask] = np.zeros(L)
+
+    s = np.sum(w)
+    if s == 0:
+        return np.zeros(L)
+
     w2 = w.reshape((-1, 1))
     return np.sum(Gx * w2, axis=0) / s
 
@@ -160,18 +165,20 @@ def _clean_mean_vector(Gx, w, mask_x):
 def _clean_mean_matrix(Gx, w, mask_x):
     N, L, _ = Gx.shape
 
-    s = np.sum(w)
-    if s == 0:
-        return np.zeros((L, L))
-
     mask1 = np.empty(N, dtype=np.bool_)
     for i in range(N):
         mask1[i] = not np.isfinite(Gx[i]).all()
 
     mask2 = ~ np.isfinite(w)
-    mask = mask_x | mask1 | mask2
+    mask = (mask_x | mask1 | mask2) != 0
+
     w[mask] = 0
     Gx[mask] = np.zeros((L, L))
+
+    s = np.sum(w)
+    if s == 0:
+        return np.zeros((L, L))
+
     w2 = w.reshape((-1, 1, 1))
     return np.sum(Gx * w2, axis=0) / s
 
@@ -186,14 +193,6 @@ def extend_array(vector, Ns):
 
 
 # ------------------- WITHOUT IS ------------------- #
-@nb.njit(nogil=True, fastmath=True, cache=True)
-def _helper_mu_NoIS(FX, mask_x, y):
-    G1 = y.reshape((1, -1)) - FX  # estimateur de mu
-    Ns, _ = G1.shape
-    wsi = np.ones(Ns) / Ns
-    esp_mui = _clean_mean_vector(G1, wsi, mask_x)
-    return esp_mui
-
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
 def _mu_step_NoIS(Yobs, FXs, mask):
@@ -203,7 +202,13 @@ def _mu_step_NoIS(Yobs, FXs, mask):
         y = Yobs[i]
         FX = FXs[i]
         mask_x = mask[i]
-        esp_mu[i] = _helper_mu_NoIS(FX, mask_x, y)
+        # esp_mu[i] = _helper_mu_NoIS(FX, mask_x, y)
+
+        G1 = y.reshape((1, -1)) - FX  # estimateur de mu
+        wsi = np.ones(Ns) / Ns
+        esp_mu[i] = _clean_mean_vector(G1, wsi, mask_x)
+
+
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
     return maximal_mu
 
@@ -214,12 +219,12 @@ def _sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu):
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
     esp_sigma = np.zeros((Ny, D))
 
-    wsi = np.ones(Ns) / Ns
-    for i in nb.prange(Ny):
+    for i in range(Ny):
         y = Yobs[i]
         FX = FXs[i]
         U = FX + maximal_mu_broadcast - extend_array(y, Ns)
         G3 = np.square(U)
+        wsi = np.ones(Ns) / Ns
         esp_sigma[i] = _clean_mean_vector(G3, wsi, mask[i])
 
     maximal_sigma = np.sum(esp_sigma, axis=0) / Ny
@@ -231,7 +236,6 @@ def _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu):
     Ny, Ns, D = FXs.shape
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
     esp_sigma = np.zeros((Ny, D, D))
-    wsi = np.ones(Ns) / Ns
 
     for i in nb.prange(Ny):
         y = Yobs[i]
@@ -242,16 +246,16 @@ def _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu):
             u = U[j]
             G3[j] = u.reshape((-1, 1)).dot(u.reshape((1, -1)))
 
+        wsi = np.ones(Ns) / Ns
         esp_sigma[i] = _clean_mean_matrix(G3, wsi, mask[i])
-
     maximal_sigma = np.sum(esp_sigma, axis=0) / Ny
     return maximal_sigma
 
 
 def _em_step_NoIS(gllim, F, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
-    # mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-    mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -268,7 +272,7 @@ def _em_step_NoIS(gllim, F, Yobs, current_cov, current_mean):
     logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
 
     ti = time.time()
-    _sigma_step = _sigma_step_diag_NoIS if current_cov.ndim == 1 else _sigma_step_full_NoIS
+    _sigma_step = _sigma_step_diag_NoIS if current_cov.ndim == 1 else cython.sigma_step_full_NoIS
     maximal_sigma = _sigma_step(Yobs, FXs, mask, maximal_mu)
     logging.debug(f"Noise covariance estimation done in {time.time()-ti:.3f} s")
     return maximal_mu, maximal_sigma
@@ -373,11 +377,11 @@ def _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu):
     return maximal_sigma
 
 
-def _em_step(gllim, F, Yobs, current_cov, current_mean):
+def _em_step_IS(gllim, F, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
     assert np.isfinite(Xs).all()
-    # mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-    mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+    # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -511,7 +515,7 @@ class NoiseEMISGLLiM(NoiseEMGLLiM):
         return s + f"with IS \n\t\tNSampleIS = {N_sample_IS}"
 
     def _get_em_step(self):
-        return _em_step
+        return _em_step_IS
 
 
 def fit(Yobs, cont: context.abstractFunctionModel, cov_type="diag", assume_linear=False):
@@ -527,7 +531,8 @@ def fit(Yobs, cont: context.abstractFunctionModel, cov_type="diag", assume_linea
 
 # ------------------ maintenance purpose ------------------ #
 def _profile():
-    global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE
+    global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
+    NO_IS = True
     maxIter = 1
     Nobs = 500
     N_sample_IS = 100000
@@ -537,14 +542,14 @@ def _profile():
     Yobs = cont.add_noise_data(Yobs, covariance=0.005, mean=0.1)
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
-    fit(Yobs, cont, cov_type="full")
+    fit(Yobs, cont, cov_type="diag")
 
 def _debug():
     global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
     NO_IS = False
     maxIter = 2
     Nobs = 20
-    N_sample_IS = 10000
+    N_sample_IS = 1000
     # cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
     cont = context.LinearFunction()
     INIT_COV_NOISE = 0.005
@@ -554,8 +559,48 @@ def _debug():
 
     fit(Yobs, cont, cov_type="diag", assume_linear=False)
 
+
+def _compare():
+    D = 10
+    N = 100000
+    Gx = np.random.random_sample((N, 2, 2))
+    w = np.random.random_sample(N)
+    mask_x = np.asarray(np.random.random_sample(N) > 0.2, dtype=int)
+    # mask_x = np.asarray(np.zeros(N),dtype=int)
+
+    # ti = time.time()
+    # S1 = _clean_mean_matrix(np.copy(Gx),np.copy(w),mask_x)
+    # print("jit", time.time() - ti)
+    #
+    # ti = time.time()
+    # S2 = cython.clean_mean_matrix(np.copy(Gx),np.copy(w),mask_x)
+    # print("cython", time.time() - ti)
+    #
+    # assert np.allclose(S1,S2) , "Clean matrix not same !"
+
+    Ny = 2000
+    Yobs = np.random.random_sample((Ny, 2))
+    FXs = np.random.random_sample((Ny, N, 2))
+    maximal_mu = np.random.random_sample(2)
+    mask = np.asarray(np.random.random_sample((Ny, N)) > 0.4, dtype=int)
+
+    _sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu)
+    print("compiled")
+
+    ti = time.time()
+    S1 = _sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu)
+    print("jit", time.time() - ti)
+
+    ti = time.time()
+    S2 = cython.sigma_step_diag_NoIS(Yobs, FXs, mask, maximal_mu)
+    print("cython", time.time() - ti)
+
+    assert np.allclose(S1, S2), "sigma step full noIs not same !"
+
+
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # _profile()
-    _debug()
+    # _debug()
+    _compare()
