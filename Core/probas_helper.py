@@ -53,7 +53,7 @@ def chol_loggauspdf_diag(X, mu, cov):
     if mu.ndim == 2:
         return _chol_loggauspdf_diag2(X, mu, cov)
     else:
-        return _chol_loggauspdf_diag(X, mu, cov)
+        return _loggauspdf_diag(X, mu, cov)
 
 
 @nb.njit(nogil=True, fastmath=True, cache=True)
@@ -95,7 +95,6 @@ def _chol_loggausspdf2(X, mu, cov):
 def _chol_loggausspdf_precomputed(X, mu, cov_cholesky):
     """log of pdf for gaussian distributuion with full covariance matrix
     (cholesky factorization for stability)
-    if cholesky is given, use cholesky.T instead of computing it.
     X shape : D,N
     mu shape : D
     cov shape : D,D
@@ -158,7 +157,7 @@ def _chol_loggausspdf_iso2(X, mu, cov):
 
 
 @nb.njit(cache=True)
-def _chol_loggauspdf_diag(X, mu, cov):
+def _loggauspdf_diag(X, mu, cov):
     """Diagonal covariance matrix (cov is diagonal)
     X shape : D,N
     mu shape : D
