@@ -77,6 +77,7 @@ def densite_melange_precomputed(const double[:,:] x_points, const double[:] weig
 
 
 # TODO pre compute sqrt(cov(d))
+# TODO try parallelisation
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef void loggauspdf_diag(const double[:,:] X, const double[:] mu, const double[:] cov,

@@ -243,7 +243,7 @@ def mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_m
     cdef double[:,:] ws = wsNp
     cdef double[:] maximal_mu = maximal_muNp
 
-    cdef Py_ssize_t i,  d, k, d1, d2
+    cdef Py_ssize_t i, d, k
     cdef double sum = 0
 
     y_moins_mu = np.zeros(D)
@@ -261,7 +261,6 @@ def mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_m
         loggauspdf_diag(FXs[i],y_moins_mu,current_cov, log_p_tilde)
         _helper_mu(Xs[i], weightss[i], meanss[i], gllim_chol_covs, log_p_tilde,
                    FXs[i], mask[i], Yobs[i], esp_mu, maximal_mu, ws[i])
-        # mu_helper_clean_add(FXs[i],mask[i],ws[i],Yobs[i], esp_mu, maximal_mu)
 
     scalar_mult_vect(1. / Ny,maximal_mu)
     return maximal_muNp, wsNp
