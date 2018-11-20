@@ -6,7 +6,7 @@ import numpy as np
 from libc.math cimport exp, tan, cos, sin, log1p, sqrt, acos
 from cython.parallel import prange
 
-np.import_array()
+# np.import_array()
 
 cdef int VARIANT = 2002
 
@@ -113,9 +113,11 @@ cdef T3Double compute_roughness(T8Double geom_infos,double R) nogil:
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def Hapke_vect(double[:] SZA, double[:] VZA, double[:] DPHI, double[:] W, double[:] R1, double[:] BB,
-double[:] CC, double[:] HH, double[:] B0):
-    """ Returns a matrix of reflectance of shape Nx , D """
+cdef void C_Hapke_vect(const double[:] SZA, const double[:] VZA, const double[:] DPHI,
+                       const double[:] W, const double[:] R1, const double[:] BB,
+                       const double[:] CC, const double[:] HH, const double[:] B0,
+                       double[:,:] out) nogil:
+    """ Write the result in out  """
 
     cdef double theta0r, thetar, phir, r, c, b, h, b0, w, reff, MUP, MU, S,  ctheta, theta
     cdef double bc,b2,P, B, H, H0, gamma, alpha# var temporaires
@@ -124,11 +126,9 @@ double[:] CC, double[:] HH, double[:] B0):
     cdef Py_ssize_t Nx = W.shape[0]
     cdef Py_ssize_t D = SZA.shape[0]
 
-    REFF = np.zeros((Nx,D),dtype=DTYPE)
-    cdef double[:,:] REFF_view = REFF  #memoryview
     cdef Py_ssize_t n,d # loop indices
 
-    for d in prange(D, nogil=True):
+    for d in range(D):
         theta0r = SZA[d] * pi / 180
         thetar = VZA[d] * pi / 180
         geom_infos = _geom_roughness(theta0r,thetar,DPHI[d])
@@ -162,5 +162,67 @@ double[:] CC, double[:] HH, double[:] B0):
                 H = H_2002(MU,gamma)
             reff = ( (w / (MU + MUP)) * ((1 + B) * P + (H0 * H) - 1)  )
             reff = reff *  S * MUP  / alpha
-            REFF_view[n,d] = reff
-    return REFF
+            out[n,d] = reff
+
+
+
+def Hapke_vect(double[:] SZA, double[:] VZA, double[:] DPHI, double[:] W, double[:] R1, double[:] BB,
+double[:] CC, double[:] HH, double[:] B0):
+    """ Returns a matrix of reflectance of shape Nx , D """
+    cdef Py_ssize_t Nx = W.shape[0]
+    cdef Py_ssize_t D = SZA.shape[0]
+
+    reff = np.zeros((Nx,D),dtype=DTYPE)
+
+    C_Hapke_vect(SZA, VZA, DPHI, W, R1, BB, CC, HH, B0 , reff)
+
+    return reff
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_many(const double[:] SZA,const double[:] VZA,const double[:] DPHI,const double[:,:,:] Xs,
+                        const long[:,:] mask, const long[:] partiel_indexes, const long[:] permutation,
+                        const double[:] x0, const double[:] xrange,
+                        double[:,:,:] Xfull, double[:,:,:] out) nogil:
+    cdef Py_ssize_t N = Xs.shape[0]
+    cdef Py_ssize_t Ns = Xs.shape[1]
+    cdef Py_ssize_t D = SZA.shape[0]
+    cdef Py_ssize_t Lpartiel = Xs.shape[2]
+    cdef Py_ssize_t L = x0.shape[0]
+
+    cdef Py_ssize_t i, j, n, d # loop indices
+    cdef long true_j, hapke_vect_index
+
+    for i in prange(N, nogil= True):
+        for j in range(Lpartiel):
+            true_j = partiel_indexes[j]
+            hapke_vect_index = permutation[true_j]
+            for n in range(Ns):
+                Xfull[i,n,hapke_vect_index] = x0[j] + xrange[j] * Xs[i,n,j]
+
+        C_Hapke_vect(SZA, VZA, DPHI, Xfull[i,:,0], Xfull[i,:,1], Xfull[i,:,2], Xfull[i,:,3], Xfull[i,:,4], Xfull[i,:,5], out[i])
+        for n in range(Ns):
+            if mask[i,n]:
+                for d in range(D):
+                    out[i,n,d] = 0
+
+
+def compute_many_Hapke(geometries, Xs, mask, partiel_indexes, default_values,
+                       x0, xrange, permutation):
+    """ Compute Hapke(X) and apply the mask.
+    prepare X by adding default values and scaling with x0 + xrange * X
+    then permutes axes according to permutation : permutation[i] gives the place of Xfull[i] in Hapke_vect
+    L = len(partiel_indexes) + len(default_values)
+    """
+    SZA, VZA, DPHI = geometries
+    N, Ns, _ = Xs.shape
+    D = SZA.shape[0]
+    FXs = np.zeros((N, Ns, D))
+
+    Xfull = np.array([[default_values] * Ns] * N)
+
+    _compute_many(SZA, VZA, DPHI, Xs, mask, np.array(partiel_indexes), np.array(permutation), np.array(x0),
+                  np.array(xrange), Xfull, FXs)
+
+    return FXs

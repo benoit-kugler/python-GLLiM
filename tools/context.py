@@ -412,11 +412,11 @@ class abstractHapkeModel(abstractFunctionModel):
 
     @property
     def D(self):
-        return self.geometries.shape[2]
+        return self.geometries.shape[1]
 
     def _load_context_data(self):
         """Setup context to be able to compute F(X).
-        Here, needs to set up geometries as array of shape (3,1 _ )"""
+        Here, needs to set up geometries as array of shape (3,_ )"""
         pass
 
 
@@ -432,7 +432,7 @@ class abstractHapkeModel(abstractFunctionModel):
         l = []
         for xi in X:
             xi_dupl = np.ones((N_geom,dim_X)) * xi
-            m  = np.concatenate((t0.T,t.T,p.T,xi_dupl),axis=1)
+            m = np.concatenate((t0.reshape((-1, 1)), t.reshape((-1, 1)), p.reshape((-1, 1)), xi_dupl), axis=1)
             l.append(m)
         final = np.concatenate(l,axis=0)
         return final.T  #Pour isoler chaque composant pour Hapke
@@ -455,8 +455,8 @@ class abstractHapkeModel(abstractFunctionModel):
         Xfull = self._prepare_X(X)
         t, t0, p = self.geometries
         args = (np.array(Xfull[:, i], dtype=np.double) for i in range(Xfull.shape[1]))
-        Y = Hapke_cython(np.array(t0[0], dtype=np.double), np.array(t[0], dtype=np.double),
-                         np.array(p[0], dtype=np.double), *args)
+        Y = Hapke_cython(np.array(t0, dtype=np.double), np.array(t, dtype=np.double),
+                         np.array(p, dtype=np.double), *args)
         assert (not check) or np.isfinite(Y).all()
         return Y
 
@@ -530,7 +530,7 @@ class HapkeContext(abstractHapkeModel):
     def _load_context_data(self):
         chemin = os.path.join(self.BASE_PATH,self.EXPERIENCES[self.index_exp])
         d = scipy.io.loadmat(chemin)
-        self.geometries = np.array([d["theta0"], d["theta"], d["phi"]])
+        self.geometries = np.array([d["theta0"][0], d["theta"][0], d["phi"][0]])
 
 
     def get_observations(self,wave_index=0):
@@ -597,7 +597,7 @@ class abstractHapkeGonio(abstractHapkeModel):
         angles = d["angles_filtered_{}".format(exp)]
         geom = angles[0:3,:].T
         mask = [ (x != 0).all() for x in geom]
-        self.geometries = geom[mask].T[:,None,:]
+        self.geometries = geom[mask].T
         # cleaning of unsafe geometries, id with zero
 
         if self.GEOMETRIES is not None:
@@ -680,7 +680,7 @@ class abstractLabContext(abstractHapkeModel):
 
     def _load_context_data(self):
         d = scipy.io.readsav(self.data_path)
-        self.geometries = np.array([d["inc"][None,:], d["eme"][None,:], d["azi"][None,:]])
+        self.geometries = np.array([d["inc"], d["eme"], d["azi"]])
         self.wavelengths = d["wave_value"]
 
     def _prepare_X(self, X):
@@ -787,7 +787,7 @@ class abstractGlaceContext(abstractHapkeModel):
         chemin = os.path.join(self.BASE_PATH,self.EXPERIENCE)
         d = scipy.io.loadmat(chemin)
         self.__data = d  # cached
-        self.geometries = np.array([d["theta0"], d["theta"], d["phi"]])
+        self.geometries = np.array([d["theta0"][0], d["theta"][0], d["phi"][0]])
         self.wave_lengths = np.array(d["lambda"])[:,0]
 
     def get_observations_fixed_wl(self,wave_index=0):

@@ -12,6 +12,7 @@ from Core.gllim import jGLLiM
 from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
     _loggauspdf_diag
 from tools import context
+import hapke.cython
 
 # GLLiM parameters
 Ntrain = 40000
@@ -150,39 +151,37 @@ def _clean_mean_vector(Gx, w, mask_x):
     mask2 = ~ np.isfinite(w)
     mask = (mask_x | mask1 | mask2) != 0
 
-    w[mask] = 0
+    w2 = np.copy(w).reshape((-1, 1))
+    w2[mask, :] = 0
     Gx[mask] = np.zeros(L)
 
-    s = np.sum(w)
+    s = np.sum(w2)
     if s == 0:
         return np.zeros(L)
 
-    w2 = w.reshape((-1, 1))
     return np.sum(Gx * w2, axis=0) / s
 
 
-#
-#
-# @nb.jit(nopython=True, nogil=True, fastmath=True, cache=True)
-# def _clean_mean_matrix(Gx, w, mask_x):
-#     N, L, _ = Gx.shape
-#
-#     mask1 = np.empty(N, dtype=np.bool_)
-#     for i in range(N):
-#         mask1[i] = not np.isfinite(Gx[i]).all()
-#
-#     mask2 = ~ np.isfinite(w)
-#     mask = (mask_x | mask1 | mask2) != 0
-#
-#     w[mask] = 0
-#     Gx[mask] = np.zeros((L, L))
-#
-#     s = np.sum(w)
-#     if s == 0:
-#         return np.zeros((L, L))
-#
-#     w2 = w.reshape((-1, 1, 1))
-#     return np.sum(Gx * w2, axis=0) / s
+@nb.jit(nopython=True, nogil=True, fastmath=True, cache=True)
+def _clean_mean_matrix(Gx, w, mask_x):
+    N, L, _ = Gx.shape
+
+    mask1 = np.empty(N, dtype=np.bool_)
+    for i in range(N):
+        mask1[i] = not np.isfinite(Gx[i]).all()
+
+    mask2 = ~ np.isfinite(w)
+    mask = (mask_x | mask1 | mask2) != 0
+
+    w[mask] = 0
+    Gx[mask] = np.zeros((L, L))
+
+    s = np.sum(w)
+    if s == 0:
+        return np.zeros((L, L))
+
+    w2 = w.reshape((-1, 1, 1))
+    return np.sum(Gx * w2, axis=0) / s
 
 
 @nb.njit(nogil=True, cache=True)
@@ -323,7 +322,7 @@ def _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
 
     gllim_chol_covs = cholesky_list(gllim_covs)
     chol_cov = np.linalg.cholesky(current_cov)
-    ws = np.zeros((Ny, N_sample_IS))
+    ws = np.zeros((Ny, Ns))
     esp_mu = np.zeros((Ny, D))
 
     current_mean_broad = extend_array(current_mean, Ns)
@@ -348,7 +347,7 @@ def _sigma_step_diag(Yobs, FXs, ws, mask, maximal_mu):
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
     esp_sigma = np.zeros((Ny, D))
 
-    for i in nb.prange(Ny):
+    for i in range(Ny):
         y = Yobs[i]
         FX = FXs[i]
         U = FX + maximal_mu_broadcast - extend_array(y, Ns)
@@ -365,7 +364,7 @@ def _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu):
     maximal_mu_broadcast = extend_array(maximal_mu, Ns)
     esp_sigma = np.zeros((Ny, D, D))
 
-    for i in nb.prange(Ny):
+    for i in range(Ny):
         y = Yobs[i]
         FX = FXs[i]
         U = FX + maximal_mu_broadcast - extend_array(y, Ns)
@@ -380,6 +379,16 @@ def _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu):
     return maximal_sigma
 
 
+def _compute_F(F, D, Xs, mask):
+    N, Ns, _ = Xs.shape
+    FXs = np.empty((N, Ns, D))
+    for i, (X, mask_x) in enumerate(zip(Xs, mask)):
+        FX = F(X)
+        FX[mask_x == 1, :] = 0  # anyway, ws will be 0
+        FXs[i] = FX
+    return FXs
+
+
 def _em_step_IS(gllim, F, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
     assert np.isfinite(Xs).all()
@@ -391,12 +400,8 @@ def _em_step_IS(gllim, F, Yobs, current_cov, current_mean):
     meanss, weightss, _ = gllim._helper_forward_conditionnal_density(Yobs)
     gllim_covs = gllim.SigmakListS
 
-    N, D = Yobs.shape
-    FXs = np.empty((N, N_sample_IS, D))
-    for i, (X, mask_x) in enumerate(zip(Xs, mask)):
-        FX = F(X)
-        FX[mask_x, :] = 0  # anyway, ws will be 0
-        FXs[i] = FX
+    _, D = Yobs.shape
+    FXs = _compute_F(F, D, Xs, mask)
     logging.debug(f"Computation of F done in {time.time()-ti:.3f} s")
     ti = time.time()
 
@@ -537,15 +542,35 @@ def _profile():
     global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
     NO_IS = True
     maxIter = 1
-    Nobs = 500
-    N_sample_IS = 100000
+    Nobs = 200
+    N_sample_IS = 80000
     cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
 
     _, Yobs = cont.get_data_training(Nobs)
     Yobs = cont.add_noise_data(Yobs, covariance=0.005, mean=0.1)
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
-    fit(Yobs, cont, cov_type="diag")
+    # fit(Yobs, cont, cov_type="diag")
+
+    def _compute_F2(F, D, Xs2, mask):
+        N, Ns, _ = Xs.shape
+
+        return hapke.cython.compute_many_Hapke(np.asarray(cont.geometries, dtype=np.double), Xs2, mask, cont.partiel,
+                                               cont.DEFAULT_VALUES, cont.variables_lims[:, 0],
+                                               cont.variables_range, cont.HAPKE_VECT_PERMUTATION)
+
+    Xs = np.array([cont.get_X_sampling(N_sample_IS) for i in range(Nobs)])
+    mask = np.asarray(np.random.random_sample((Nobs, N_sample_IS)) > 0.8, dtype=int)
+
+    ti = time.time()
+    Ys1 = _compute_F(cont.F, cont.D, Xs, mask)
+    print("Generique", time.time() - ti)
+
+    ti = time.time()
+    Ys2 = _compute_F2(cont.F, cont.D, Xs, mask)
+    print("Cython", time.time() - ti)
+
+    assert np.allclose(Ys1, Ys2), "cython compute many error"
 
 def _debug():
     global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
@@ -567,7 +592,7 @@ def _compare():
     D = 10
     L = 4
     Ns = 10000
-    Ny = 20
+    Ny = 200
 
     # mask_x = np.asarray(np.random.random_sample(Ns) > 0.2, dtype=int)
     # mask_x = np.asarray(np.zeros(N),dtype=int)
@@ -585,30 +610,48 @@ def _compare():
     FXs = np.random.random_sample((Ny, Ns, D)) * 9
     Xs = np.random.random_sample((Ny, Ns, L)) * 10
 
-    maximal_mu = np.random.random_sample(2)
+    maximal_mu = np.random.random_sample(D)
     mask = np.asarray(np.random.random_sample((Ny, Ns)) > 0.4, dtype=int)
 
     current_mean = np.random.random_sample(D)
-    current_cov = np.arange(D) + 1.2
+    # current_cov = np.arange(D) + 1.2
+    T = np.tril(np.ones((D, D))) * 0.456
+    current_cov = np.dot(T, T.T)
 
-    _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
-    print("compiled")
+    # X = Xs[0]
+    # weights = weightss[0]
+    # means = meanss[0]
+    # gllim_chol_covs = np.linalg.cholesky(covs)
+    # log_p_tilde = np.random.random_sample(Ns)
+    # FX = FXs[0]
+    # mask_x = mask[0]
+    # y = Yobs[0]
+
+    ws = np.random.random_sample((Ny, Ns))
+
+    # _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
+    print("jit compiled")
 
     ti = time.time()
     # S1 = _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu)
-    S1, V1 = _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
-
+    # S1, V1 = _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # S1,V1 = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+    S1 = _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
     print("jit", time.time() - ti)
 
     ti = time.time()
     # S2 = cython.sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu)
-    S2, V2 = cython.mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # S2, V2 = cython.mu_step_full_IS(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # S2,V2 = cython.test(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+    S2 = cython.sigma_step_full_IS(Yobs, FXs, ws, mask, maximal_mu)
 
     print("cython", time.time() - ti)
-    print(S1, S2)
+    # print(V1 - V2)
+    print(S1 - S2)
 
     assert np.allclose(S1, S2), "sigma step full noIs not same !"
-    assert np.allclose(V1, V2), "sigma step full noIs not same !"
+    # assert np.allclose(V1, V2), "sigma step full noIs not same !"
 
 
 def _verifie_cython():
@@ -642,7 +685,7 @@ def _verifie_cython():
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    # _profile()
+    _profile()
     # _debug()
-    _compare()
+    # _compare()
     # _verifie_cython()
