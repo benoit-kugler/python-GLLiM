@@ -8,7 +8,7 @@ import coloredlogs
 
 from tools import context
 import numpy as np
-from Core import em_is_gllim, noise_GD
+from Core import em_is_gllim_jit, noise_GD
 
 
 class NoiseEstimation:
@@ -26,20 +26,20 @@ class NoiseEstimation:
         self.assume_linear = assume_linear
 
     def _is_gllim_tag(self):
-        if type(em_is_gllim.INIT_COV_NOISE) is int or type(em_is_gllim.INIT_COV_NOISE) is float:
-            initcov = em_is_gllim.INIT_COV_NOISE
+        if type(em_is_gllim_jit.INIT_COV_NOISE) is int or type(em_is_gllim_jit.INIT_COV_NOISE) is float:
+            initcov = em_is_gllim_jit.INIT_COV_NOISE
         else:
-            initcov = zlib.adler32(str(em_is_gllim.INIT_COV_NOISE).encode('utf8'))
+            initcov = zlib.adler32(str(em_is_gllim_jit.INIT_COV_NOISE).encode('utf8'))
 
-        if type(em_is_gllim.INIT_MEAN_NOISE) is int or type(em_is_gllim.INIT_MEAN_NOISE) is float:
-            initmean = em_is_gllim.INIT_MEAN_NOISE
+        if type(em_is_gllim_jit.INIT_MEAN_NOISE) is int or type(em_is_gllim_jit.INIT_MEAN_NOISE) is float:
+            initmean = em_is_gllim_jit.INIT_MEAN_NOISE
         else:
-            initmean = zlib.adler32(str(em_is_gllim.INIT_MEAN_NOISE).encode('utf8'))
+            initmean = zlib.adler32(str(em_is_gllim_jit.INIT_MEAN_NOISE).encode('utf8'))
 
         if self.assume_linear:
             mode = "LIN"
         else:
-            if em_is_gllim.NO_IS:
+            if em_is_gllim_jit.NO_IS:
                 mode = "GLLiM"
             else:
                 mode = "GLLiM-IS"
@@ -78,7 +78,7 @@ class NoiseEstimation:
             _, Yobs = self.context.get_data_training(self.Nobs)
             Yobs = self.context.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
         Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
-        fit = em_is_gllim.fit if self.method == "is_gllim" else noise_GD.fit
+        fit = em_is_gllim_jit.fit if self.method == "is_gllim" else noise_GD.fit
         history = fit(Yobs, self.context, cov_type=self.cov_type, assume_linear=self.assume_linear)
         if not save:
             logging.info("No data saved.")
@@ -95,7 +95,7 @@ class NoiseEstimation:
 
         if self.method == "is_gllim":
             s = "IS-EM-GLLiM \n " + s
-            s += f"$\mu = {em_is_gllim.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim.INIT_COV_NOISE}I_{{D}}$"
+            s += f"$\mu = {em_is_gllim_jit.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim_jit.INIT_COV_NOISE}I_{{D}}$"
         else:
             s = "Gradient descent \n " + s
             s += f"$\mu = {noise_GD.INIT_MEAN_NOISE}$"
@@ -168,14 +168,13 @@ def launch_tests():
 
     noise_mean, noise_cov = exp.get_last_params(average_over=500)
 
-
-    em_is_gllim.Ntrain = 50000
-    em_is_gllim.N_sample_IS = 100000
-    em_is_gllim.maxIterGlliM = 100
-    em_is_gllim.stoppingRatioGLLiM = 0.001
-    em_is_gllim.maxIter = 150
-    em_is_gllim.INIT_MEAN_NOISE = noise_mean
-    em_is_gllim.INIT_COV_NOISE = noise_cov
+    em_is_gllim_jit.Ntrain = 50000
+    em_is_gllim_jit.N_sample_IS = 100000
+    em_is_gllim_jit.maxIterGlliM = 100
+    em_is_gllim_jit.stoppingRatioGLLiM = 0.001
+    em_is_gllim_jit.maxIter = 150
+    em_is_gllim_jit.INIT_MEAN_NOISE = noise_mean
+    em_is_gllim_jit.INIT_COV_NOISE = noise_cov
 
     # NoiseEstimation.Nobs = 200
     # obs_mode = {"mean": 1, "cov": 0.001}
@@ -215,9 +214,9 @@ def launch_tests():
 
 
 def case_linear():
-    em_is_gllim.maxIter = 100
+    em_is_gllim_jit.maxIter = 100
     NoiseEstimation.Nobs = 200
-    em_is_gllim.NO_IS = True
+    em_is_gllim_jit.NO_IS = True
     obs_mode = {"mean": 1, "cov": 0.1}
     exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=False)
     exp.run_noise_estimator(True)

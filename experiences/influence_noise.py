@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import coloredlogs
 
-from Core import em_is_gllim, noise_GD
+from Core import em_is_gllim_jit, noise_GD
 from Core.gllim import jGLLiM
 from experiences.noise_estimation import NoiseEstimation
 from tools import context
@@ -52,8 +52,8 @@ def train_predict(noise_mean, noise_cov, base_fn, retrain=True):
 
 
 noise_GD.Ntrain = 1000000
-em_is_gllim.INIT_MEAN_NOISE = 2243303186
-em_is_gllim.INIT_COV_NOISE = 2308448170
+em_is_gllim_jit.INIT_MEAN_NOISE = 2243303186
+em_is_gllim_jit.INIT_COV_NOISE = 2308448170
 
 noise_cov0 = 0.001
 noise_mean0 = 0

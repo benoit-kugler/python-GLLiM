@@ -8,7 +8,7 @@ import coloredlogs
 import numpy as np
 from matplotlib import pyplot
 
-from Core import training, em_is_gllim, noise_GD
+from Core import training, em_is_gllim_jit, noise_GD
 from Core.dgllim import dGLLiM, ZeroDeltadGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.probas_helper import dominant_components
@@ -442,8 +442,8 @@ def double_learning(Ntest=200, retrain_base=True, retrain_second=True):
 
 def main():
     noise_GD.Ntrain = 1000000
-    em_is_gllim.INIT_MEAN_NOISE = 2243303186
-    em_is_gllim.INIT_COV_NOISE = 2308448170
+    em_is_gllim_jit.INIT_MEAN_NOISE = 2243303186
+    em_is_gllim_jit.INIT_COV_NOISE = 2308448170
     exp = NoiseEstimation(context.LabContextNontronite, "obs", "full", "is_gllim")
     noise_mean, noise_cov = exp.get_last_params(average_over=1)
     # em_is_gllim.INIT_MEAN_NOISE = noise_mean

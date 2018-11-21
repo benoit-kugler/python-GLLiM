@@ -14,7 +14,7 @@ import coloredlogs
 import numpy as np
 import scipy.io
 
-from Core import em_is_gllim, probas_helper
+from Core import em_is_gllim_jit, probas_helper
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.probas_helper import chol_loggausspdf
