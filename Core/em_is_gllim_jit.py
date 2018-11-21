@@ -10,7 +10,7 @@ import numpy as np
 from Core import cython
 from Core.gllim import jGLLiM
 from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
-    _loggauspdf_diag
+    _loggausspdf_diag
 from tools import context
 import hapke.cython
 
@@ -249,7 +249,7 @@ def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
         FX = FXs[i]
         mask_x = mask[i]
         arg = FX + current_mean_broad
-        log_p_tilde = _loggauspdf_diag(arg.T, y, current_cov)
+        log_p_tilde = _loggausspdf_diag(arg.T, y, current_cov)
         a, b = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
         esp_mu[i], ws[i] = a, b
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
@@ -571,9 +571,9 @@ def _compare():
     mask = np.asarray(np.random.random_sample((Ny, Ns)) > 0.4, dtype=int)
 
     current_mean = np.random.random_sample(D)
-    # current_cov = np.arange(D) + 1.2
-    T = np.tril(np.ones((D, D))) * 0.456
-    current_cov = np.dot(T, T.T)
+    current_cov = np.arange(D) + 1.2
+    # T = np.tril(np.ones((D, D))) * 0.456
+    # current_cov = np.dot(T, T.T)
 
     # X = Xs[0]
     # weights = weightss[0]
@@ -586,29 +586,29 @@ def _compare():
 
     ws = np.random.random_sample((Ny, Ns))
 
-    # _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
-    _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
+    _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
     print("jit compiled")
 
     ti = time.time()
     # S1 = _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu)
-    # S1, V1 = _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    S1, V1 = _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
     # S1,V1 = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
-    S1 = _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
+    # S1 = _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
     print("jit", time.time() - ti)
 
     ti = time.time()
     # S2 = cython.sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu)
-    # S2, V2 = cython.mu_step_full_IS(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    S2, V2 = cython.mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
     # S2,V2 = cython.test(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
-    S2 = cython.sigma_step_full_IS(Yobs, FXs, ws, mask, maximal_mu)
+    # S2 = cython.sigma_step_full_IS(Yobs, FXs, ws, mask, maximal_mu)
 
     print("cython", time.time() - ti)
     # print(V1 - V2)
     print(S1 - S2)
-
+    print(S2)
     assert np.allclose(S1, S2), "sigma step full noIs not same !"
-    # assert np.allclose(V1, V2), "sigma step full noIs not same !"
+    assert np.allclose(V1, V2), "sigma step full noIs not same !"
 
 
 def _verifie_cython():
@@ -629,9 +629,9 @@ def _verifie_cython():
     wks /= wks.sum(axis=1, keepdims=True)
     meanss = np.random.random_sample((N, K, D))
 
-    S1 = _loggauspdf_diag(X, meanss[0, 0], np.arange(D) + 1.2)
+    S1 = _loggausspdf_diag(X, meanss[0, 0], np.arange(D) + 1.2)
     ti = time.time()
-    S1 = _loggauspdf_diag(X, meanss[0, 0], np.arange(D) + 1.2)
+    S1 = _loggausspdf_diag(X, meanss[0, 0], np.arange(D) + 1.2)
     print("numpy ", time.time() - ti)
     ti = time.time()
     S2 = cython.test(X.T, meanss[0, 0], np.arange(D) + 1.2)
@@ -643,6 +643,6 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # _profile()
-    _debug()
-    # _compare()
+    # _debug()
+    _compare()
     # _verifie_cython()

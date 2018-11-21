@@ -224,6 +224,8 @@ class abstractFunctionModel:
         """Returns a mask of theoretically correct values"""
         if type(X) is list:
             mask = [(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in X]
+        elif X.ndims == 3:
+            mask = np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in X])
         else:
             mask = np.array([np.all((0 <= x) * (x <= 1)) for x in X])
         return mask
@@ -850,6 +852,8 @@ class LinearFunction(abstractFunctionModel):
         """Maps mathematical X valued to physical ones"""
         return X
 
+    def is_X_valid(self, X):
+        return np.ones(X.shape[:-1], dtype=bool)
 
 
 

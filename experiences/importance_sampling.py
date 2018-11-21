@@ -8,7 +8,7 @@ import numpy
 import numpy as np
 
 from Core.gllim import GLLiM
-from Core.probas_helper import densite_melange, chol_loggauspdf_diag, chol_loggausspdf_precomputed
+from Core.probas_helper import densite_melange, chol_loggausspdf_diag, chol_loggausspdf_precomputed
 
 
 def gllim_q(Xs: numpy.ndarray, Y: numpy.ndarray, gllim: GLLiM):
@@ -37,7 +37,7 @@ def p_tilde(FXs, Y, noise_cov, noise_mean):
     Y = np.asarray(Y, dtype=float)
     if noise_cov.ndim == 1:
         for i, (y, FX) in enumerate(zip(Y, FXs)):
-            out[i] = chol_loggauspdf_diag(FX.T + noise_mean.T[:, None], y[:, None], noise_cov)
+            out[i] = chol_loggausspdf_diag(FX.T + noise_mean.T[:, None], y[:, None], noise_cov)
     else:
         chol = np.linalg.cholesky(noise_cov)
         for i, (y, FX) in enumerate(zip(Y, FXs)):

@@ -49,11 +49,11 @@ def chol_loggausspdf_iso(X, mu, cov):
         return _chol_loggausspdf_iso(X, mu, cov)
 
 
-def chol_loggauspdf_diag(X, mu, cov):
+def chol_loggausspdf_diag(X, mu, cov):
     if mu.ndim == 2:
-        return _chol_loggauspdf_diag2(X, mu, cov)
+        return _chol_loggausspdf_diag2(X, mu, cov)
     else:
-        return _loggauspdf_diag(X, mu, cov)
+        return _loggausspdf_diag(X, mu, cov)
 
 
 @nb.njit(nogil=True, fastmath=True, cache=True)
@@ -157,7 +157,7 @@ def _chol_loggausspdf_iso2(X, mu, cov):
 
 
 @nb.njit(cache=True)
-def _loggauspdf_diag(X, mu, cov):
+def _loggausspdf_diag(X, mu, cov):
     """Diagonal covariance matrix (cov is diagonal)
     X shape : D,N
     mu shape : D
@@ -173,7 +173,7 @@ def _loggauspdf_diag(X, mu, cov):
 
 
 @nb.njit(cache=True)
-def _chol_loggauspdf_diag2(X, mu, cov):
+def _chol_loggausspdf_diag2(X, mu, cov):
     """Diagonal covariance matrix (cov is diagonal)
     X shape : D,N
     mu shape : D,N
@@ -401,8 +401,8 @@ if __name__ == '__main__':
     # means = np.arange(2*3).reshape((2,3))
     # covs = np.arange(2*3*3).reshape((2,3,3))  + 1
     # cov = 3 * np.eye(3)
-    D = 10
-    T = np.tril(np.ones((D, D))) * 0.456
+    D = 100
+    T = (np.tril(np.random.random_sample((D, D))) + np.eye(D)) * 0.28
     cov = np.dot(T, T.T)
     U = np.linalg.cholesky(cov).T  # DxD
     X = np.random.random_sample((D, 100000))
@@ -411,26 +411,38 @@ if __name__ == '__main__':
     # print(covs)
     # print(covariance_melange(pik,means,covs))
 
-    def f1():
-        Q = np.linalg.solve(U.T, X)
-
-
-    def f2():
-        Q2 = linalg.solve_triangular(U.T, X, lower=True)
+    # def f1():
+    #     Q = np.linalg.solve(U.T, X)
+    #
+    #
+    # def f2():
+    #     Q2 = linalg.solve_triangular(U.T, X, lower=True)
+    #
+    # #
+    # # assert np.allclose(Q,Q2)
+    # K = 40
+    # N = 200
+    # size = 100000
+    # covs = np.array([cov] * K)
+    # wks = np.random.random_sample((N, K))
+    # wks /= wks.sum(axis=1, keepdims=True)
+    # meanss = np.random.random_sample((N, K, D))
+    #
 
     #
-    # assert np.allclose(Q,Q2)
-    K = 40
-    N = 200
-    size = 100000
-    covs = np.array([cov] * K)
-    wks = np.random.random_sample((N, K))
-    wks /= wks.sum(axis=1, keepdims=True)
-    meanss = np.random.random_sample((N, K, D))
+    # GMM_sampling(meanss, wks, covs, 1)
+    #
+    # print(GMM_sampling(meanss, wks, covs, size))
 
     ti = time.time()
+    # S = np.linalg.cholesky(cov)
+    # S = np.linalg.inv(S)
+    S = np.linalg.inv(cov)
     print(time.time() - ti)
 
-    GMM_sampling(meanss, wks, covs, 1)
+    ti = time.time()
+    S2 = cython.test_chol(cov)
+    print(time.time() - ti)
+    print(S2)
 
-    print(GMM_sampling(meanss, wks, covs, size))
+    assert np.allclose(S, S2)

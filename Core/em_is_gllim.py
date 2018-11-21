@@ -10,7 +10,7 @@ import numpy as np
 from Core import cython
 from Core.gllim import jGLLiM
 from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
-    _loggauspdf_diag
+    _loggausspdf_diag
 from tools import context
 import hapke.cython
 
@@ -30,9 +30,6 @@ maxIter = 100
 
 NO_IS = False
 """If it's True, dont use Importance sampling"""
-
-HAPKE_MODE = True
-"""Use fast implementation for F calculus, bypassing context.F"""
 
 
 # ------------------------ Linear case ------------------------ #
@@ -135,6 +132,7 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
     ti = time.time()
     gllim = jGLLiM(K, sigma_type="full", stopping_ratio=stoppingRatioGLLiM)
     Xtrain, Ytrain = cont.get_data_training(Ntrain)
+
     Ytrain = cont.add_noise_data(Ytrain, covariance=current_noise_cov, mean=current_noise_mean)
 
     gllim.fit(Xtrain, Ytrain, current_theta, maxIter=maxIterGlliM)
@@ -143,13 +141,22 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
     return gllim
 
 
+# def _mask(Xs):
+#     print(Xs)
+#     mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
+#     # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+#     print(mask)
+#     raise
+#     mask = np.asarray(mask,dtype=int)
+#     print(mask)
+#     return mask
+
 
 # ------------------- WITHOUT IS ------------------- #
 
-def _em_step_NoIS(gllim, compute_F, Yobs, current_cov, *args):
+def _em_step_NoIS(gllim, compute_F, get_X_mask, Yobs, current_cov, *args):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
-    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-    # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+    mask = get_X_mask(Xs)
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -169,11 +176,9 @@ def _em_step_NoIS(gllim, compute_F, Yobs, current_cov, *args):
 
 # --------------------------------- WITH IS --------------------------------- #
 
-def _em_step_IS(gllim, compute_Fs, Yobs, current_cov, current_mean):
+def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
-    assert np.isfinite(Xs).all()
-    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-    # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+    mask = get_X_mask(Xs)
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -210,6 +215,10 @@ class NoiseEM:
         self.Yobs = Yobs
         self.cont = cont
         self.cov_type = cov_type
+
+    def get_X_mask(self, X):
+        m = np.asarray(~ self.cont.is_X_valid(X), dtype=int)
+        return m
 
     def compute_Fs(self, Xs, mask):
         D = self.cont.D
@@ -271,7 +280,7 @@ class NoiseEM:
         for current_iter in range(maxIter):
             gllim = self._gllim_step(current_noise_cov, current_noise_mean, current_theta)
 
-            max_mu, max_sigma = em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean)
+            max_mu, max_sigma = em_step(gllim, F, self.get_X_mask, Yobs, current_noise_cov, current_noise_mean)
 
             log_sigma = max_sigma if self.cov_type == "diag" else np.diag(max_sigma)
             logging.info(f"""
@@ -307,8 +316,10 @@ class NoiseEMGLLiM(NoiseEM):
 
     def _get_F(self):
         if isinstance(self.cont, context.abstractHapkeModel):
+            logging.info("Using C computation of Hapke's ")
             return self.fast_compute_Hapke
         else:
+            logging.info("Using generic Python computation of F")
             return self.compute_Fs
 
     def _init_gllim(self):
@@ -325,7 +336,7 @@ class NoiseEMISGLLiM(NoiseEMGLLiM):
 
     def _get_starting_logging(self):
         s = super()._get_starting_logging()
-        return s + f"with IS \n\t\tNSampleIS = {N_sample_IS}"
+        return s + f"with IS \n\tNSampleIS = {N_sample_IS}"
 
     def _get_em_step(self):
         return _em_step_IS
@@ -361,9 +372,9 @@ def _profile():
 def _debug():
     global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
     NO_IS = False
-    maxIter = 2
-    Nobs = 20
-    N_sample_IS = 1000
+    maxIter = 20
+    Nobs = 40
+    N_sample_IS = 20
     # cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
     cont = context.LinearFunction()
     INIT_COV_NOISE = 0.005
@@ -371,7 +382,7 @@ def _debug():
     Yobs = cont.add_noise_data(Yobs, covariance=0.05, mean=2)
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
-    fit(Yobs, cont, cov_type="diag", assume_linear=True)
+    fit(Yobs, cont, cov_type="full", assume_linear=False)
 
 
 if __name__ == '__main__':

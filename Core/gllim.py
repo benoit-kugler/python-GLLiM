@@ -20,16 +20,17 @@ from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
 
 from Core import probas_helper, mixture_merging
 from Core.probas_helper import chol_loggausspdf, densite_melange, dominant_components, chol_loggausspdf_iso, \
-    GMM_sampling
+    GMM_sampling, chol_loggausspdf_diag
 from tools import regularization
+import Core.cython
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 
 class CovarianceTypeError(NotImplementedError):
 
-    def __init__(self):
-        super().__init__("This covariance type is not supported !")
+    def __init__(self, gamma_type=None, sigma_type=None):
+        super().__init__(f"This covariance type Gamma ! {gamma_type}; Sigma : {sigma_type} is not supported !")
 
 class WrongContextError(ValueError):
     pass
@@ -234,7 +235,14 @@ class GLLiM():
 
     @property
     def full_SigmakList(self):
-        sitype = self.sigma_type == 'iso' and 'spherical' or 'full'
+        if self.sigma_type == "iso":
+            sitype = 'spherical'
+        elif self.sigma_type == "diag":
+            sitype = "diag"
+        elif self.sigma_type == "full":
+            sitype = "full"
+        else:
+            raise CovarianceTypeError
         return get_full_covariances(self.SigmakList, sitype, self.K, self.D)
 
     def _T_GMM_init(self, T, init_mode, **theta):
@@ -256,14 +264,15 @@ class GLLiM():
         self.SkList_W = np.zeros((self.K, self.Lw, self.Lw))
 
         # Means and Covariances of W fixed for non-identifiability issue
-        if not self.Lw == self.L:
-            self.ckList_W = np.zeros((self.K, self.Lw))
-            if self.gamma_type == 'full':
-                self.GammakList_W = np.array([np.eye(self.Lw)] * self.K)
-            elif self.gamma_type == 'iso':
-                self.GammakList_W = np.ones(self.K)
-            else:
-                raise CovarianceTypeError
+        self.ckList_W = np.zeros((self.K, self.Lw))
+        if self.gamma_type == 'full':
+            self.GammakList_W = np.array([np.eye(self.Lw)] * self.K)
+        elif self.gamma_type == 'iso':
+            self.GammakList_W = np.ones(self.K)
+        elif self.gamma_type == "diag":
+            self.GammakList_W = np.ones((self.K, self.Lw))
+        else:
+            raise CovarianceTypeError
 
         self.pikList = np.ones(self.K) / self.K
         self.AkList = np.ones((self.K, self.D, self.L))
@@ -273,6 +282,8 @@ class GLLiM():
             self.GammakList_T = np.array([np.identity(self.Lt)] * self.K)
         elif self.gamma_type == 'iso':
             self.GammakList_T = np.ones(self.K)
+        elif self.gamma_type == "diag":
+            self.GammakList_T = np.ones((self.K, self.Lt))
         else:
             raise CovarianceTypeError
 
@@ -280,6 +291,8 @@ class GLLiM():
             self.SigmakList = np.array([np.identity(self.D)] * self.K)
         elif self.sigma_type == 'iso':
             self.SigmakList = np.ones(self.K)
+        elif self.sigma_type == "diag":
+            self.SigmakList = np.ones((self.K, self.D))
         else:
             raise CovarianceTypeError
 
@@ -366,11 +379,17 @@ class GLLiM():
             return np.zeros((self.K, N, 0)), np.zeros((self.K, 0, 0))
 
         AkList_W = self.AkList_W
-        ginv = inv(self.GammakList_W)
+        if self.gamma_type == "iso":
+            ginv = np.array([(1 / g) * np.eye(self.Lw) for g in self.GammakList_W])
+        elif self.gamma_type == "diag":
+            ginv = np.array([np.diag(1 / g) for g in self.GammakList_W])
+        else:
+            ginv = inv(self.GammakList_W)
 
         ATSinv = np.matmul(AkList_W.transpose((0, 2, 1)), inv(self.full_SigmakList))
         Sk_W = inv(ginv + np.matmul(ATSinv, AkList_W))
-        d = Y.T - np.dot(self.AkList_T, T.T) - self.bkList[:, :, None]
+        u = np.array([Ak.dot(T.T) for Ak in self.AkList_T])
+        d = Y.T - u - self.bkList[:, :, None]
 
         e = np.matmul(ATSinv, d) + np.matmul(ginv, self.ckList_W[:, :, None])
 
@@ -390,13 +409,13 @@ class GLLiM():
                 mat = trace / self.Lt
             yield mat
 
-    def _compute_Sigma(self, X, Y, AkList, bkList, SkList_W):
+    def _compute_Sigma(self, Xnk, Y, AkList, bkList, SkList_W):
         """Eq (38)."""
         SigmaList = np.empty(self.sigma_type == "iso" and self.K or (self.K, self.D, self.D))
 
         for k, Ak, bk, rk in zip(range(self.K), AkList, bkList, self.rkList):
             coefs = self.rnk[:, k] / rk
-            diffSigma1 = (Y - (Ak.dot(X[:, k, :].T)).T - bk.reshape((1, self.D))).T
+            diffSigma1 = (Y - (Ak.dot(Xnk[:, k, :].T)).T - bk.reshape((1, self.D))).T
             diffSigma = np.sqrt(coefs).T * diffSigma1
 
             if self.sigma_type == 'iso':
@@ -409,6 +428,8 @@ class GLLiM():
                 pro = np.matmul(dS_large, dS_large.transpose((0, 2, 1)))
                 pro = np.array(pro, dtype='double')
                 SigmaList[k] = pro.sum(axis=0)
+            elif self.sigma_type == "diag":
+                SigmaList[k] = np.sum((diffSigma ** 2), axis=1)
             else:
                 raise NotImplementedError("Covariance type unknown !")
 
@@ -427,6 +448,8 @@ class GLLiM():
             r = SigmaList + (trace / self.D)
         elif self.sigma_type == 'full':
             r = SigmaList + ASAwk
+        elif self.sigma_type == "diag":
+            r = SigmaList + np.array([np.diag(m) for m in ASAwk])
         else:
             raise CovarianceTypeError
         return r
@@ -435,7 +458,8 @@ class GLLiM():
         N = T.shape[0]
         logrnk = np.empty((N, self.K))
 
-        gamma_f_log = {"iso": chol_loggausspdf_iso, "full": chol_loggausspdf}[self.gamma_type]
+        gamma_f_log = {"iso": chol_loggausspdf_iso, "full": chol_loggausspdf, "diag": chol_loggausspdf_diag}[
+            self.gamma_type]
 
         for (k, Ak, Ak_W, bk, ck_W, ck_T, pik, gammak_T, gammak_W, sigmak) in zip(range(self.K), self.AkList,
                                                                                   self.AkList_W, self.bkList,
@@ -450,6 +474,11 @@ class GLLiM():
             X = np.concatenate((T, cnk), axis=1)
             y_mean = np.dot(Ak, X.T) + bk.reshape((self.D, 1))
 
+            if self.gamma_type == "iso":  # full gamma
+                gammak_W = gammak_W * np.eye(self.Lw)
+            elif self.gamma_type == "diag":
+                gammak_W = np.diag(gammak_W)
+
             if self.sigma_type == "iso":
                 if self.Lw == 0:
                     d = chol_loggausspdf_iso(Y.T, y_mean, sigmak)
@@ -458,12 +487,21 @@ class GLLiM():
                     aga = np.dot(np.dot(Ak_W, gammak_W), Ak_W.T)
                     sigmak = sigmak + aga
                     d = chol_loggausspdf(Y.T, y_mean, sigmak)
-            else:
+            elif self.sigma_type == "diag":
+                if self.Lw == 0:
+                    d = chol_loggausspdf_diag(Y.T, y_mean, sigmak)
+                else:
+                    sigmak = np.diag(sigmak)  # full sigmak
+                    aga = np.dot(np.dot(Ak_W, gammak_W), Ak_W.T)
+                    sigmak = sigmak + aga
+                    d = chol_loggausspdf(Y.T, y_mean, sigmak)
+            elif self.sigma_type == "full":
                 if not self.Lw == 0:
                     aga = np.dot(np.dot(Ak_W, gammak_W), Ak_W.T)
                     sigmak = sigmak + aga
                 d = chol_loggausspdf(Y.T, y_mean, sigmak)
-
+            else:
+                raise CovarianceTypeError(sigma_type=self.sigma_type)
             # Pondération (experimental, not convincing)
             # c = c * self.D
             # d = d * (self.L / self.D)
@@ -478,12 +516,13 @@ class GLLiM():
         return lognormrnk, logrnk
 
     def _compute_Ak(self, Xnk, Y, SkList_X):
-        xk_bar = (self.rnk[:, :, None] * Xnk).sum(axis=0) / self.rkList[:, None]
+        xk_bars = (self.rnk[:, :, None] * Xnk).sum(axis=0) / self.rkList[:, None]
 
-        yk_bar = [np.sum(self.rnk[:, k] * Y.T, axis=1) / rk for k, rk in enumerate(self.rkList)]  # (36)
+        yk_bars = [np.sum(self.rnk[:, k] * Y.T, axis=1) / rk for k, rk in enumerate(self.rkList)]  # (36)
+
 
         AkList = np.zeros((self.K, self.D, self.L))
-        for k, rk, xk, yk in zip(range(self.K), self.rkList, xk_bar, yk_bar):
+        for k, rk, xk, yk in zip(range(self.K), self.rkList, xk_bars, yk_bars):
             # print(self.rnk[:,k],(X-xk).T)
             X_stark = (np.sqrt(self.rnk[:, k])) * (Xnk[:, k, :] - xk).T  # (33)
             X_stark /= np.sqrt(rk)
@@ -493,6 +532,7 @@ class GLLiM():
 
             XXt = np.dot(X_stark, X_stark.T)
             XXt_stark = SkList_X[k] + XXt
+
             YXt_stark = np.dot(Y_stark, X_stark.T)
             try:
                 i = np.linalg.pinv(XXt_stark)
@@ -973,3 +1013,250 @@ class jGLLiM(GLLiM):
                                     self.GMM_to_GLLiM(rho, m, V, self.L).items()}
 
         return [tolist(rho, m, V) for (rho, m, V) in Gmm.track_params]
+
+
+# -------------------- DEBUG -------------------- #
+def _compare(g: GLLiM, T, Y, Lw):
+    N = T.shape[0]
+    g.init_fit(T, Y, None)
+
+    AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (g.AkList_W, g.AkList_T, g.GammakList_W,
+                                                                      g.full_SigmakList, g.bkList, g.ckList_W)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+    ti = time.time()
+    a1, b1 = g._compute_rW_Z(Y, T)
+    print("python ", time.time() - ti)
+
+    a2, b2 = np.zeros((N, Lw)), np.zeros((Lw, Lw))
+    if g.gamma_type == "iso" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    elif g.gamma_type == "iso" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    elif g.gamma_type == "iso" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    else:
+        raise CovarianceTypeError(g.gamma_type, g.sigma_type)
+
+    ti = time.time()
+    f(Y, T, AkList_W[0], AkList_T[0], GammakList_W[0],
+      SigmakList[0], bkList[0], ckList_W[0], a2, b2)
+    print("cython", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "munk"
+    assert np.allclose(b1, b2), "Sk_W"
+
+
+def _compare2(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+
+    munk, SkList_W = g._compute_rW_Z(Y, T)
+    Xnk = np.concatenate((np.array([T] * g.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
+    SkList_X = g._get_SkList_X(SkList_W)
+
+    ti = time.time()
+    a1 = g._compute_Ak(Xnk, Y, SkList_X)
+    a1 = a1[0]
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    a2 = Core.cython.test_ak(Y, Xnk[:, 0, :], g.rnk[:, 0], SkList_X[0])
+    print("cython", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "error in Ak"
+
+
+def _compare3(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+
+    munk, SkList_W = g._compute_rW_Z(Y, T)
+    Xnk = np.concatenate((np.array([T] * g.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
+    SkList_X = g._get_SkList_X(SkList_W)
+    Ak = g.AkList
+
+    ti = time.time()
+    a1 = g._compute_bk(Y, Xnk, Ak)
+    a1 = a1[0]
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    a2 = Core.cython.test_ak(Y, Xnk[:, 0, :], g.rnk[:, 0], Ak[0])
+    print("cython", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "error in bk"
+
+
+def _compare4(g: GLLiM, T, Y, Lw):
+    N, D = Y.shape
+    g.init_fit(T, Y, None)
+
+    munk, SkList_W = g._compute_rW_Z(Y, T)
+    Xnk = np.concatenate((np.array([T] * g.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
+    SkList_X = g._get_SkList_X(SkList_W)
+    AkList = g.AkList
+    bkList = g.bkList
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+    ti = time.time()
+    a1 = g._compute_Sigma(Xnk, Y, AkList, bkList, SkList_W)
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    if g.sigma_type == "full":
+        a2 = np.zeros((D, D))
+        Core.cython._compute_Sigmak_SFull(Y, Xnk[:, 0, :], g.rnk[:, 0], g.rnk[:, 0].sum(),
+                                          AkList[0], bkList[0], SkList_W[0], np.zeros(D),
+                                          a2)
+    elif g.sigma_type == "diag":
+        a2 = np.zeros(D)
+        Core.cython._compute_Sigmak_SDiag(Y, Xnk[:, 0, :], g.rnk[:, 0], g.rnk[:, 0].sum(),
+                                          AkList[0], bkList[0], SkList_W[0], a2)
+    elif g.sigma_type == "iso":
+        a2 = Core.cython._compute_Sigmak_SIso(Y, Xnk[:, 0, :], g.rnk[:, 0], g.rnk[:, 0].sum(),
+                                              AkList[0], bkList[0], SkList_W[0])
+    else:
+        raise CovarianceTypeError(g.gamma_type, g.sigma_type)
+    print("cython", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "Sigmak error"
+    # assert np.allclose(b1,b2), "Sk_W"
+
+
+def _compare_complet(g: GLLiM, T, Y, Lw):
+    N = T.shape[0]
+    g.init_fit(T, Y, None)
+
+    AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (g.AkList_W, g.AkList_T, g.GammakList_W,
+                                                                      g.full_SigmakList, g.bkList, g.ckList_W)
+    rnk_List = g.rnk
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+    ti = time.time()
+    (out_pikList, out_ckList_T, out_GammakList_T, out_AkList,
+     out_bkList, out_SigmakList) = g.compute_next_theta(T, Y)
+    print("python ", time.time() - ti)
+
+    if g.gamma_type == "iso" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "full":
+        f = Core.cython.test_complet
+    elif g.gamma_type == "iso" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    elif g.gamma_type == "iso" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    else:
+        raise CovarianceTypeError(g.gamma_type, g.sigma_type)
+
+    ti = time.time()
+    (out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1,
+     out_bkList1, out_SigmakList1) = f(T, Y, rnk_List, AkList_W, GammakList_W,
+                                       SigmakList, bkList, ckList_W)
+    print("cython", time.time() - ti, "\n")
+
+    assert np.allclose(out_pikList, out_pikList1), "pik"
+    assert np.allclose(out_ckList_T, out_ckList_T1), "ck"
+    assert np.allclose(out_GammakList_T, out_GammakList_T1), "Gammak"
+    assert np.allclose(out_AkList, out_AkList1), "Ak"
+    assert np.allclose(out_bkList, out_bkList1), "Bk"
+    assert np.allclose(out_SigmakList, out_SigmakList1), "Sigmak"
+
+
+def _check_one(Lt, Lw, N=100000, D=5, K=1):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="iso")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="diag")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
+    _compare(g, T, Y, Lw)
+
+
+def _check_Ak(Lt, Lw, N=10000, D=5, K=1):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare2(g, T, Y, Lw)
+
+
+def _check_bk(Lt, Lw, N=100000, D=5, K=1):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare3(g, T, Y, Lw)
+
+
+def _check_Sigma(Lt, Lw, N=10000, D=5, K=1):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare4(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare4(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare4(g, T, Y, Lw)
+
+
+def _check_complet(Lt, Lw, N=10000, D=5, K=7):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
+    # g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    # _compare_complet(g, T, Y, Lw)
+    # g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    # _compare_complet(g, T, Y, Lw)
+
+
+def _debug():
+    _check_complet(1, 2)
+    _check_complet(0, 2)
+    _check_complet(2, 1)
+    _check_complet(2, 0)
+
+
+if __name__ == '__main__':
+    _debug()

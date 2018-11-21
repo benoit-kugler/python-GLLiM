@@ -13,7 +13,7 @@ cdef double _LOG_2PI = log(2 * pi)
 @cython.wraparound(False)
 cdef void solve_triangular_diff(const double[:,:] L, const double[:] X,
                                 const double[:] mu, double[:] out) nogil:
-    """Compute L-1 (X - mu), for X of shape (N,_)
+    """Compute L-1 (X - mu), for X of shape (N,_). L is lower.
     Erase out.
     """
     cdef Py_ssize_t D = X.shape[0]
@@ -98,3 +98,86 @@ cdef void loggauspdf_diag(const double[:,:] X, const double[:] mu, const double[
             q += ((X[n,d] - mu[d]) / sqrt(cov[d])) ** 2
 
         out[n] = -0.5 * (D * _LOG_2PI + q) - log_det
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void cholesky(const double[:,:] A, double[:,:] L) nogil:
+    """Performs a Cholesky decomposition of A, which must
+    be a symmetric and positive definite matrix. The function
+    write the lower variant triangular matrix, L, which should be zero at first."""
+    cdef Py_ssize_t n = A.shape[0]
+
+    cdef double tmp_sum = 0
+    cdef Py_ssize_t i,k,j
+
+    # Perform the Cholesky decomposition
+    for i in range(n):
+        for k in range(i+1):
+            tmp_sum = 0
+            for j in range(k):
+                tmp_sum += L[i,j] * L[k,j]
+
+            if (i == k): # Diagonal elements
+                L[i,k] = sqrt(A[i,i] - tmp_sum)
+            else:
+                L[i,k] = (1. / L[k,k] * (A[i,k] - tmp_sum))
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void inverse_triangular(const double[:,:] L, double[:,:] out) nogil:
+    """matrix inversion"""
+    cdef Py_ssize_t n = L.shape[0]
+
+    cdef Py_ssize_t i,j,k
+
+    for i in range(n):
+        out[i,i] = 1. / L[i,i]
+        for j in range(i): # j < i
+            out[i,j] = 0
+            out[j,i] = 0
+            for k in range(j,i):
+                out[i, j] +=  L[i,k] * out[k,j]
+            out[i,j] /= - L[i,i]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void tAA_low_tri(const double[:,:] A, double[:,:] out) nogil:
+    """Work for A lower triangular. Write transpose(A) * A """
+    cdef Py_ssize_t n = A.shape[0]
+    cdef Py_ssize_t i,j,k
+
+    for i in range(n):
+        for j in range(i+1):
+            out[i,j] = 0
+            for k in range(i,n):
+                out[i,j] += A[k,i] * A[k,j]
+            out[j,i] = out[i,j]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void inverse_symetric(const double[:,:] S, double[:,:] tmp, double[:,:] out) nogil:
+    """cholesky decomp + triangular inversion. Write on S"""
+    cholesky(S, out)
+    inverse_triangular(out, tmp)
+    tAA_low_tri(tmp, out)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void inverse_symetric_inplace(double[:,:] S, double[:,:] out) nogil:
+    """cholesky decomp + triangular inversion. Write on S"""
+    cholesky(S, out)
+    inverse_triangular(out, S)
+    tAA_low_tri(S, out)
+
+
+def test_chol(A):
+    L = np.zeros(A.shape)
+    M = np.zeros(A.shape)
+    inverse_symetric_inplace(A,L)
+
+    return L
