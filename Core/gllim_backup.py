@@ -3,7 +3,8 @@ Gllim model in python
 
 __author__ = R.Juge & S.Lathuiliere & B. Kugler
 
-Tha actual computation is done by cython extension
+The equation numbers refer to _High-Dimensional Regression with Gaussian Mixtures and Partially-Latent Response Variables_A. Deleforge 2015
+
 """
 import logging
 import time
@@ -32,6 +33,7 @@ class CovarianceTypeError(NotImplementedError):
     def __init__(self, gamma_type=None, sigma_type=None):
         super().__init__(f"This covariance type Gamma ! {gamma_type}; Sigma : {sigma_type} is not supported !")
 
+
 class WrongContextError(ValueError):
     pass
 
@@ -44,6 +46,7 @@ def _inv_sym_def(S):
                                            np.eye(D), lower=True)
     Si = np.dot(i_chol.T, i_chol)
     return Si
+
 
 def get_full_covariances(covariances_, covariance_type, K=None, N_features=None):
     if covariance_type == 'spherical':
@@ -76,7 +79,6 @@ class MyGMM(GaussianMixture):
         self.track = track
         self.track_params = []
 
-
     @property
     def last_ll(self):
         assert self.n_init == 1
@@ -85,7 +87,6 @@ class MyGMM(GaussianMixture):
     def _m_step(self, Y, log_resp):
         super()._m_step(Y, log_resp)
         self.current_iter_ll.append(self.log_likelihood(Y))
-
 
     def log_likelihood(self, Y):
         vec_log_prob, _ = self._estimate_log_prob_resp(Y)
@@ -115,10 +116,8 @@ DEFAULT_REG_COVAR = 1e-08
 DEFAULT_STOPPING_RATIO = 0.001
 
 
-class GLLiM:
-    """ Gaussian Locally-Linear Mapping.
-    Uses cython M step
-    """
+class OldGLLiM():
+    ''' Gaussian Locally-Linear Mapping'''
 
     def __init__(self, K_in, Lw=0, sigma_type='iso', gamma_type='full',
                  verbose=True,
@@ -133,7 +132,6 @@ class GLLiM:
         self.verbose = verbose
         self.track_theta = False
         self.nb_init_GMM = 1  # Number of init made by GMM when fit is init with it
-
 
     def start_track(self):
         self.track_theta = True
@@ -233,7 +231,6 @@ class GLLiM:
             for Gammak_t, Gammak_w in zip(gammas, self.GammakList_W)
         ])
 
-
     @property
     def full_SigmakList(self):
         if self.sigma_type == "iso":
@@ -296,7 +293,6 @@ class GLLiM:
             self.SigmakList = np.ones((self.K, self.D))
         else:
             raise CovarianceTypeError
-
 
     def init_fit(self, T, Y, init):
         """Initialize model parameters. Three cases are supported :
@@ -401,6 +397,75 @@ class GLLiM:
         munk_W = np.matmul(Sk_W, e).transpose((0, 2, 1))
         return munk_W, Sk_W
 
+    def _compute_GammaT(self, T, ckList_T):
+        N = T.shape[0]
+        # Evite la répition du calcul de a et b
+        for k, ck, rk in zip(range(self.K), ckList_T, self.rkList):
+            a = np.sqrt(self.rnk[:, k]).reshape((1, N))
+            b = T.T - ck.reshape((self.Lt, 1))
+            c = a * b
+            mat = np.dot(c, c.T) / rk
+            if self.gamma_type == 'iso':
+                if self.Lt == 0:
+                    mat = 0
+                else:
+                    trace = mat.trace(axis1=0, axis2=1)
+                    mat = trace / self.Lt
+            elif self.gamma_type == 'diag':
+                mat = np.diag(mat)
+            yield mat
+
+    def _compute_Sigma(self, Xnk, Y, AkList, bkList, SkList_W):
+        """Eq (38)."""
+        if self.sigma_type == "iso":
+            SigmaList = np.zeros(self.K)
+        elif self.sigma_type == "diag":
+            SigmaList = np.zeros((self.K, self.D))
+        elif self.sigma_type == "full":
+            SigmaList = np.zeros((self.K, self.D, self.D))
+        else:
+            raise CovarianceTypeError(sigma_type=self.sigma_type)
+
+        for k, Ak, bk, rk in zip(range(self.K), AkList, bkList, self.rkList):
+            coefs = self.rnk[:, k] / rk
+            diffSigma1 = (Y - (Ak.dot(Xnk[:, k, :].T)).T - bk.reshape((1, self.D))).T
+            diffSigma = np.sqrt(coefs).T * diffSigma1
+
+            if self.sigma_type == 'iso':
+                stmp = np.sum((diffSigma ** 2), axis=1)
+                # isotropic sigma
+                SigmaList[k] = np.sum(stmp) / self.D
+            elif self.sigma_type == 'full':
+                dS_large = diffSigma.T[:, :, None]
+                pro = np.matmul(dS_large, dS_large.transpose((0, 2, 1)))
+                pro = np.array(pro, dtype='double')
+                SigmaList[k] = pro.sum(axis=0)
+            elif self.sigma_type == "diag":
+                s = np.sum(diffSigma ** 2, axis=1)
+                SigmaList[k] = s
+            else:
+                raise NotImplementedError("Covariance type unknown !")
+
+            assert np.isfinite(SigmaList[k]).all(), "Sigma matrix is not finite !"
+
+        if self.Lw == 0:
+            return SigmaList
+
+        # Calcul de ASAw
+        Akwlist = AkList[:, :, -self.Lw:]
+        AS = np.matmul(Akwlist, SkList_W)
+        ASAwk = np.matmul(AS, Akwlist.transpose((0, 2, 1)))
+
+        if self.sigma_type == 'iso':
+            trace = ASAwk.trace(axis1=1, axis2=2)
+            r = SigmaList + (trace / self.D)
+        elif self.sigma_type == 'full':
+            r = SigmaList + ASAwk
+        elif self.sigma_type == "diag":
+            r = SigmaList + np.array([np.diag(m) for m in ASAwk])
+        else:
+            raise CovarianceTypeError
+        return r
 
     def _compute_rnk(self, Y, T):
         N = T.shape[0]
@@ -463,90 +528,69 @@ class GLLiM:
         assert (logrnk <= 0).all()
         return lognormrnk, logrnk
 
+    def _compute_Ak(self, Xnk, Y, SkList_X):
+        xk_bars = (self.rnk[:, :, None] * Xnk).sum(axis=0) / self.rkList[:, None]
+
+        yk_bars = [np.sum(self.rnk[:, k] * Y.T, axis=1) / rk for k, rk in enumerate(self.rkList)]  # (36)
+
+        AkList = np.zeros((self.K, self.D, self.L))
+        for k, rk, xk, yk in zip(range(self.K), self.rkList, xk_bars, yk_bars):
+            # print(self.rnk[:,k],(X-xk).T)
+            X_stark = (np.sqrt(self.rnk[:, k])) * (Xnk[:, k, :] - xk).T  # (33)
+            X_stark /= np.sqrt(rk)
+            # print(X_stark)
+            Y_stark = (np.sqrt(self.rnk[:, k])) * (Y - yk).T  # (34)
+            Y_stark /= np.sqrt(rk)
+
+            XXt = np.dot(X_stark, X_stark.T)
+            XXt_stark = SkList_X[k] + XXt
+
+            YXt_stark = np.dot(Y_stark, X_stark.T)
+            try:
+                i = np.linalg.pinv(XXt_stark)
+                A = np.dot(YXt_stark, i)
+                assert np.isfinite(A).all()
+            except (np.linalg.LinAlgError, AssertionError) as e:
+                logging.warning(f"Warning ! {e} at iter. {self.current_iter}-> A set to 0")
+                AkList[k] = np.zeros((self.D, self.L))
+            else:
+                AkList[k] = A
+
+        return AkList
+
+    def _compute_bk(self, Y, Xnk, AkList):
+        return np.array([np.sum(self.rnk[:, k].T * (Y - (Ak.dot(Xnk[:, k, :].T)).T).T, axis=1) / rk for k, Ak, rk in
+                         zip(range(self.K), AkList, self.rkList)])  # (37)
+
+    def _compute_ck(self, T):
+        return np.dot(self.rnk.T, T) / self.rkList[:, np.newaxis]  # (29)
+
     def compute_next_theta(self, T, Y):
         """Compute M steps. Return the result. Usefull to implement SAEM algorithm"""
-        gamma_type, sigma_type = self.gamma_type, self.sigma_type
+        N = T.shape[0]
 
-        if gamma_type == "iso":
-            if sigma_type == "iso":
-                f = Core.cython.compute_next_theta_GIso_SIso
-            elif sigma_type == "diag":
-                f = Core.cython.compute_next_theta_GIso_SDiag
-            elif sigma_type == "full":
-                f = Core.cython.compute_next_theta_GIso_SFull
-        elif gamma_type == "diag":
-            if sigma_type == "iso":
-                f = Core.cython.compute_next_theta_GDiag_SIso
-            elif sigma_type == "diag":
-                f = Core.cython.compute_next_theta_GDiag_SDiag
-            elif sigma_type == "full":
-                f = Core.cython.compute_next_theta_GDiag_SFull
-        elif gamma_type == "full":
-            if sigma_type == "iso":
-                f = Core.cython.compute_next_theta_GFull_SIso
-            elif sigma_type == "diag":
-                f = Core.cython.compute_next_theta_GFull_SDiag
-            elif sigma_type == "full":
-                f = Core.cython.compute_next_theta_GFull_SFull
+        munk, SkList_W = self._compute_rW_Z(Y, T)
 
-        AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (
-        self.AkList_W, self.AkList_T, self.GammakList_W,
-        self.SigmakList, self.bkList, self.ckList_W)
-        rnk_List = self.rnk
-        N, D = Y.shape
-        K, _, Lw = AkList_W.shape
-        _, Lt = T.shape
-        L = Lt + Lw
+        Xnk = np.concatenate((np.array([T] * self.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
 
-        out_pikList1 = np.zeros(K)
-        out_ckList_T1 = np.zeros((K, Lt))
+        pikList = self.rkList / N  # (28)
 
-        if gamma_type == "iso":
-            out_GammakList_T1 = np.zeros(K)
-        elif gamma_type == "diag":
-            out_GammakList_T1 = np.zeros((K, Lt))
-        elif gamma_type == "full":
-            out_GammakList_T1 = np.zeros((K, Lt, Lt))
+        ckList_T = self._compute_ck(T)
 
-        if sigma_type == "full":
-            out_SigmakList1 = np.zeros((K, D, D))
-        elif sigma_type == "diag":
-            out_SigmakList1 = np.zeros((K, D))
-        elif sigma_type == "iso":
-            out_SigmakList1 = np.zeros(K)
+        GammakList_T = np.array(list(self._compute_GammaT(T, ckList_T)))
+        GammakList_T = self._add_numerical_stability(GammakList_T, self.gamma_type)  # numerical stability
 
-        out_AkList1 = np.zeros((K, D, L))
-        out_bkList1 = np.zeros((K, D))
-        xk_bar = np.zeros(L)  # tmp
-        yk_bar = np.zeros(D)  # tmp
-        X_stark = np.zeros((L, N))  # tmp
-        Y_stark = np.zeros((D, N))  # tmp
-        YXt_stark = np.zeros((D, L))  # tmp
-        inv = np.zeros((L, L))  # tmp
+        # M-mapping-step
+        SkList_X = self._get_SkList_X(SkList_W)
 
-        munk = np.zeros((N, Lw))  # tmp
-        tmp_LwLw = np.zeros((Lw, Lw))  # tmp
-        Xnk = np.zeros((N, L))  # tmp
-        tmp_Lt = np.zeros(Lt)  # tmp
-        tmp_Lw = np.zeros(Lw)  # tmp
-        tmp_D = np.zeros(D)  # tmp
+        AkList = self._compute_Ak(Xnk, Y, SkList_X)
 
-        ginv_tmpLw = np.zeros((Lw, Lw))  # tmp
-        Sk_W = np.zeros((Lw, Lw))  # tmp
-        Sk_X = np.zeros((L, L))  # tmp
+        bkList = self._compute_bk(Y, Xnk, AkList)
 
-        tmp_DD = np.zeros((D, D))  # tmp
-        tmp_DD2 = np.zeros((D, D))  # tmp
-        ATSinv_tmp = np.zeros((Lw, D))  # tmp
+        SigmakList = self._compute_Sigma(Xnk, Y, AkList, bkList, SkList_W)
+        SigmakList = self._add_numerical_stability(SigmakList, self.sigma_type)
 
-        args = (T, Y, rnk_List, AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W,
-                out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1,
-                munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
-                inv, tmp_Lw, tmp_LwLw, tmp_DD, tmp_DD2, ginv_tmpLw)
-
-        f(*args)
-        return out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1
-
+        return pikList, ckList_T, GammakList_T, AkList, bkList, SigmakList
 
     def stopping_criteria(self, maxIter):
         """Return true if we should stop"""
@@ -557,7 +601,6 @@ class GLLiM:
         delta_total = max(self.LLs_) - min(self.LLs_)
         delta = self.current_ll - self.LLs_[-2]
         return delta < (self.stopping_ratio * delta_total)
-
 
     def fit(self, T, Y, init, maxIter=100):
         '''fit the Gllim
@@ -598,7 +641,6 @@ class GLLiM:
 
             self.rnk = np.exp(logrnk)
             self.rkList = self.rnk.sum(axis=0)
-
 
             # Log likelihood of (X,Y)
             ll = np.sum(lognormrnk)  # EVERY EM Iteration THIS MUST INCREASE
@@ -753,7 +795,6 @@ class GLLiM:
             raise WrongContextError("Dimension of X samples doesn't match the choosen Lw")
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
 
-
         NX, D = X_points.shape
         N = Y.shape[0]
         if marginals:
@@ -784,7 +825,7 @@ class GLLiM:
         proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
         covs = self.SigmakListS
         chols = np.linalg.cholesky(covs)
-        det_covs = np.prod(np.array([np.diag(c) for c in chols]),axis=1)
+        det_covs = np.prod(np.array([np.diag(c) for c in chols]), axis=1)
         N = Y.shape[0]
         lc = components or self.K
         threshold = threshold if (components is None) else None
@@ -795,14 +836,13 @@ class GLLiM:
             if len(dominants) == 0:
                 max_w = max(alphan)
                 logging.error("Warning ! No prediction for this threshold (best weight : {:.2e}!".format(max_w))
-                hs, ws, xs = np.empty((0,)) , np.empty((0,)) , np.empty((0,))
+                hs, ws, xs = np.empty((0,)), np.empty((0,)), np.empty((0,))
             else:
                 hs, ws, xs, _ = zip(*dominants)
             weights.append(np.array(ws))
             heights.append(np.array(hs))
             X.append(np.array(xs))
         return X, heights, weights
-
 
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
@@ -873,12 +913,11 @@ class GLLiM:
 class jGLLiM(GLLiM):
     """Estimate parameters with joint Gaussian Mixture equivalence."""
 
-    def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         if not (self.sigma_type == 'full' and self.gamma_type == 'full' and self.Lw == 0):
             raise WrongContextError("Joint Gaussian mixture can only be used with Lw = 0, "
-                             "and full covariances matrix")
-
+                                    "and full covariances matrix")
 
     @staticmethod
     def GMM_to_GLLiM(rho, m, V, L):
@@ -986,15 +1025,339 @@ class jGLLiM(GLLiM):
         return [tolist(rho, m, V) for (rho, m, V) in Gmm.track_params]
 
 
-def _debug(Lt, Lw, N=50000, D=10, K=40):
-    Y = np.random.random_sample((N, D)) + 2
-    T = np.random.random_sample((N, Lt))
-    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    g.fit(Y, T, "random", maxIter=10)
+# -------------------- DEBUG -------------------- #
+def _compare(g: GLLiM, T, Y, Lw):
+    N = T.shape[0]
+    g.init_fit(T, Y, None)
 
+    AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (g.AkList_W, g.AkList_T, g.GammakList_W,
+                                                                      g.full_SigmakList, g.bkList, g.ckList_W)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+    ti = time.time()
+    a1, b1 = g._compute_rW_Z(Y, T)
+    print("python ", time.time() - ti)
+
+    a2, b2 = np.zeros((N, Lw)), np.zeros((Lw, Lw))
+    if g.gamma_type == "iso" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "full":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    elif g.gamma_type == "iso" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "diag":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    elif g.gamma_type == "iso" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GIso_SFull
+    elif g.gamma_type == "diag" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GDiag_SFull
+    elif g.gamma_type == "full" and g.sigma_type == "iso":
+        f = Core.cython._compute_rW_Z_GFull_SFull
+    else:
+        raise CovarianceTypeError(g.gamma_type, g.sigma_type)
+
+    ti = time.time()
+    f(Y, T, AkList_W[0], AkList_T[0], GammakList_W[0],
+      SigmakList[0], bkList[0], ckList_W[0], a2, b2)
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "munk"
+    assert np.allclose(b1, b2), "Sk_W"
+
+
+def _compare2(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+
+    munk, SkList_W = g._compute_rW_Z(Y, T)
+    Xnk = np.concatenate((np.array([T] * g.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
+    SkList_X = g._get_SkList_X(SkList_W)
+
+    ti = time.time()
+    a1 = g._compute_Ak(Xnk, Y, SkList_X)
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    a2 = Core.cython.test_Ak(Y, Xnk, g.rnk, SkList_X)
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "error in Ak"
+
+
+def _compare2bis(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+
+    ti = time.time()
+    a1 = g._compute_ck(T)
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    a2 = Core.cython.test_ck(T, g.rnk)
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "error in ck"
+
+
+def _compare3(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+
+    munk, SkList_W = g._compute_rW_Z(Y, T)
+    Xnk = np.concatenate((np.array([T] * g.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
+    SkList_X = g._get_SkList_X(SkList_W)
+    Ak = g.AkList
+
+    ti = time.time()
+    a1 = g._compute_bk(Y, Xnk, Ak)
+    a1 = a1[0]
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    a2 = Core.cython.test_ak(Y, Xnk[:, 0, :], g.rnk[:, 0], Ak[0])
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "error in bk"
+
+
+def _compare4(g: GLLiM, T, Y, Lw):
+    N, D = Y.shape
+    g.init_fit(T, Y, None)
+
+    munk, SkList_W = g._compute_rW_Z(Y, T)
+    Xnk = np.concatenate((np.array([T] * g.K), munk), axis=2).transpose((1, 0, 2))  # Shape (N,K,L)
+    SkList_X = g._get_SkList_X(SkList_W)
+    AkList = g.AkList
+    bkList = g.bkList
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+    ti = time.time()
+    a1 = g._compute_Sigma(Xnk, Y, AkList, bkList, SkList_W)
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    if g.sigma_type == "full":
+        a2 = np.zeros((D, D))
+        Core.cython._compute_Sigmak_SFull(Y, Xnk[:, 0, :], g.rnk[:, 0], g.rnk[:, 0].sum(),
+                                          AkList[0], bkList[0], SkList_W[0], np.zeros(D),
+                                          a2)
+    elif g.sigma_type == "diag":
+        a2 = np.zeros(D)
+        Core.cython._compute_Sigmak_SDiag(Y, Xnk[:, 0, :], g.rnk[:, 0], g.rnk[:, 0].sum(),
+                                          AkList[0], bkList[0], SkList_W[0], a2)
+    elif g.sigma_type == "iso":
+        a2 = Core.cython._compute_Sigmak_SIso(Y, Xnk[:, 0, :], g.rnk[:, 0], g.rnk[:, 0].sum(),
+                                              AkList[0], bkList[0], SkList_W[0])
+    else:
+        raise CovarianceTypeError(g.gamma_type, g.sigma_type)
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "Sigmak error"
+    # assert np.allclose(b1,b2), "Sk_W"
+
+
+def _compare_complet(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (g.AkList_W, g.AkList_T, g.GammakList_W,
+                                                                      g.SigmakList, g.bkList, g.ckList_W)
+    rnk_List = g.rnk
+    gamma_type, sigma_type = g.gamma_type, g.sigma_type
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+    ti = time.time()
+    (out_pikList, out_ckList_T, out_GammakList_T, out_AkList,
+     out_bkList, out_SigmakList) = g.compute_next_theta(T, Y)
+    print("python ", time.time() - ti)
+
+    N, D = Y.shape
+    K, _, Lw = AkList_W.shape
+    _, Lt = T.shape
+    L = Lt + Lw
+
+    out_pikList1 = np.zeros(K)
+    out_ckList_T1 = np.zeros((K, Lt))
+
+    if gamma_type == "iso":
+        out_GammakList_T1 = np.zeros(K)
+    elif gamma_type == "diag":
+        out_GammakList_T1 = np.zeros((K, Lt))
+    elif gamma_type == "full":
+        out_GammakList_T1 = np.zeros((K, Lt, Lt))
+
+    if sigma_type == "full":
+        out_SigmakList1 = np.zeros((K, D, D))
+    elif sigma_type == "diag":
+        out_SigmakList1 = np.zeros((K, D))
+    elif sigma_type == "iso":
+        out_SigmakList1 = np.zeros(K)
+
+    out_AkList1 = np.zeros((K, D, L))
+    out_bkList1 = np.zeros((K, D))
+    xk_bar = np.zeros(L)  # tmp
+    yk_bar = np.zeros(D)  # tmp
+    X_stark = np.zeros((L, N))  # tmp
+    Y_stark = np.zeros((D, N))  # tmp
+    YXt_stark = np.zeros((D, L))  # tmp
+    inv = np.zeros((L, L))  # tmp
+
+    munk = np.zeros((N, Lw))  # tmp
+    tmp_LwLw = np.zeros((Lw, Lw))  # tmp
+    Xnk = np.zeros((N, L))  # tmp
+    tmp_Lt = np.zeros(Lt)  # tmp
+    tmp_Lw = np.zeros(Lw)  # tmp
+    tmp_D = np.zeros(D)  # tmp
+
+    ginv_tmpLw = np.zeros((Lw, Lw))  # tmp
+    Sk_W = np.zeros((Lw, Lw))  # tmp
+    Sk_X = np.zeros((L, L))  # tmp
+
+    tmp_DD = np.zeros((D, D))  # tmp
+    tmp_DD2 = np.zeros((D, D))  # tmp
+    ATSinv_tmp = np.zeros((Lw, D))  # tmp
+
+    args = (T, Y, rnk_List, AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W,
+            out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1,
+            munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
+            inv, tmp_Lw, tmp_LwLw, tmp_DD, tmp_DD2, ginv_tmpLw)
+
+    if gamma_type == "iso":
+        if sigma_type == "iso":
+            f = Core.cython.compute_next_theta_GIso_SIso
+        elif sigma_type == "diag":
+            f = Core.cython.compute_next_theta_GIso_SDiag
+        elif sigma_type == "full":
+            f = Core.cython.compute_next_theta_GIso_SFull
+    elif gamma_type == "diag":
+        if sigma_type == "iso":
+            f = Core.cython.compute_next_theta_GDiag_SIso
+        elif sigma_type == "diag":
+            f = Core.cython.compute_next_theta_GDiag_SDiag
+        elif sigma_type == "full":
+            f = Core.cython.compute_next_theta_GDiag_SFull
+    elif gamma_type == "full":
+        if sigma_type == "iso":
+            f = Core.cython.compute_next_theta_GFull_SIso
+        elif sigma_type == "diag":
+            f = Core.cython.compute_next_theta_GFull_SDiag
+        elif sigma_type == "full":
+            f = Core.cython.compute_next_theta_GFull_SFull
+
+    ti = time.time()
+    f(*args)
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(out_pikList, out_pikList1), "pik"
+    assert np.allclose(out_ckList_T, out_ckList_T1), "ck"
+    assert np.allclose(out_GammakList_T, out_GammakList_T1), "Gammak"
+    assert np.allclose(out_AkList, out_AkList1), "Ak"
+    assert np.allclose(out_bkList, out_bkList1), "Bk"
+    assert np.allclose(out_SigmakList, out_SigmakList1), "Sigmak"
+
+
+def _check_one(Lt, Lw, N=100000, D=5, K=2):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="iso")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="diag")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
+    _compare(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
+    _compare(g, T, Y, Lw)
+
+
+def _check_ck(Lt, Lw, N=10000, D=5, K=5):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare2bis(g, T, Y, Lw)
+
+
+def _check_Ak(Lt, Lw, N=10000, D=5, K=10):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare2(g, T, Y, Lw)
+
+
+def _check_bk(Lt, Lw, N=100000, D=5, K=1):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare3(g, T, Y, Lw)
+
+
+def _check_Sigma(Lt, Lw, N=10000, D=5, K=1):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare4(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare4(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare4(g, T, Y, Lw)
+
+
+def _check_complet(Lt, Lw, N=100000, D=10, K=50):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="iso")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="diag")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
+
+
+def _debug():
+    _check_complet(2, 5)
+    _check_complet(0, 7)
+    _check_complet(4, 1)
+    _check_complet(4, 0)
+    # _check_Ak(1, 2)
+    # _check_Ak(0, 2)
+    # _check_Ak(2, 1)
+    # _check_Ak(2, 0)
 
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    _debug(5, 1)
+    _debug()

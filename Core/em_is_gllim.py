@@ -154,13 +154,13 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
 
 # ------------------- WITHOUT IS ------------------- #
 
-def _em_step_NoIS(gllim, compute_F, get_X_mask, Yobs, current_cov, *args):
+def _em_step_NoIS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, *args):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
     mask = get_X_mask(Xs)
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
-    FXs = compute_F(Xs, mask)
+    FXs = compute_Fs(Xs, mask)
     logging.debug(f"Computation of F done in {time.time()-ti:.3f} s")
     ti = time.time()
 
@@ -302,7 +302,7 @@ class NoiseEMLinear(NoiseEM):
         return self.cont.F_matrix
 
     def _get_em_step(self):
-        def em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean):
+        def em_step(gllim, F, func_mask, Yobs, current_noise_cov, current_noise_mean):
             return _em_step_lin(F, Yobs, self.cont.PRIOR_COV, current_noise_cov, current_noise_mean)
 
         return em_step

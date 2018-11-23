@@ -1,11 +1,16 @@
-import multiprocessing
+"""
+Gllim model in cython
+
+__author__ = B. Kugler
+
+The equation numbers refer to _High-Dimensional Regression with Gaussian Mixtures and Partially-Latent Response Variables_A. Deleforge 2015
+
+"""
+
 cimport cython
-cimport openmp
 cimport numpy as np
 import numpy as np
 from libc.math cimport sqrt
-from libc.stdio cimport printf
-from cython.parallel import prange
 
 include "probas.pyx"
 include "mat_helpers.pyx"

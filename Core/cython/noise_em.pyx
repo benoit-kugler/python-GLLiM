@@ -363,8 +363,6 @@ def mu_step_diag_IS(const double[:,:] Yobs, const double[:,:,:] Xs, const double
                               y_moins_mu, log_p_tilde, gllim_chol_covs,
                               tmp_mu, maximal_mu, ws, tmp_KNs, tmp_KL)
 
-    print(maximal_mu, ws)
-
     return maximal_mu, ws
 
 
