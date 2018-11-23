@@ -10,6 +10,7 @@ import logging
 import time
 import warnings
 
+import coloredlogs
 import numpy as np
 import scipy
 from numpy.linalg import inv
@@ -353,9 +354,13 @@ class GLLiM():
     def _add_numerical_stability(self, matrixlist, cov_type):
         if cov_type == 'iso':
             return matrixlist + self.reg_covar
+        elif cov_type == "diag":
+            return matrixlist + self.reg_covar
         elif cov_type == 'full':
             dim = matrixlist.shape[1]
             return matrixlist + np.array([np.eye(dim) * self.reg_covar] * self.K)
+        else:
+            raise CovarianceTypeError
 
     def _get_SkList_X(self, SkList_W):
         return np.array([
@@ -405,13 +410,25 @@ class GLLiM():
             c = a * b
             mat = np.dot(c, c.T) / rk
             if self.gamma_type == 'iso':
-                trace = mat.trace(axis1=0, axis2=1)
-                mat = trace / self.Lt
+                if self.Lt == 0:
+                    mat = 0
+                else:
+                    trace = mat.trace(axis1=0, axis2=1)
+                    mat = trace / self.Lt
+            elif self.gamma_type == 'diag':
+                mat = np.diag(mat)
             yield mat
 
     def _compute_Sigma(self, Xnk, Y, AkList, bkList, SkList_W):
         """Eq (38)."""
-        SigmaList = np.empty(self.sigma_type == "iso" and self.K or (self.K, self.D, self.D))
+        if self.sigma_type == "iso":
+            SigmaList = np.zeros(self.K)
+        elif self.sigma_type == "diag":
+            SigmaList = np.zeros((self.K, self.D))
+        elif self.sigma_type == "full":
+            SigmaList = np.zeros((self.K, self.D, self.D))
+        else:
+            raise CovarianceTypeError(sigma_type=self.sigma_type)
 
         for k, Ak, bk, rk in zip(range(self.K), AkList, bkList, self.rkList):
             coefs = self.rnk[:, k] / rk
@@ -420,16 +437,16 @@ class GLLiM():
 
             if self.sigma_type == 'iso':
                 stmp = np.sum((diffSigma ** 2), axis=1)
-                sigma2 = stmp
                 # isotropic sigma
-                SigmaList[k] = np.sum(sigma2) / self.D
+                SigmaList[k] = np.sum(stmp) / self.D
             elif self.sigma_type == 'full':
                 dS_large = diffSigma.T[:, :, None]
                 pro = np.matmul(dS_large, dS_large.transpose((0, 2, 1)))
                 pro = np.array(pro, dtype='double')
                 SigmaList[k] = pro.sum(axis=0)
             elif self.sigma_type == "diag":
-                SigmaList[k] = np.sum((diffSigma ** 2), axis=1)
+                s = np.sum(diffSigma ** 2, axis=1)
+                SigmaList[k] = s
             else:
                 raise NotImplementedError("Covariance type unknown !")
 
@@ -550,6 +567,9 @@ class GLLiM():
         return np.array([np.sum(self.rnk[:, k].T * (Y - (Ak.dot(Xnk[:, k, :].T)).T).T, axis=1) / rk for k, Ak, rk in
                          zip(range(self.K), AkList, self.rkList)])  # (37)
 
+    def _compute_ck(self, T):
+        return np.dot(self.rnk.T, T) / self.rkList[:, np.newaxis]  # (29)
+
     def compute_next_theta(self, T, Y):
         """Compute M steps. Return the result. Usefull to implement SAEM algorithm"""
         N = T.shape[0]
@@ -560,7 +580,7 @@ class GLLiM():
 
         pikList = self.rkList / N  # (28)
 
-        ckList_T = np.dot(self.rnk.T, T) / self.rkList[:, np.newaxis]  # (29)
+        ckList_T = self._compute_ck(T)
 
         GammakList_T = np.array(list(self._compute_GammaT(T, ckList_T)))
         GammakList_T = self._add_numerical_stability(GammakList_T, self.gamma_type)  # numerical stability
@@ -1053,7 +1073,7 @@ def _compare(g: GLLiM, T, Y, Lw):
     ti = time.time()
     f(Y, T, AkList_W[0], AkList_T[0], GammakList_W[0],
       SigmakList[0], bkList[0], ckList_W[0], a2, b2)
-    print("cython", time.time() - ti, "\n")
+    print("cython ", time.time() - ti, "\n")
 
     assert np.allclose(a1, a2), "munk"
     assert np.allclose(b1, b2), "Sk_W"
@@ -1070,14 +1090,29 @@ def _compare2(g: GLLiM, T, Y, Lw):
 
     ti = time.time()
     a1 = g._compute_Ak(Xnk, Y, SkList_X)
-    a1 = a1[0]
     print("python ", time.time() - ti)
 
     ti = time.time()
-    a2 = Core.cython.test_ak(Y, Xnk[:, 0, :], g.rnk[:, 0], SkList_X[0])
-    print("cython", time.time() - ti, "\n")
+    a2 = Core.cython.test_Ak(Y, Xnk, g.rnk, SkList_X)
+    print("cython ", time.time() - ti, "\n")
 
     assert np.allclose(a1, a2), "error in Ak"
+
+
+def _compare2bis(g: GLLiM, T, Y, Lw):
+    g.init_fit(T, Y, None)
+
+    print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
+
+    ti = time.time()
+    a1 = g._compute_ck(T)
+    print("python ", time.time() - ti)
+
+    ti = time.time()
+    a2 = Core.cython.test_ck(T, g.rnk)
+    print("cython ", time.time() - ti, "\n")
+
+    assert np.allclose(a1, a2), "error in ck"
 
 
 def _compare3(g: GLLiM, T, Y, Lw):
@@ -1097,7 +1132,7 @@ def _compare3(g: GLLiM, T, Y, Lw):
 
     ti = time.time()
     a2 = Core.cython.test_ak(Y, Xnk[:, 0, :], g.rnk[:, 0], Ak[0])
-    print("cython", time.time() - ti, "\n")
+    print("cython ", time.time() - ti, "\n")
 
     assert np.allclose(a1, a2), "error in bk"
 
@@ -1132,19 +1167,19 @@ def _compare4(g: GLLiM, T, Y, Lw):
                                               AkList[0], bkList[0], SkList_W[0])
     else:
         raise CovarianceTypeError(g.gamma_type, g.sigma_type)
-    print("cython", time.time() - ti, "\n")
+    print("cython ", time.time() - ti, "\n")
 
     assert np.allclose(a1, a2), "Sigmak error"
     # assert np.allclose(b1,b2), "Sk_W"
 
 
 def _compare_complet(g: GLLiM, T, Y, Lw):
-    N = T.shape[0]
     g.init_fit(T, Y, None)
 
     AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (g.AkList_W, g.AkList_T, g.GammakList_W,
-                                                                      g.full_SigmakList, g.bkList, g.ckList_W)
+                                                                      g.SigmakList, g.bkList, g.ckList_W)
     rnk_List = g.rnk
+    gamma_type, sigma_type = g.gamma_type, g.sigma_type
 
     print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
     ti = time.time()
@@ -1152,32 +1187,83 @@ def _compare_complet(g: GLLiM, T, Y, Lw):
      out_bkList, out_SigmakList) = g.compute_next_theta(T, Y)
     print("python ", time.time() - ti)
 
-    if g.gamma_type == "iso" and g.sigma_type == "full":
-        f = Core.cython._compute_rW_Z_GIso_SFull
-    elif g.gamma_type == "diag" and g.sigma_type == "full":
-        f = Core.cython._compute_rW_Z_GDiag_SFull
-    elif g.gamma_type == "full" and g.sigma_type == "full":
-        f = Core.cython.test_complet
-    elif g.gamma_type == "iso" and g.sigma_type == "diag":
-        f = Core.cython._compute_rW_Z_GIso_SFull
-    elif g.gamma_type == "diag" and g.sigma_type == "diag":
-        f = Core.cython._compute_rW_Z_GDiag_SFull
-    elif g.gamma_type == "full" and g.sigma_type == "diag":
-        f = Core.cython._compute_rW_Z_GFull_SFull
-    elif g.gamma_type == "iso" and g.sigma_type == "iso":
-        f = Core.cython._compute_rW_Z_GIso_SFull
-    elif g.gamma_type == "diag" and g.sigma_type == "iso":
-        f = Core.cython._compute_rW_Z_GDiag_SFull
-    elif g.gamma_type == "full" and g.sigma_type == "iso":
-        f = Core.cython._compute_rW_Z_GFull_SFull
-    else:
-        raise CovarianceTypeError(g.gamma_type, g.sigma_type)
+    N, D = Y.shape
+    K, _, Lw = AkList_W.shape
+    _, Lt = T.shape
+    L = Lt + Lw
+
+    out_pikList1 = np.zeros(K)
+    out_ckList_T1 = np.zeros((K, Lt))
+
+    if gamma_type == "iso":
+        out_GammakList_T1 = np.zeros(K)
+    elif gamma_type == "diag":
+        out_GammakList_T1 = np.zeros((K, Lt))
+    elif gamma_type == "full":
+        out_GammakList_T1 = np.zeros((K, Lt, Lt))
+
+    if sigma_type == "full":
+        out_SigmakList1 = np.zeros((K, D, D))
+    elif sigma_type == "diag":
+        out_SigmakList1 = np.zeros((K, D))
+    elif sigma_type == "iso":
+        out_SigmakList1 = np.zeros(K)
+
+    out_AkList1 = np.zeros((K, D, L))
+    out_bkList1 = np.zeros((K, D))
+    xk_bar = np.zeros(L)  # tmp
+    yk_bar = np.zeros(D)  # tmp
+    X_stark = np.zeros((L, N))  # tmp
+    Y_stark = np.zeros((D, N))  # tmp
+    YXt_stark = np.zeros((D, L))  # tmp
+    inv = np.zeros((L, L))  # tmp
+
+    munk = np.zeros((N, Lw))  # tmp
+    tmp_LwLw = np.zeros((Lw, Lw))  # tmp
+    Xnk = np.zeros((N, L))  # tmp
+    tmp_Lt = np.zeros(Lt)  # tmp
+    tmp_Lw = np.zeros(Lw)  # tmp
+    tmp_D = np.zeros(D)  # tmp
+
+    ginv_tmpLw = np.zeros((Lw, Lw))  # tmp
+    Sk_W = np.zeros((Lw, Lw))  # tmp
+    Sk_X = np.zeros((L, L))  # tmp
+
+    tmp_DD = np.zeros((D, D))  # tmp
+    tmp_DD2 = np.zeros((D, D))  # tmp
+    ATSinv_tmp = np.zeros((Lw, D))  # tmp
+
+    args = (T, Y, rnk_List, AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W,
+            out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1,
+            munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
+            inv, tmp_Lw, tmp_LwLw, tmp_DD, tmp_DD2, ginv_tmpLw)
+
+    if gamma_type == "iso":
+        if sigma_type == "iso":
+            f = Core.cython.compute_next_theta_GIso_SIso
+        elif sigma_type == "diag":
+            f = Core.cython.compute_next_theta_GIso_SDiag
+        elif sigma_type == "full":
+            f = Core.cython.compute_next_theta_GIso_SFull
+    elif gamma_type == "diag":
+        if sigma_type == "iso":
+            f = Core.cython.compute_next_theta_GDiag_SIso
+        elif sigma_type == "diag":
+            f = Core.cython.compute_next_theta_GDiag_SDiag
+        elif sigma_type == "full":
+            f = Core.cython.compute_next_theta_GDiag_SFull
+    elif gamma_type == "full":
+        if sigma_type == "iso":
+            f = Core.cython.compute_next_theta_GFull_SIso
+        elif sigma_type == "diag":
+            f = Core.cython.compute_next_theta_GFull_SDiag
+        elif sigma_type == "full":
+            f = Core.cython.compute_next_theta_GFull_SFull
+
 
     ti = time.time()
-    (out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1,
-     out_bkList1, out_SigmakList1) = f(T, Y, rnk_List, AkList_W, GammakList_W,
-                                       SigmakList, bkList, ckList_W)
-    print("cython", time.time() - ti, "\n")
+    f(*args)
+    print("cython ", time.time() - ti, "\n")
 
     assert np.allclose(out_pikList, out_pikList1), "pik"
     assert np.allclose(out_ckList_T, out_ckList_T1), "ck"
@@ -1187,7 +1273,7 @@ def _compare_complet(g: GLLiM, T, Y, Lw):
     assert np.allclose(out_SigmakList, out_SigmakList1), "Sigmak"
 
 
-def _check_one(Lt, Lw, N=100000, D=5, K=1):
+def _check_one(Lt, Lw, N=100000, D=5, K=2):
     Y = np.random.random_sample((N, D))
     T = np.random.random_sample((N, Lt))
 
@@ -1211,7 +1297,15 @@ def _check_one(Lt, Lw, N=100000, D=5, K=1):
     _compare(g, T, Y, Lw)
 
 
-def _check_Ak(Lt, Lw, N=10000, D=5, K=1):
+def _check_ck(Lt, Lw, N=10000, D=5, K=5):
+    Y = np.random.random_sample((N, D))
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare2bis(g, T, Y, Lw)
+
+
+def _check_Ak(Lt, Lw, N=10000, D=5, K=10):
     Y = np.random.random_sample((N, D))
     T = np.random.random_sample((N, Lt))
 
@@ -1239,24 +1333,42 @@ def _check_Sigma(Lt, Lw, N=10000, D=5, K=1):
     _compare4(g, T, Y, Lw)
 
 
-def _check_complet(Lt, Lw, N=10000, D=5, K=7):
+def _check_complet(Lt, Lw, N=100000, D=10, K=50):
     Y = np.random.random_sample((N, D))
     T = np.random.random_sample((N, Lt))
 
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="iso")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="diag")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
+    g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
     g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
     _compare_complet(g, T, Y, Lw)
-    # g = GLLiM(K, Lw, sigma_type="iso", gamma_type="full")
-    # _compare_complet(g, T, Y, Lw)
-    # g = GLLiM(K, Lw, sigma_type="diag", gamma_type="full")
-    # _compare_complet(g, T, Y, Lw)
+
 
 
 def _debug():
-    _check_complet(1, 2)
-    _check_complet(0, 2)
-    _check_complet(2, 1)
-    _check_complet(2, 0)
-
+    _check_complet(2, 5)
+    _check_complet(0, 7)
+    _check_complet(4, 1)
+    _check_complet(4, 0)
+    # _check_Ak(1, 2)
+    # _check_Ak(0, 2)
+    # _check_Ak(2, 1)
+    # _check_Ak(2, 0)
 
 if __name__ == '__main__':
+    coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
+                        datefmt="%H:%M:%S")
     _debug()

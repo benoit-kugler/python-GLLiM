@@ -7,69 +7,13 @@ from libc.math cimport sqrt
 from libc.stdio cimport printf
 from cython.parallel import prange
 
-# Constraint SFull : Sigma full; SDiag : Sigma diag; GFull : GammaT full; GDiag : GammaT diag
-
 include "probas.pyx"
+include "mat_helpers.pyx"
+
+# Constraint SFull : Sigma full; SDiag : Sigma diag; GFull : GammaT full; GDiag : GammaT diag
+# TODO: Add parallelism in K.
 
 cdef double DEFAULT_REG_COVAR = 1e-08
-
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef void dot(const double [:,:] M, const double[:] v, double[:] out) nogil:
-    """out = out + Mv"""
-    cdef Py_ssize_t D = M.shape[0]
-    cdef Py_ssize_t L = M.shape[1]
-    cdef Py_ssize_t d,l
-
-    for d in range(D):
-        for l in range(L):
-            out[d] += M[d,l] * v[l]
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef void dot_matrix(const double[:,:] A, const double[:,:] B, double[:,:] out) nogil:
-    """write AB + out in out"""
-    cdef Py_ssize_t N = A.shape[0]
-    cdef Py_ssize_t K = A.shape[1]
-    cdef Py_ssize_t M = B.shape[1]
-    cdef Py_ssize_t i,j,k
-
-    for i in range(N):
-        for j in range(M):
-            for k in range(K):
-                out[i,j] += A[i,k] * B[k,j]
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef void dot_matrix_T(const double[:,:] A, const double[:,:] B, double[:,:] out) nogil:
-    """write A * B.T + out in out"""
-    cdef Py_ssize_t N = A.shape[0]
-    cdef Py_ssize_t K = A.shape[1]
-    cdef Py_ssize_t M = B.shape[0]
-    cdef Py_ssize_t i,j,k
-
-    for i in range(N):
-        for j in range(M):
-            for k in range(K):
-                out[i,j] += A[i,k] * B[j,k]
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef void MMt(const double[:,:] A, double[:,:] out) nogil:
-    """write M * transpose(M) + out in out"""
-    cdef Py_ssize_t N = A.shape[0]
-    cdef Py_ssize_t M = A.shape[1]
-    cdef Py_ssize_t i,j,k
-
-    for i in range(N):
-        for j in range(N):
-            for k in range(M):
-                out[i,j] += A[i,k] * A[j,k]
 
 
 
@@ -78,18 +22,28 @@ cdef void MMt(const double[:,:] A, double[:,:] out) nogil:
 cdef void _helper_rW_Z(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
                  const double[:,:] Ak_T, const double[:] bk, const double[:] ck_W,
                  const double[:,:] ATSinv, double[:,:] ginv,
-                 double[:,:] munk_W_out, double[:,:] Sk_W_out,
+                 double[:,:] munk_W_out, double[:,:] Sk_W_out, double[:,:] Sk_X_out,
                  double[:,:] tmp_mat, double[:] tmp_vectD, double[:] tmp_vectLw) nogil:
     cdef Py_ssize_t Lw = Ak_W.shape[1]
     cdef Py_ssize_t Lt = Ak_T.shape[1]
     cdef Py_ssize_t N = Y.shape[0]
     cdef Py_ssize_t D = Y.shape[1]
 
-    cdef Py_ssize_t n, d, l
-
+    cdef Py_ssize_t n, d, l, l1, l2
+    cdef Py_ssize_t L = Lt + Lw
 
     dot_matrix(ATSinv, Ak_W, ginv) # ginv + At * Sinv * Ak_W
     inverse_symetric(ginv, tmp_mat, Sk_W_out)
+
+    for l1 in range(Lt):
+        for l2 in range(L):
+            Sk_X_out[l1,l2] = 0
+    for l1 in range(Lt, L):
+        for l2 in range(Lt):
+            Sk_X_out[l1,l2] = 0
+        for l2 in range(Lt, L):
+            Sk_X_out[l1,l2] = Sk_W_out[l1 - Lt,l2 - Lt]
+
 
     for n in range(N):
         for d in range(D):
@@ -106,209 +60,315 @@ cdef void _helper_rW_Z(const double[:,:] Y, const double[:,:] T, const double[:,
         dot(Sk_W_out, tmp_vectLw, munk_W_out[n])
 
 
-
-
-def _compute_rW_Z_GFull_SFull(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GIso_SIso(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double Gammak_W, double Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t l1, l2, d
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
+    for l1 in range(Lw):
+        for l2 in range(Lw):
+            if l1 == l2:
+                ginv_tmpLw[l1,l2] = 1. / Gammak_W
+            else:
+                ginv_tmpLw[l1,l2] = 0
 
-    ginv = np.linalg.inv(Gammak_W)
-    ATSinv = np.matmul(Ak_W.T, np.linalg.inv(Sigmak))
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+        for d in range(D):
+            ATSinv_tmp[l1,d] = Ak_W[d,l1] / Sigmak
 
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
 
-def _compute_rW_Z_GDiag_SFull(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GIso_SDiag(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double Gammak_W, const double[:] Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t l1, l2, l, d
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
 
-    ginv = np.diag(1 / Gammak_W)
-    ATSinv = np.matmul(Ak_W.T, np.linalg.inv(Sigmak))
+    for l1 in range(Lw):
+        for l2 in range(Lw):
+            if l1 == l2:
+                ginv_tmpLw[l1,l2] = 1. / Gammak_W
+            else:
+                ginv_tmpLw[l1,l2] = 0
 
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
 
-def _compute_rW_Z_GIso_SFull(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+    for l in range(Lw):
+        for d in range(D):
+            ATSinv_tmp[l,d] = Ak_W[d,l] / Sigmak[d]
+
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GIso_SFull(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double Gammak_W, const double[:,:] Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t l1, l2
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
-
-    ginv = (1 / Gammak_W) * np.eye(Lw)
-    ATSinv = np.matmul(Ak_W.T, np.linalg.inv(Sigmak))
-
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+    for l1 in range(Lw):
+        for l2 in range(Lw):
+            if l1 == l2:
+                ginv_tmpLw[l1,l2] = 1. / Gammak_W
+            else:
+                ginv_tmpLw[l1,l2] = 0
 
 
-def _compute_rW_Z_GFull_SDiag(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+    inverse_symetric(Sigmak, tmp_DD, tmp_DD2)
+    dot_T_matrix(Ak_W, tmp_DD2, ATSinv_tmp)
+
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GDiag_SIso(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double[:] Gammak_W, const double Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t l1, l2, d
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
+    for l1 in range(Lw):
+        for l2 in range(Lw):
+            if l1 == l2:
+                ginv_tmpLw[l1,l2] = 1. / Gammak_W[l1]
+            else:
+                ginv_tmpLw[l1,l2] = 0
 
-    ginv = np.linalg.inv(Gammak_W)
-    ATSinv = np.matmul(Ak_W.T, np.diag(Sigmak))
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+        for d in range(D):
+            ATSinv_tmp[l1,d] = Ak_W[d,l1] / Sigmak
 
 
-def _compute_rW_Z_GDiag_SDiag(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GDiag_SDiag(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double[:] Gammak_W, const double[:] Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t l1, l2, d
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
-
-    ginv = np.diag(1 / Gammak_W)
-    ATSinv = np.matmul(Ak_W.T, np.diag(Sigmak))
-
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+    for l1 in range(Lw):
+        for l2 in range(Lw):
+            if l1 == l2:
+                ginv_tmpLw[l1,l2] = 1. / Gammak_W[l1]
+            else:
+                ginv_tmpLw[l1,l2] = 0
 
 
-def _compute_rW_Z_GIso_SDiag(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+        for d in range(D):
+            ATSinv_tmp[l1,d] = Ak_W[d,l1] / Sigmak[d]
+
+
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GDiag_SFull(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double[:] Gammak_W, const double[:,:] Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t l1, l2
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
+    for l1 in range(Lw):
+        for l2 in range(Lw):
+            if l1 == l2:
+                ginv_tmpLw[l1,l2] = 1. / Gammak_W[l1]
+            else:
+                ginv_tmpLw[l1,l2] = 0
 
-    ginv = (1 / Gammak_W) * np.eye(Lw)
-    ATSinv = np.matmul(Ak_W.T, np.diag(Sigmak))
+    inverse_symetric(Sigmak, tmp_DD, tmp_DD2)
+    dot_T_matrix(Ak_W, tmp_DD2, ATSinv_tmp)
 
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
 
 
-def _compute_rW_Z_GFull_SIso(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GFull_SIso(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double[:,:] Gammak_W, const double Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+
+    cdef Py_ssize_t l1,d
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
-
-    ginv = np.linalg.inv(Gammak_W)
-    ATSinv = (1 / Sigmak) *  Ak_W.T
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+    inverse_symetric(Gammak_W, tmp_LwLw, ginv_tmpLw)
 
 
-def _compute_rW_Z_GDiag_SIso(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+    for l1 in range(Lw):
+        for d in range(D):
+            ATSinv_tmp[l1,d] = Ak_W[d,l1] / Sigmak
+
+
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GFull_SDiag(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                            const double[:,:] Ak_T, const double[:,:] Gammak_W, const double[:] Sigmak,
+                            const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                            double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                            double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+
+    cdef Py_ssize_t l1,d
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
+    inverse_symetric(Gammak_W, tmp_LwLw, ginv_tmpLw)
 
-    ginv = np.diag(1 / Gammak_W)
-    ATSinv = (1 / Sigmak) *  Ak_W.T
-
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+    for l1 in range(Lw):
+        for d in range(D):
+            ATSinv_tmp[l1,d] = Ak_W[d,l1] / Sigmak[d]
 
 
-def _compute_rW_Z_GIso_SIso(Y, T, Ak_W, Ak_T, Gammak_W, Sigmak, bk, ck_W,
-                        munk_W_out, Sk_W_out):
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _compute_rW_Z_GFull_SFull(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
+                                    const double[:,:] Ak_T, const double[:,:] Gammak_W, const double[:,:] Sigmak,
+                                    const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
+                                    double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
+                                    double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
+                                    double[:,:] tmp_DD, double[:,:] tmp_DD2) nogil:
     """
     Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
     write munk_W_out shape (N,Lw) Sk_W_out shape (Lw,Lw)
     """
-    D, Lw = Ak_W.shape
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
 
     if Lw == 0:
+        reset_zeros(Sk_X_out)
         return
 
-    tmp_mat = np.zeros((Lw,Lw))
-    tmp_vectD = np.zeros(D)
-    tmp_vectLw = np.zeros(Lw)
+    inverse_symetric(Gammak_W, tmp_LwLw, ginv_tmpLw)
 
-    ginv = (1 / Gammak_W) * np.eye(Lw)
-    ATSinv = (1 / Sigmak) *  Ak_W.T
+    inverse_symetric(Sigmak, tmp_DD, tmp_DD2)
+    dot_T_matrix(Ak_W, tmp_DD2, ATSinv_tmp)
 
-    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk,ck_W,
-                 ATSinv, ginv, munk_W_out, Sk_W_out,
-                 tmp_mat, tmp_vectD, tmp_vectLw)
+    _helper_rW_Z(Y, T, Ak_W, Ak_T, bk, ck_W,
+                 ATSinv_tmp, ginv_tmpLw, munk_W_out, Sk_W_out, Sk_X_out,
+                 tmp_LwLw, tmp_D, tmp_Lw)
+
 
 
 @cython.boundscheck(False)
@@ -324,7 +384,8 @@ cdef void _compute_Xnk(const double[:,:] T, const double[:,:] munk, double[:,:] 
         for lt in range(Lt):
             Xnk[n,lt] = T[n,lt]
         for lw in range(Lw):
-            Xnk[n, lw + Lt] = munk[n,lw]
+            Xnk[n, Lt + lw] = munk[n,lw]
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -340,6 +401,7 @@ cdef void _compute_ck_T(const double[:,:] T, const double[:]rnk, const double rk
         s = rnk[n] / rk
         for l in range(Lt):
             ck_T[l] += s * T[n,l]
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -360,15 +422,20 @@ cdef void _compute_GammaT_GFull(const double[:,:] T, const double[:] rnk, const 
             for l2 in range(Lt):
                 Gammak_T[l1,l2] += tmp[l1] * tmp[l2]
 
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef void _compute_GammaT_GIso(const double[:,:] T, const double[:] rnk, const double rk,
-                               const double[:] ck_T, double Gammak_T) nogil:
+cdef double _compute_GammaT_GIso(const double[:,:] T, const double[:] rnk, const double rk,
+                               const double[:] ck_T) nogil:
     cdef Py_ssize_t N = T.shape[0]
     cdef Py_ssize_t Lt = T.shape[1]
 
     cdef Py_ssize_t n
     cdef double s, tmp
+    cdef double out = 0
+
+    if Lt == 0:
+        return 0
 
     for n in range(N):
         tmp = 0
@@ -376,7 +443,9 @@ cdef void _compute_GammaT_GIso(const double[:,:] T, const double[:] rnk, const d
         for l in range(Lt):
             tmp += (s * (T[n,l] - ck_T[l])) ** 2
         tmp /= Lt
-        Gammak_T += tmp
+        out += tmp
+    return out
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -417,8 +486,8 @@ cdef void _add_numerical_stability_diag(double[:] M) nogil:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef void _add_numerical_stability_iso(double M) nogil:
-    M += DEFAULT_REG_COVAR
+cdef double _add_numerical_stability_iso(const double M) nogil:
+    return M + DEFAULT_REG_COVAR
 
 
 @cython.boundscheck(False)
@@ -426,12 +495,12 @@ cdef void _add_numerical_stability_iso(double M) nogil:
 cdef void _compute_Ak(const double[:,:] Y, const double[:,:] Xnk, const double[:] rnk,
                       const double rk, double[:,:] Sk_X, double[:,:] Ak,
                       double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                      double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] inv) nogil:
+                      double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] inv_tmp) nogil:
     cdef Py_ssize_t N = Y.shape[0]
     cdef Py_ssize_t L = Xnk.shape[1]
     cdef Py_ssize_t D = Y.shape[1]
 
-    cdef Py_ssize_t n,l,d
+    cdef Py_ssize_t n,l,d, l2
     cdef double s = 0
 
     for n in range(N):
@@ -451,10 +520,9 @@ cdef void _compute_Ak(const double[:,:] Y, const double[:,:] Xnk, const double[:
             Y_stark[d,n] = s  * (Y[n,d] - yk_bar[d])  # (34)
 
     MMt(X_stark, Sk_X) # Sk_X + Sk_X * Sk_Xt
-    inverse_symetric_inplace(Sk_X, inv)  # (31)
-
+    inverse_symetric_inplace(Sk_X, inv_tmp)  # (31)
     dot_matrix_T(Y_stark, X_stark, YXt_stark)
-    dot_matrix(YXt_stark, inv, Ak)
+    dot_matrix(YXt_stark, inv_tmp, Ak)
 
 
 @cython.boundscheck(False)
@@ -526,12 +594,12 @@ cdef void _compute_Sigmak_SDiag(const double[:,:] Y, const double[:,:] Xnk, cons
     cdef double s, u
 
     for n in range(N):
-        s = sqrt(rnk[n] / rk)
+        s = rnk[n] / rk
         for d in range(D):
             u = 0
             for l in range(L):
                 u += Ak[d,l] * Xnk[n,l]
-            Sigmak[d] += (s * (Y[n,d] - u - bk[d])) ** 2
+            Sigmak[d] += s * ((Y[n,d] - u - bk[d]) ** 2)
 
     for d in range(D):
         for i in range(Lw):
@@ -573,22 +641,63 @@ cdef double _compute_Sigmak_SIso(const double[:,:] Y, const double[:,:] Xnk, con
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef void compute_next_theta_GFull_SFull(const double[:,:] T, const double[:,:] Y, const long Lw,
-                                         const double[:,:] rnk_List, const double[:,:,:] AkList_W,
-                                         const double[:,:,:] GammakList_W, const double[:,:,:] SigmakList,
-                                         const double[:,:] bkList, const double[:,:] ckList_W,
-                                         double[:] out_pikList, double[:,:] out_ckList_T, double[:,:,:] out_GammakList_T,
-                                         double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:,:] out_SigmakList,
-                                         double[:,:] munk, double[:,:] Sk_W, double[:,:] Xnk, double[:] tmp_Lt,
-                                         double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                         double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] inv,
-                                         double[:] tmp_D):
+cdef void resets(double[:,:] munk, double[:,:] inv_tmp, double[:,:] YXt_stark, double[:,:] Sk_W,
+                 double[:,:] ATSinv_tmp, double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw,
+                 double[:] xk_bar, double[:] yk_bar, double[:] tmp_D, double[:] tmp_Lw) nogil:
+    cdef Py_ssize_t N = munk.shape[0]
+    cdef Py_ssize_t Lw = munk.shape[1]
+    cdef Py_ssize_t L = xk_bar.shape[0]
+    cdef Py_ssize_t D = yk_bar.shape[0]
+
+    cdef Py_ssize_t n, l, l2, d
+
+    for n in range(N):
+        for l in range(Lw):
+            munk[n,l] = 0
+
+    for l in range(L):
+        xk_bar[l] = 0
+        for l2 in range(L):
+            inv_tmp[l,l2] = 0
+
+    for d in range(D):
+        yk_bar[d] = 0
+        tmp_D[d] = 0
+        for l in range(L):
+            YXt_stark[d,l] = 0
+
+    for l in range(Lw):
+        tmp_Lw[l] = 0
+        for d in range(D):
+            ATSinv_tmp[l,d] = 0
+        for l2 in range(Lw):
+            Sk_W[l,l2] = 0
+            ginv_tmpLw[l,l2] = 0
+            if tmp_LwLw is not None:
+                tmp_LwLw[l,l2] = 0
+
+
+
+
+def compute_next_theta_GIso_SIso(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                             const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:] GammakList_W,
+                             const double[:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                             double[:] out_pikList, double[:,:] out_ckList_T, double[:] out_GammakList_T,
+                             double[:,:,:] out_AkList, double[:,:] out_bkList, double[:] out_SigmakList,
+                             double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                             double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                             double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                             double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                             double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                             double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
     cdef Py_ssize_t Lt = T.shape[1]
     cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
     cdef double rk
 
     for k in range(K):
@@ -596,61 +705,466 @@ cdef void compute_next_theta_GFull_SFull(const double[:,:] T, const double[:,:] 
         for n in range(N):
             rk += rnk_List[n,k]
 
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
         out_pikList[k] = rk / N
 
-        _compute_rW_Z_GFull_SFull(Y,T, AkList_W[k], GammakList_W[k],
+        _compute_rW_Z_GIso_SIso(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W)
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk,  out_ckList_T[k])
+        out_GammakList_T[k] = _add_numerical_stability_iso(out_GammakList_T[k])
 
         _compute_Xnk(T, munk, Xnk)
 
-        _compute_ck_T(T, rnk_List[k], rk, out_ckList_T[k])
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
 
-        _compute_GammaT_GFull(T, rnk_List[k], rk,  out_ckList_T[k], out_GammakList_T[k], tmp_Lt)
-        _add_numerical_stability_full(out_GammakList_T[k])
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
 
-        _compute_Ak(Y, Xnk, rnk_List[k], rk, Sk_W, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv)
+        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W)
+        out_SigmakList[k] = _add_numerical_stability_iso(out_SigmakList[k])
 
-        _compute_bk(Y, Xnk, rnk_List[k], rk, out_AkList[k], out_bkList[k])
 
-        _compute_Sigmak_SFull(Y, Xnk, rnk_List[k], rk, out_AkList[k], out_bkList[k],
+
+def compute_next_theta_GIso_SDiag(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                             const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:] GammakList_W,
+                             const double[:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                             double[:] out_pikList, double[:,:] out_ckList_T, double[:] out_GammakList_T,
+                             double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:] out_SigmakList,
+                             double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                             double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                             double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                             double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                             double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                             double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GIso_SDiag(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk,  out_ckList_T[k])
+        out_GammakList_T[k] = _add_numerical_stability_iso(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        _compute_Sigmak_SDiag(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W, out_SigmakList[k])
+        _add_numerical_stability_diag(out_SigmakList[k])
+
+
+
+def compute_next_theta_GIso_SFull(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:] GammakList_W,
+                                 const double[:,:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:,:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GIso_SFull(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk,  out_ckList_T[k])
+        out_GammakList_T[k] = _add_numerical_stability_iso(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        _compute_Sigmak_SFull(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
                               Sk_W, tmp_D, out_SigmakList[k])
         _add_numerical_stability_full(out_SigmakList[k])
 
 
 
 
+def compute_next_theta_GDiag_SIso(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:] GammakList_W,
+                                 const double[:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:,:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-def test_complet(T, Y, rnk_List, AkList_W, GammakList_W,  SigmakList, bkList,  ckList_W):
-    N,D = Y.shape
-    K ,_, Lw = AkList_W.shape
-    _, Lt = T.shape
-    L = Lt + Lw
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
 
-    out_pikList = np.zeros(K)
-    out_ckList_T = np.zeros((K, Lt))
-    out_GammakList_T = np.zeros((K, Lt, Lt))
-    out_AkList = np.zeros((K, D, L))
-    out_bkList = np.zeros((K, D))
-    out_SigmakList = np.zeros((K,D,D))
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
 
-    xk_bar = np.zeros(L)
-    yk_bar = np.zeros(D)
-    X_stark = np.zeros((L,N))
-    Y_stark = np.zeros((D,N))
-    YXt_stark = np.zeros((D,L))
-    inv = np.zeros((L,L))
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
 
-    munk = np.zeros((N,Lw))  # tmp
-    Sk_W = np.zeros((Lw,Lw))  # tmp
-    Xnk = np.zeros((N,L)) # tmp
-    tmp_Lt = np.zeros(Lt) # tmp
-    tmp_D = np.zeros(D) # tmp
+        out_pikList[k] = rk / N
 
-    compute_next_theta_GFull_SFull(T, Y, Lw, rnk_List, AkList_W, GammakList_W,  SigmakList, bkList,  ckList_W,
-                                   out_pikList,  out_ckList_T,  out_GammakList_T, out_AkList,  out_bkList,
-                                   out_SigmakList, munk,  Sk_W,  Xnk,  tmp_Lt, xk_bar,  yk_bar,  X_stark,
-                                   Y_stark,  YXt_stark,  inv, tmp_D)
+        _compute_rW_Z_GDiag_SIso(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
 
-    return out_pikList, out_ckList_T, out_GammakList_T, out_AkList, out_bkList, out_SigmakList
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        _compute_GammaT_GDiag(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k])
+        _add_numerical_stability_diag(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W)
+        out_SigmakList[k] = _add_numerical_stability_iso(out_SigmakList[k])
+
+
+
+
+def compute_next_theta_GDiag_SDiag(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:] GammakList_W,
+                                 const double[:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:,:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GDiag_SDiag(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        _compute_GammaT_GDiag(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k])
+        _add_numerical_stability_diag(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        _compute_Sigmak_SDiag(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W, out_SigmakList[k])
+        _add_numerical_stability_diag(out_SigmakList[k])
+
+
+# ----------------------- Gamma Diag and Sigma Full ----------------------- #
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_next_theta_GDiag_SFull(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:] GammakList_W,
+                                 const double[:,:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:,:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:,:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GDiag_SFull(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        _compute_GammaT_GDiag(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k])
+        _add_numerical_stability_diag(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        _compute_Sigmak_SFull(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W, tmp_D, out_SigmakList[k])
+        _add_numerical_stability_full(out_SigmakList[k])
+
+
+def compute_next_theta_GFull_SIso(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:,:] GammakList_W,
+                                 const double[:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:,:,:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GFull_SIso(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        _compute_GammaT_GFull(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k], tmp_Lt)
+        _add_numerical_stability_full(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W)
+        out_SigmakList[k] = _add_numerical_stability_iso(out_SigmakList[k])
+
+
+
+
+def compute_next_theta_GFull_SDiag(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:,:] GammakList_W,
+                                 const double[:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:,:,:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GFull_SDiag(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        _compute_GammaT_GFull(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k], tmp_Lt)
+        _add_numerical_stability_full(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        _compute_Sigmak_SDiag(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W, out_SigmakList[k])
+        _add_numerical_stability_diag(out_SigmakList[k])
+
+
+# ----------------------- Gamma Full and Sigma Full ----------------------- #
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_next_theta_GFull_SFull(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
+                                 const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:,:] GammakList_W,
+                                 const double[:,:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
+                                 double[:] out_pikList, double[:,:] out_ckList_T, double[:,:,:] out_GammakList_T,
+                                 double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:,:] out_SigmakList,
+                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
+                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
+                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
+                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
+                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
+                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+    cdef Py_ssize_t N = rnk_List.shape[0]
+    cdef Py_ssize_t K = rnk_List.shape[1]
+    cdef Py_ssize_t Lt = T.shape[1]
+    cdef Py_ssize_t D = Y.shape[1]
+    cdef Py_ssize_t Lw = Sk_W.shape[0]
+
+    cdef Py_ssize_t k, l, l2, d
+    cdef Py_ssize_t L = Lt + Lw
+    cdef double rk
+
+    for k in range(K):
+        rk = 0
+        for n in range(N):
+            rk += rnk_List[n,k]
+
+        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
+               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+
+        out_pikList[k] = rk / N
+
+        _compute_rW_Z_GFull_SFull(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
+                                  SigmakList[k], bkList[k], ckList_W[k],
+                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
+                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+
+        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+
+        _compute_GammaT_GFull(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k], tmp_Lt)
+        _add_numerical_stability_full(out_GammakList_T[k])
+
+        _compute_Xnk(T, munk, Xnk)
+
+        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
+                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+
+        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+
+        _compute_Sigmak_SFull(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
+                              Sk_W, tmp_D, out_SigmakList[k])
+        _add_numerical_stability_full(out_SigmakList[k])
