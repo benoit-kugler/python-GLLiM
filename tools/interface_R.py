@@ -134,7 +134,7 @@ class RInterface():
 
 def is_egal(modele1,modele2):
     def diff(a1,a2):
-        return np.max(a1-a2) / np.max(a1)
+        return np.max(np.abs(a1 - a2)) / np.max(np.abs(a1))
     print('Diff pi',diff(modele1[0], modele2[0]))
     print('Diff c',diff(modele1[1], modele2[1]))
     print('Diff Gamma',diff(modele1[2], modele2[2]))

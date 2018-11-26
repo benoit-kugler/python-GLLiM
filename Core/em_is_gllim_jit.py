@@ -1,5 +1,6 @@
 """Implements a crossed EM - GLLiM algorith to evaluate noise in model.
 Diagonal covariance is assumed"""
+import json
 import logging
 import time
 
@@ -7,12 +8,12 @@ import coloredlogs
 import numba as nb
 import numpy as np
 
+import hapke.cython
 from Core import cython
 from Core.gllim import jGLLiM
 from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
     _loggausspdf_diag
 from tools import context
-import hapke.cython
 
 # GLLiM parameters
 Ntrain = 40000
@@ -36,8 +37,8 @@ HAPKE_MODE = True
 
 # ------------------------ Linear case ------------------------ #
 @nb.njit(cache=True)
-def _helper_mu_lin(y, F, K, inverse_current_cov, current_mean):
-    return y - F.dot(K).dot(F.T).dot(inverse_current_cov).dot(y - current_mean)
+def _helper_mu_lin(y, F, K_mat, inverse_current_cov, current_mean):
+    return y - F.dot(K_mat).dot(F.T).dot(inverse_current_cov).dot(y - current_mean)
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
@@ -196,12 +197,9 @@ def extend_array(vector, Ns):
 
 
 # ------------------- WITHOUT IS ------------------- #
-
-
-def _em_step_NoIS(gllim, compute_F, Yobs, current_cov, *args):
+def _em_step_NoIS(gllim, compute_F, get_X_mask, Yobs, current_cov, *args):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
-    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-    # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+    mask = get_X_mask(Xs)
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -224,22 +222,31 @@ def _em_step_NoIS(gllim, compute_F, Yobs, current_cov, *args):
 def _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y):
     """Returns weights and mu expectancy"""
     q = densite_melange_precomputed(X, weights, means, gllim_chol_covs)
-    p_tilde = np.exp(log_p_tilde)
+    av_log = np.mean(log_p_tilde)  # re sclaing to avoid numerical issues
+    p_tilde = np.exp(log_p_tilde - av_log)
+
     wsi = p_tilde / q  # Calcul des poids
+
+    # effective_sample_size = np.sum(wsi) ** 2 / np.sum(np.square(wsi))
+    # print("Effective sample size : ", effective_sample_size)
+
     G1 = y.reshape((1, -1)) - FX  # estimateur de mu
     esp_mui = _clean_mean_vector(G1, wsi, mask_x)
     return esp_mui, wsi
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
-def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov):
+def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov, prior_cov=None):
     Ny, Ns, D = FXs.shape
-
+    L = Xs.shape[1]
     gllim_chol_covs = cholesky_list(gllim_covs)
     ws = np.zeros((Ny, Ns))
     esp_mu = np.zeros((Ny, D))
 
     current_mean_broad = extend_array(current_mean, Ns)
+
+    if prior_cov is not None:
+        chol_prior_cov = np.linalg.cholesky(prior_cov)
 
     for i in range(Ny):
         y = Yobs[i]
@@ -250,6 +257,8 @@ def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
         mask_x = mask[i]
         arg = FX + current_mean_broad
         log_p_tilde = _loggausspdf_diag(arg.T, y, current_cov)
+        if prior_cov is not None:
+            log_p_tilde += _chol_loggausspdf_precomputed(X.T, np.zeros(L), chol_prior_cov)
         a, b = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
         esp_mu[i], ws[i] = a, b
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
@@ -257,7 +266,35 @@ def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)
-def _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov):
+def _mu_step_diag_with_prior(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov, prior_cov):
+    Ny, Ns, D = FXs.shape
+    L = Xs.shape[2]
+    gllim_chol_covs = cholesky_list(gllim_covs)
+    ws = np.zeros((Ny, Ns))
+    esp_mu = np.zeros((Ny, D))
+
+    current_mean_broad = extend_array(current_mean, Ns)
+
+    chol_prior_cov = np.linalg.cholesky(prior_cov)
+
+    for i in range(Ny):
+        y = Yobs[i]
+        X = Xs[i]
+        means = meanss[i]
+        weights = weightss[i]
+        FX = FXs[i]
+        mask_x = mask[i]
+        arg = FX + current_mean_broad
+        log_p_tilde = _loggausspdf_diag(arg.T, y, current_cov)
+        log_p_tilde += _chol_loggausspdf_precomputed(X.T, np.zeros(L), chol_prior_cov)
+        a, b = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+        esp_mu[i], ws[i] = a, b
+    maximal_mu = np.sum(esp_mu, axis=0) / Ny
+    return maximal_mu, ws
+
+
+@nb.njit(nogil=True, parallel=True, fastmath=True)
+def _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov, prior_cov=None):
     Ny, Ns, D = FXs.shape
 
     gllim_chol_covs = cholesky_list(gllim_covs)
@@ -319,11 +356,10 @@ def _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu):
     return maximal_sigma
 
 
-def _em_step_IS(gllim, compute_Fs, Yobs, current_cov, current_mean):
+def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean, prior_cov=None):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
     assert np.isfinite(Xs).all()
-    mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-    # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
+    mask = get_X_mask(Xs)
     logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / N_sample_IS:.5f}")
     ti = time.time()
 
@@ -336,8 +372,12 @@ def _em_step_IS(gllim, compute_Fs, Yobs, current_cov, current_mean):
 
     assert np.isfinite(FXs).all()
 
-    if current_cov.ndim == 1:
+    if current_cov.ndim == 1 and prior_cov is None:
         maximal_mu, ws = _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov)
+    elif current_cov.ndim == 1:
+        maximal_mu, ws = _mu_step_diag_with_prior(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
+                                                  current_cov,
+                                                  prior_cov)
     else:
         maximal_mu, ws = _mu_step_full(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov)
     logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
@@ -349,6 +389,7 @@ def _em_step_IS(gllim, compute_Fs, Yobs, current_cov, current_mean):
     return maximal_mu, maximal_sigma
 
 
+
 class NoiseEM:
     """Base class for noise estimation based on EM-like procedure"""
 
@@ -358,9 +399,10 @@ class NoiseEM:
         self.Yobs = Yobs
         self.cont = cont
         self.cov_type = cov_type
-        global _compute_F
-        if HAPKE_MODE:
-            _compute_F = self._fast_compute_F
+
+    def get_X_mask(self, X):
+        m = np.asarray(~ self.cont.is_X_valid(X), dtype=int)
+        return m
 
     def compute_Fs(self, Xs, mask):
         D = self.cont.D
@@ -409,6 +451,7 @@ class NoiseEM:
 
     def run(self):
         log = "Starting noise estimation with EM" + self._get_starting_logging()
+        log += "\n Python (jitted) version"
         logging.info(log)
         Yobs = np.asarray(self.Yobs, dtype=float)
         F = self._get_F()
@@ -422,7 +465,7 @@ class NoiseEM:
         for current_iter in range(maxIter):
             gllim = self._gllim_step(current_noise_cov, current_noise_mean, current_theta)
 
-            max_mu, max_sigma = em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean)
+            max_mu, max_sigma = em_step(gllim, F, self.get_X_mask, Yobs, current_noise_cov, current_noise_mean)
 
             log_sigma = max_sigma if self.cov_type == "diag" else np.diag(max_sigma)
             logging.info(f"""
@@ -444,7 +487,7 @@ class NoiseEMLinear(NoiseEM):
         return self.cont.F_matrix
 
     def _get_em_step(self):
-        def em_step(gllim, F, Yobs, current_noise_cov, current_noise_mean):
+        def em_step(gllim, F, func_mask, Yobs, current_noise_cov, current_noise_mean):
             return _em_step_lin(F, Yobs, self.cont.PRIOR_COV, current_noise_cov, current_noise_mean)
 
         return em_step
@@ -458,8 +501,10 @@ class NoiseEMGLLiM(NoiseEM):
 
     def _get_F(self):
         if isinstance(self.cont, context.abstractHapkeModel):
+            logging.info("Using C computation of Hapke's ")
             return self.fast_compute_Hapke
         else:
+            logging.info("Using generic Python computation of F")
             return self.compute_Fs
 
     def _init_gllim(self):
@@ -476,9 +521,11 @@ class NoiseEMISGLLiM(NoiseEMGLLiM):
 
     def _get_starting_logging(self):
         s = super()._get_starting_logging()
-        return s + f"with IS \n\t\tNSampleIS = {N_sample_IS}"
+        return s + f"with IS \n\tNSampleIS = {N_sample_IS}"
 
     def _get_em_step(self):
+        if hasattr(self.cont, "PRIOR_COV"):
+            return lambda *args: _em_step_IS(*args, prior_cov=self.cont.PRIOR_COV)
         return _em_step_IS
 
 
@@ -530,20 +577,82 @@ def _profile():
 
 
 def _debug():
-    global maxIter, Nobs, N_sample_IS, INIT_COV_NOISE, NO_IS
-    NO_IS = False
-    maxIter = 2
+    print("Go")
     Nobs = 20
-    N_sample_IS = 1000
-    # cont = context.LabContextOlivine(partiel=(0, 1, 2, 3))
+    N_sample_IS = 100000
     cont = context.LinearFunction()
-    INIT_COV_NOISE = 0.005
+    cont.F_matrix[4:8, 0] = 1
+
+    current_mean = np.ones(cont.D)
+    current_cov = np.eye(cont.D)
+
+
     _, Yobs = cont.get_data_training(Nobs)
     Yobs = cont.add_noise_data(Yobs, covariance=0.05, mean=2)
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
-    fit(Yobs, cont, cov_type="diag", assume_linear=False)
+    # theta = _init(cont)
+    # gllim = _gllim_step(cont,current_cov, current_mean, theta)
+    # with open("__tmp.json","w") as f:
+    #     json.dump({"theta":gllim.theta},f)
 
+    with open("__tmp.json") as f:
+        theta = json.load(f)["theta"]
+    gllim = jGLLiM(K, sigma_type="full", verbose=False)
+    gllim.Lt = cont.L
+    gllim._init_from_dict(theta)
+    gllim.inversion()
+
+    invsig = np.linalg.inv(current_cov)
+    K_mat = np.linalg.inv(np.linalg.inv(cont.PRIOR_COV) + cont.F_matrix.T.dot(invsig).dot(cont.F_matrix))
+
+    Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
+    meanss, weightss, _ = gllim._helper_forward_conditionnal_density(Yobs)
+    gllim_chol_covs = np.linalg.cholesky(gllim.SigmakListS)
+
+    exp = NoiseEM(Yobs, cont, 'full')
+    mask = exp.get_X_mask(Xs)
+    FXs = exp.compute_Fs(Xs, mask)
+
+    y = Yobs[0]
+    FX = FXs[0]
+    mask_x = mask[0]
+    arg = FX + current_mean
+    log_p_tilde = _chol_loggausspdf_precomputed(arg.T, y, np.linalg.cholesky(current_cov))
+    p_x = _chol_loggausspdf_precomputed(Xs[0].T, np.zeros(cont.L), np.linalg.cholesky(cont.PRIOR_COV))
+    log_p_tilde += p_x
+
+    # py = _chol_loggausspdf_precomputed(current_mean[:,None], y,
+    #                                    np.linalg.cholesky(current_cov +
+    #                                                       cont.F_matrix.dot(cont.PRIOR_COV).dot(cont.F_matrix.T)))[0]
+    # print("py" , np.exp(py))
+    s1 = _helper_mu_lin(y, cont.F_matrix, K_mat, invsig, current_mean)
+    s2, _, s3 = _helper_mu(Xs[0], weightss[0], meanss[0], gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+
+    # true_p = _chol_loggausspdf_precomputed(Xs[0].T, K_mat.dot(cont.F_matrix.T).dot(invsig).dot(y - current_mean).reshape((-1,)),
+    #                                        np.linalg.cholesky(K_mat))
+
+    # print("True  p(x|y) :",np.exp(true_p[0:10]))
+    # print("Bayes p(x|y) :", np.exp(log_p_tilde + p_x - py)[0:10])
+
+    print("Truth     ", s1)
+    print("GLLiM + IS", s2)
+    print("GLLiM seul", s3)
+
+    y = Yobs[10]
+    FX = FXs[10]
+    mask_x = mask[10]
+    arg = FX + current_mean
+    log_p_tilde = _chol_loggausspdf_precomputed(arg.T, y, np.linalg.cholesky(current_cov))
+    p_x = _chol_loggausspdf_precomputed(Xs[0].T, np.zeros(cont.L), np.linalg.cholesky(cont.PRIOR_COV))
+    log_p_tilde += p_x
+
+    s1 = _helper_mu_lin(y, cont.F_matrix, K_mat, invsig, current_mean)
+    s2, _, s3 = _helper_mu(Xs[10], weightss[10], meanss[10], gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+
+    print("Truth     ", s1)
+    print("GLLiM + IS", s2)
+    print("GLLiM seul", s3)
 
 def _compare():
     D = 10
@@ -586,7 +695,7 @@ def _compare():
 
     ws = np.random.random_sample((Ny, Ns))
 
-    _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
     # _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
     print("jit compiled")
 
@@ -604,9 +713,11 @@ def _compare():
     # S2 = cython.sigma_step_full_IS(Yobs, FXs, ws, mask, maximal_mu)
 
     print("cython", time.time() - ti)
-    # print(V1 - V2)
-    print(S1 - S2)
-    print(S2)
+    print(V1 - V2)
+    # print(S1 - S2)
+    print(V1)
+    print(V2)
+
     assert np.allclose(S1, S2), "sigma step full noIs not same !"
     assert np.allclose(V1, V2), "sigma step full noIs not same !"
 
@@ -643,6 +754,6 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
     # _profile()
-    # _debug()
-    _compare()
+    _debug()
+    # _compare()
     # _verifie_cython()

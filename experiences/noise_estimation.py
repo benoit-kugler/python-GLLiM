@@ -8,7 +8,9 @@ import coloredlogs
 
 from tools import context
 import numpy as np
-from Core import em_is_gllim, noise_GD
+from Core import em_is_gllim_jit as em_is_gllim
+# from Core import em_is_gllim
+from Core import noise_GD
 
 
 class NoiseEstimation:
@@ -66,7 +68,7 @@ class NoiseEstimation:
         else:
             mean_factor = self.obs_mode.get("mean", None)
             cov_factor = self.obs_mode["cov"]
-            return f"simuObs({self.Nobs})mu:{mean_factor:.3f}-Sigma:{cov_factor:.3f}"
+            return f"simuObs({self.Nobs})-mu:{mean_factor:.3f}-Sigma:{cov_factor:.3f}"
 
     def run_noise_estimator(self, save=False, Yobs=None):
         """If obs_mode is a dict, and Yobs is given, uses it instead of generating new obs
@@ -100,7 +102,10 @@ class NoiseEstimation:
             s = f"Cas Linéaire. Prior Cov : {context.LinearFunction.PRIOR_COV[0,0]} \n" + s
 
         if self.method == "is_gllim":
-            s = "IS-EM-GLLiM \n " + s
+            if em_is_gllim.NO_IS:
+                s = "EM-GLLiM \n " + s
+            else:
+                s = "IS-EM-GLLiM \n " + s
             s += f"$\mu = {em_is_gllim.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim.INIT_COV_NOISE}I_{{D}}$"
         else:
             s = "Gradient descent \n " + s

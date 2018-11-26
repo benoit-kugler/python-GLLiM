@@ -31,7 +31,6 @@ from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, Inj
 from tools.interface_R import is_egal
 from tools.measures import Mesures
 from hapke.cython.hapke import Hapke_vect as Hapke_cython
-from hapke.hapke_vect_jit import Hapke_vect as Hapke_jit
 
 np.set_printoptions(precision=20,suppress=False)
 
@@ -416,6 +415,28 @@ def compare_is():
     print("Me : ", su(nrmse), "Ye", su(nrmseY))
 
 
+def compare_para(N=100000, D=10, Lt=4, Lw=0, K=40):
+    Y = np.random.random_sample((N, D)) + 2
+    T = np.random.random_sample((N, Lt))
+
+    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=False)
+    g.init_fit(T, Y, None)
+
+    ti = time.time()
+    theta = g.compute_next_theta(T, Y)
+    print(f"Cython sequentiel : {time.time() - ti:.3f} s")
+
+    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=True)
+    g2.init_fit(T, Y, None)
+
+    ti = time.time()
+    theta2 = g2.compute_next_theta(T, Y)
+    print(f"Cython parallel : {time.time() - ti:.3f} s")
+
+    # theta = (g.pikList, g.ckList, g.GammakList, g.AkList, g.bkList, g.full_SigmakList)
+    # theta2 = (g2.pikList, g2.ckList, g2.GammakList, g2.AkList, g2.bkList, g2.full_SigmakList)
+
+    is_egal(theta, theta2)
 
 
 if __name__ == '__main__':
@@ -437,6 +458,8 @@ if __name__ == '__main__':
     # plot_cks(False)
     # interface_julia()
     # compare_is()
-    test_hapke_vect()
+    # test_hapke_vect()
     # test_custom_multinomial() #OK
     # test_GMM_sampling()
+
+    compare_para()

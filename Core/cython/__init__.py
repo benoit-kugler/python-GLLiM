@@ -10,4 +10,33 @@ from .gllim import (compute_next_theta_GFull_SFull, compute_next_theta_GDiag_SFu
                     compute_next_theta_GFull_SIso, compute_next_theta_GDiag_SIso, compute_next_theta_GIso_SIso)
 
 
+class gllim:
+    compute_next_theta_GFull_SFull = compute_next_theta_GFull_SFull
+    compute_next_theta_GDiag_SFull = compute_next_theta_GDiag_SFull
+    compute_next_theta_GIso_SFull = compute_next_theta_GIso_SFull
+    compute_next_theta_GFull_SDiag = compute_next_theta_GFull_SDiag
+    compute_next_theta_GDiag_SDiag = compute_next_theta_GDiag_SDiag
+    compute_next_theta_GIso_SDiag = compute_next_theta_GIso_SDiag
+    compute_next_theta_GFull_SIso = compute_next_theta_GFull_SIso
+    compute_next_theta_GDiag_SIso = compute_next_theta_GDiag_SIso
+    compute_next_theta_GIso_SIso = compute_next_theta_GIso_SIso
+
+
+from .gllim_para import (compute_next_theta_GFull_SFull, compute_next_theta_GDiag_SFull, compute_next_theta_GIso_SFull,
+                         compute_next_theta_GFull_SDiag, compute_next_theta_GDiag_SDiag, compute_next_theta_GIso_SDiag,
+                         compute_next_theta_GFull_SIso, compute_next_theta_GDiag_SIso, compute_next_theta_GIso_SIso)
+
+
+class gllim_para:
+    compute_next_theta_GFull_SFull = compute_next_theta_GFull_SFull
+    compute_next_theta_GDiag_SFull = compute_next_theta_GDiag_SFull
+    compute_next_theta_GIso_SFull = compute_next_theta_GIso_SFull
+    compute_next_theta_GFull_SDiag = compute_next_theta_GFull_SDiag
+    compute_next_theta_GDiag_SDiag = compute_next_theta_GDiag_SDiag
+    compute_next_theta_GIso_SDiag = compute_next_theta_GIso_SDiag
+    compute_next_theta_GFull_SIso = compute_next_theta_GFull_SIso
+    compute_next_theta_GDiag_SIso = compute_next_theta_GDiag_SIso
+    compute_next_theta_GIso_SIso = compute_next_theta_GIso_SIso
+
+
 from .probas import test_chol

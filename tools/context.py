@@ -7,12 +7,8 @@ import numpy as np
 import pyDOE
 import rpy2.robjects.packages
 import scipy.io
-from matplotlib import pyplot
-from mpl_toolkits.mplot3d import Axes3D
-
 from rpy2 import robjects
 
-from hapke.hapke_vect_opt import Hapke_vect
 from hapke.cython import Hapke_cython
 
 randtoolbox = robjects.packages.importr('randtoolbox')
@@ -830,13 +826,28 @@ class VoieL(abstractGlaceContext):
 
 # ------------- Dummy Linear Injective F ------------- #
 class LinearFunction(abstractFunctionModel):
-    F_matrix = 0.5 * np.diag(1 + 1 * np.arange(10))[:, :4]
+    F_matrix = 0.5 * np.array([[1, 0, 0, 0],
+                               [0, 2, 0, 0],
+                               [0, 0, 3, 0],
+                               [0, 0, 0, 4],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0]])
+    """Must be orthogonal"""
 
     D = 10
 
     PRIOR_COV = 0.02 * np.eye(4)
 
     LABEL = "Fonction linéaire injective"
+
+    def _get_L(cls, partiel):
+        return 4
 
     def _F(self, X):
         return self.F_matrix.dot(X.T).T

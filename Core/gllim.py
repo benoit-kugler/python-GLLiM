@@ -8,6 +8,7 @@ Tha actual computation is done by cython extension
 import logging
 import time
 import warnings
+import multiprocessing
 
 import coloredlogs
 import numpy as np
@@ -25,6 +26,9 @@ from tools import regularization
 import Core.cython
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+NUM_TRHEADS = multiprocessing.cpu_count()
+
 
 
 class CovarianceTypeError(NotImplementedError):
@@ -122,7 +126,8 @@ class GLLiM:
 
     def __init__(self, K_in, Lw=0, sigma_type='iso', gamma_type='full',
                  verbose=True,
-                 reg_covar=DEFAULT_REG_COVAR, stopping_ratio=DEFAULT_STOPPING_RATIO):
+                 reg_covar=DEFAULT_REG_COVAR, stopping_ratio=DEFAULT_STOPPING_RATIO,
+                 parallel=False):
 
         self.K = K_in
         self.Lw = Lw
@@ -133,6 +138,38 @@ class GLLiM:
         self.verbose = verbose
         self.track_theta = False
         self.nb_init_GMM = 1  # Number of init made by GMM when fit is init with it
+        self.parallel = parallel
+
+        self._set_cython_next_theta()
+
+    def _set_cython_next_theta(self):
+        if self.parallel:
+            cython_module = Core.cython.gllim_para
+        else:
+            cython_module = Core.cython.gllim
+
+        if self.gamma_type == "iso":
+            if self.sigma_type == "iso":
+                f = cython_module.compute_next_theta_GIso_SIso
+            elif self.sigma_type == "diag":
+                f = cython_module.compute_next_theta_GIso_SDiag
+            elif self.sigma_type == "full":
+                f = cython_module.compute_next_theta_GIso_SFull
+        elif self.gamma_type == "diag":
+            if self.sigma_type == "iso":
+                f = cython_module.compute_next_theta_GDiag_SIso
+            elif self.sigma_type == "diag":
+                f = cython_module.compute_next_theta_GDiag_SDiag
+            elif self.sigma_type == "full":
+                f = cython_module.compute_next_theta_GDiag_SFull
+        elif self.gamma_type == "full":
+            if self.sigma_type == "iso":
+                f = cython_module.compute_next_theta_GFull_SIso
+            elif self.sigma_type == "diag":
+                f = cython_module.compute_next_theta_GFull_SDiag
+            elif self.sigma_type == "full":
+                f = cython_module.compute_next_theta_GFull_SFull
+        self.cython_next_theta_ = f
 
 
     def start_track(self):
@@ -142,6 +179,7 @@ class GLLiM:
     def _init_from_dict(self, dic):
         if "A" in dic:
             self.AkList = np.array(dic['A'])
+            self.D = self.AkList.shape[1]
         if "b" in dic:
             self.bkList = np.array(dic['b'])
         if 'c' in dic:
@@ -165,6 +203,7 @@ class GLLiM:
             self.pikList = np.array(dic["pi"])
         if "Sigma" in dic:
             self.SigmakList = np.array(dic["Sigma"])
+
         if self.verbose:
             used_keys = set(dic.keys()) & {"A", "b", "c", "Gamma", "pi", "Sigma"}
             logging.debug(f"Init from parameters {used_keys}")
@@ -370,37 +409,6 @@ class GLLiM:
             for Sk_w in SkList_W
         ])
 
-    def _compute_rW_Z(self, Y, T):
-        """
-        Compute parameters of gaussian distribution W knowing Z : munk_W and Sk_W
-
-        :param Y: shape (N,D)
-        :param T: shape (N,Lt)
-        :return: munk_W shape (K,N,Lw) Sk_W shape (K,Lw,Lw)
-        """
-
-        if self.Lw == 0:
-            N = Y.shape[0]
-            return np.zeros((self.K, N, 0)), np.zeros((self.K, 0, 0))
-
-        AkList_W = self.AkList_W
-        if self.gamma_type == "iso":
-            ginv = np.array([(1 / g) * np.eye(self.Lw) for g in self.GammakList_W])
-        elif self.gamma_type == "diag":
-            ginv = np.array([np.diag(1 / g) for g in self.GammakList_W])
-        else:
-            ginv = inv(self.GammakList_W)
-
-        ATSinv = np.matmul(AkList_W.transpose((0, 2, 1)), inv(self.full_SigmakList))
-        Sk_W = inv(ginv + np.matmul(ATSinv, AkList_W))
-        u = np.array([Ak.dot(T.T) for Ak in self.AkList_T])
-        d = Y.T - u - self.bkList[:, :, None]
-
-        e = np.matmul(ATSinv, d) + np.matmul(ginv, self.ckList_W[:, :, None])
-
-        munk_W = np.matmul(Sk_W, e).transpose((0, 2, 1))
-        return munk_W, Sk_W
-
 
     def _compute_rnk(self, Y, T):
         N = T.shape[0]
@@ -463,60 +471,10 @@ class GLLiM:
         assert (logrnk <= 0).all()
         return lognormrnk, logrnk
 
-    def compute_next_theta(self, T, Y):
-        """Compute M steps. Return the result. Usefull to implement SAEM algorithm"""
-        gamma_type, sigma_type = self.gamma_type, self.sigma_type
-
-        if gamma_type == "iso":
-            if sigma_type == "iso":
-                f = Core.cython.compute_next_theta_GIso_SIso
-            elif sigma_type == "diag":
-                f = Core.cython.compute_next_theta_GIso_SDiag
-            elif sigma_type == "full":
-                f = Core.cython.compute_next_theta_GIso_SFull
-        elif gamma_type == "diag":
-            if sigma_type == "iso":
-                f = Core.cython.compute_next_theta_GDiag_SIso
-            elif sigma_type == "diag":
-                f = Core.cython.compute_next_theta_GDiag_SDiag
-            elif sigma_type == "full":
-                f = Core.cython.compute_next_theta_GDiag_SFull
-        elif gamma_type == "full":
-            if sigma_type == "iso":
-                f = Core.cython.compute_next_theta_GFull_SIso
-            elif sigma_type == "diag":
-                f = Core.cython.compute_next_theta_GFull_SDiag
-            elif sigma_type == "full":
-                f = Core.cython.compute_next_theta_GFull_SFull
-
-        AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (
-        self.AkList_W, self.AkList_T, self.GammakList_W,
-        self.SigmakList, self.bkList, self.ckList_W)
-        rnk_List = self.rnk
-        N, D = Y.shape
-        K, _, Lw = AkList_W.shape
-        _, Lt = T.shape
+    def _allocate_tmp_memory(self, Lt, D, N):
+        """Create and returns temporary arrays needed by cython code, for the sequential case."""
+        Lw = self.Lw
         L = Lt + Lw
-
-        out_pikList1 = np.zeros(K)
-        out_ckList_T1 = np.zeros((K, Lt))
-
-        if gamma_type == "iso":
-            out_GammakList_T1 = np.zeros(K)
-        elif gamma_type == "diag":
-            out_GammakList_T1 = np.zeros((K, Lt))
-        elif gamma_type == "full":
-            out_GammakList_T1 = np.zeros((K, Lt, Lt))
-
-        if sigma_type == "full":
-            out_SigmakList1 = np.zeros((K, D, D))
-        elif sigma_type == "diag":
-            out_SigmakList1 = np.zeros((K, D))
-        elif sigma_type == "iso":
-            out_SigmakList1 = np.zeros(K)
-
-        out_AkList1 = np.zeros((K, D, L))
-        out_bkList1 = np.zeros((K, D))
         xk_bar = np.zeros(L)  # tmp
         yk_bar = np.zeros(D)  # tmp
         X_stark = np.zeros((L, N))  # tmp
@@ -539,24 +497,89 @@ class GLLiM:
         tmp_DD2 = np.zeros((D, D))  # tmp
         ATSinv_tmp = np.zeros((Lw, D))  # tmp
 
-        args = (T, Y, rnk_List, AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W,
-                out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1,
-                munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
+        return (munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
                 inv, tmp_Lw, tmp_LwLw, tmp_DD, tmp_DD2, ginv_tmpLw)
 
-        f(*args)
+    def _allocate_tmp_memory_para(self, Lt, D, N):
+        """Create and returns temporary arrays needed by cython code, for the parallel case."""
+        Lw = self.Lw
+        L = Lt + Lw
+        xk_bar = np.zeros((NUM_TRHEADS, L))  # tmp
+        yk_bar = np.zeros((NUM_TRHEADS, D))  # tmp
+        X_stark = np.zeros((NUM_TRHEADS, L, N))  # tmp
+        Y_stark = np.zeros((NUM_TRHEADS, D, N))  # tmp
+        YXt_stark = np.zeros((NUM_TRHEADS, D, L))  # tmp
+        inv = np.zeros((NUM_TRHEADS, L, L))  # tmp
+
+        munk = np.zeros((NUM_TRHEADS, N, Lw))  # tmp
+        tmp_LwLw = np.zeros((NUM_TRHEADS, Lw, Lw))  # tmp
+        Xnk = np.zeros((NUM_TRHEADS, N, L))  # tmp
+        tmp_Lt = np.zeros((NUM_TRHEADS, Lt))  # tmp
+        tmp_Lw = np.zeros((NUM_TRHEADS, Lw))  # tmp
+        tmp_D = np.zeros((NUM_TRHEADS, D))  # tmp
+
+        ginv_tmpLw = np.zeros((NUM_TRHEADS, Lw, Lw))  # tmp
+        Sk_W = np.zeros((NUM_TRHEADS, Lw, Lw))  # tmp
+        Sk_X = np.zeros((NUM_TRHEADS, L, L))  # tmp
+
+        tmp_DD = np.zeros((NUM_TRHEADS, D, D))  # tmp
+        tmp_DD2 = np.zeros((NUM_TRHEADS, D, D))  # tmp
+        ATSinv_tmp = np.zeros((NUM_TRHEADS, Lw, D))  # tmp
+        rk_tmp = np.zeros(NUM_TRHEADS)
+
+        return (munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
+                inv, tmp_Lw, tmp_LwLw, tmp_DD, tmp_DD2, ginv_tmpLw, rk_tmp)
+
+    def _allocate_theta(self, Lt, D):
+        K = self.K
+        L = Lt + self.Lw
+        out_pikList1 = np.zeros(K)
+        out_ckList_T1 = np.zeros((K, Lt))
+        if self.gamma_type == "iso":
+            out_GammakList_T1 = np.zeros(K)
+        elif self.gamma_type == "diag":
+            out_GammakList_T1 = np.zeros((K, Lt))
+        elif self.gamma_type == "full":
+            out_GammakList_T1 = np.zeros((K, Lt, Lt))
+        else:
+            raise CovarianceTypeError(gamma_type=self.gamma_type)
+
+        out_AkList1 = np.zeros((K, D, L))
+        out_bkList1 = np.zeros((K, D))
+
+        if self.sigma_type == "full":
+            out_SigmakList1 = np.zeros((K, D, D))
+        elif self.sigma_type == "diag":
+            out_SigmakList1 = np.zeros((K, D))
+        elif self.sigma_type == "iso":
+            out_SigmakList1 = np.zeros(K)
+        else:
+            raise CovarianceTypeError(sigma_type=self.sigma_type)
+
+        return (out_pikList1, out_ckList_T1, out_GammakList_T1,
+                out_AkList1, out_bkList1, out_SigmakList1)
+
+    def compute_next_theta(self, T, Y):
+        """Compute M steps. Return the result. Usefull to implement SAEM algorithm"""
+        N, D = Y.shape
+        K, _, Lw = self.AkList_W.shape
+        _, Lt = T.shape
+
+        out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1 = self._allocate_theta(
+            Lt, D)
+        if self.parallel:
+            tmp_arrays = self._allocate_tmp_memory_para(Lt, D, N)
+        else:
+            tmp_arrays = self._allocate_tmp_memory(Lt, D, N)
+
+        args = (T, Y, self.rnk, self.AkList_W, self.AkList_T, self.GammakList_W,
+                self.SigmakList, self.bkList, self.ckList_W,
+                out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1,
+                out_bkList1, out_SigmakList1,
+                *tmp_arrays)
+
+        self.cython_next_theta_(*args)
         return out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1
-
-
-    def stopping_criteria(self, maxIter):
-        """Return true if we should stop"""
-        if self.current_iter < 3:
-            return False
-        if self.current_iter > maxIter:
-            return True
-        delta_total = max(self.LLs_) - min(self.LLs_)
-        delta = self.current_ll - self.LLs_[-2]
-        return delta < (self.stopping_ratio * delta_total)
 
 
     def fit(self, T, Y, init, maxIter=100):
@@ -581,6 +604,7 @@ class GLLiM:
         converged = False
 
         start_time_EM = time.time()
+
 
         while not converged:
             self._remove_empty_cluster()
@@ -613,6 +637,17 @@ class GLLiM:
         if self.verbose is not None:
             t = int(time.time() - start_time_EM)
             logging.info("--- {} mins, {} secs for fit ---".format(t // 60, t - 60 * (t // 60)))
+
+    def stopping_criteria(self, maxIter):
+        """Return true if we should stop"""
+        if self.current_iter < 3:
+            return False
+        if self.current_iter > maxIter:
+            return True
+        delta_total = max(self.LLs_) - min(self.LLs_)
+        delta = self.current_ll - self.LLs_[-2]
+        return delta < (self.stopping_ratio * delta_total)
+
 
     def end_iter_callback(self, loglikelihood):
         if self.verbose is not None:
@@ -993,8 +1028,7 @@ def _debug(Lt, Lw, N=50000, D=10, K=40):
     g.fit(Y, T, "random", maxIter=10)
 
 
-
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    _debug(5, 1)
+    # _debug(5, 1)

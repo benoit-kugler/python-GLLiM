@@ -140,18 +140,6 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
     logging.debug(f"GLLiM step done in {time.time() -ti:.3f} s")
     return gllim
 
-
-# def _mask(Xs):
-#     print(Xs)
-#     mask = ~ np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in Xs])
-#     # mask = ~ np.array([[True] * x.shape[0] for x in Xs])
-#     print(mask)
-#     raise
-#     mask = np.asarray(mask,dtype=int)
-#     print(mask)
-#     return mask
-
-
 # ------------------- WITHOUT IS ------------------- #
 
 def _em_step_NoIS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, *args):
