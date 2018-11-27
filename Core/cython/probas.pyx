@@ -46,6 +46,28 @@ cdef void chol_loggausspdf_precomputed(const double[:,:] X, const double[:] mu,
             out_view[n] += -0.5 * (tmp[d] ** 2) - log(cov_cholesky[d,d])
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void chol_loggausspdf2_precomputed(const double[:,:] X, const double[:,:] mu,
+                                  const double[:,:] cov_cholesky, double[:] out_view,
+                                       double[:] tmp) nogil:
+    """X : shape N,D
+    mu shape : N,D
+    erase out_view and tmp
+    """
+    cdef Py_ssize_t N = X.shape[0]
+    cdef Py_ssize_t D = X.shape[1]
+    cdef Py_ssize_t n,d
+
+    for n in range(N):
+        solve_triangular_diff(cov_cholesky, X[n], mu[n], tmp)
+        out_view[n] = -0.5 * (D * _LOG_2PI )
+        for d in range(D):
+            out_view[n] += -0.5 * (tmp[d] ** 2) - log(cov_cholesky[d,d])
+
+
+
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -72,7 +94,6 @@ cdef void densite_melange_precomputed(const double[:,:] x_points, const double[:
 
 
 
-# TODO pre compute sqrt(cov(d))
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef void loggauspdf_diag(const double[:,:] X, const double[:] mu, const double[:] cov,
@@ -99,6 +120,32 @@ cdef void loggauspdf_diag(const double[:,:] X, const double[:] mu, const double[
 
         out[n] = -0.5 * (D * _LOG_2PI + q) - log_det
 
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void loggauspdf_iso(const double[:,:] X, const double[:] mu, double cov,
+                      double[:] out) nogil:
+    """Diagonal covariance matrix (cov is diagonal)
+    X shape : N,D
+    mu shape : D
+    cov shape : D
+    """
+    cdef Py_ssize_t N = X.shape[0]
+    cdef Py_ssize_t D = X.shape[1]
+
+    cdef double log_det = 0
+    cdef double q = 0
+    cdef Py_ssize_t n,d
+
+    for d in range(D):
+        log_det += log(cov) / 2
+
+    for n in range(N):
+        q = 0
+        for d in range(D):
+            q += ((X[n,d] - mu[d]) / sqrt(cov)) ** 2
+
+        out[n] = -0.5 * (D * _LOG_2PI + q) - log_det
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

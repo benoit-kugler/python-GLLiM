@@ -834,8 +834,6 @@ class LinearFunction(abstractFunctionModel):
                                [1, 0, 0, 0],
                                [1, 0, 0, 0],
                                [1, 0, 0, 0],
-                               [1, 0, 0, 0],
-                               [1, 0, 0, 0],
                                [0, 0, 0, 0],
                                [0, 0, 0, 0]])
     """Must be orthogonal"""

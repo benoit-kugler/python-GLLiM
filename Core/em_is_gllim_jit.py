@@ -64,13 +64,13 @@ def _mu_step_diag_lin(Yobs, F, prior_cov, current_mean, current_cov):
     esp_mu = np.zeros((Ny, D))
 
     invsig = np.diag(1 / current_cov)
-    K = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
+    K_mat = np.linalg.inv(np.linalg.inv(prior_cov) + F.T.dot(invsig).dot(F))
 
     for i in nb.prange(Ny):
         y = Yobs[i]
-        esp_mu[i] = _helper_mu_lin(y, F, K, invsig, current_mean)
+        esp_mu[i] = _helper_mu_lin(y, F, K_mat, invsig, current_mean)
     maximal_mu = np.sum(esp_mu, axis=0) / Ny
-    return maximal_mu, K, esp_mu
+    return maximal_mu, K_mat, esp_mu
 
 
 @nb.njit(nogil=True, parallel=True, fastmath=True)

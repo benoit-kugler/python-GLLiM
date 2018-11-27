@@ -21,6 +21,7 @@ from Core.probas_helper import chol_loggausspdf
 from Core.riemannian import RiemannianjGLLiM
 from Core.sGllim import saGLLiM
 from experiences.importance_sampling import mean_IS
+from gllim_backup import OldGLLiM
 from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
@@ -28,7 +29,6 @@ from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 from tools import context
 from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, InjectiveFunction
 # from tools.experience import SecondLearning, Experience, _train_K_N
-from tools.interface_R import is_egal
 from tools.measures import Mesures
 from hapke.cython.hapke import Hapke_vect as Hapke_cython
 
@@ -415,28 +415,104 @@ def compare_is():
     print("Me : ", su(nrmse), "Ye", su(nrmseY))
 
 
-def compare_para(N=100000, D=10, Lt=4, Lw=0, K=40):
-    Y = np.random.random_sample((N, D)) + 2
-    T = np.random.random_sample((N, Lt))
+def is_egal(modele1,modele2,verbose=False):
 
-    g = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=False)
-    g.init_fit(T, Y, None)
+    def diff(a1,a2):
+        return np.max(np.abs(a1 - a2)) / np.max(np.abs(a1))
+
+    if verbose:
+        print('Diff pi',diff(modele1[0], modele2[0]))
+        print('Diff c',diff(modele1[1], modele2[1]))
+        print('Diff Gamma',diff(modele1[2], modele2[2]))
+        print('Diff A',diff(modele1[3], modele2[3]))
+        print('Diff b',diff(modele1[4], modele2[4]))
+        print('Diff Sigma',diff(modele1[5], modele2[5]))
+
+    assert np.allclose(modele1[0], modele2[0])
+    assert np.allclose(modele1[1], modele2[1])
+    assert np.allclose(modele1[2], modele2[2])
+    assert np.allclose(modele1[3], modele2[3])
+    assert np.allclose(modele1[4], modele2[4])
+    assert np.allclose(modele1[5], modele2[5])
+
+
+def _compare_one(g1,g2,g3,Y,T):
+    print(f"Gamma type: {g1.gamma_type}, Sigma type : {g1.sigma_type}")
+    g1.init_fit(T,Y,None)
+    g2.init_fit(T,Y,None)
+    g3.init_fit(T,Y,None)
 
     ti = time.time()
-    theta = g.compute_next_theta(T, Y)
+    theta1 = g1.compute_next_theta(T, Y)
     print(f"Cython sequentiel : {time.time() - ti:.3f} s")
-
-    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=True)
-    g2.init_fit(T, Y, None)
 
     ti = time.time()
     theta2 = g2.compute_next_theta(T, Y)
-    print(f"Cython parallel : {time.time() - ti:.3f} s")
+    print(f"Cython parallel   : {time.time() - ti:.3f} s")
 
-    # theta = (g.pikList, g.ckList, g.GammakList, g.AkList, g.bkList, g.full_SigmakList)
-    # theta2 = (g2.pikList, g2.ckList, g2.GammakList, g2.AkList, g2.bkList, g2.full_SigmakList)
+    ti = time.time()
+    theta3 = g3.compute_next_theta(T, Y)
+    print(f"Python (old)      : {time.time() - ti:.3f} s \n")
 
-    is_egal(theta, theta2)
+    is_egal(theta1, theta2)
+    is_egal(theta1, theta3)
+
+
+def compare_para(N=100000, D=10, Lt=4, Lw=0, K=40):
+    """Compare cythons implementations : sequential vs parallel"""
+    Y = np.random.random_sample((N, D)) + 2
+    T = np.random.random_sample((N, Lt))
+
+    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="full", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="full", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="full", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="full", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="diag", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="diag", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="diag")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="iso", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="iso", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
+    _compare_one(g1,g2,g3,Y,T)
+
+    g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso", parallel=False)
+    g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso", parallel=True)
+    g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
+    _compare_one(g1,g2,g3,Y,T)
+
+
+def compare_complet(N,D):
+    compare_para(N,D,4,0,K=40)
+    compare_para(N,D,4,1,K=40)
+    compare_para(N,D,0,4,K=40)
 
 
 if __name__ == '__main__':
@@ -462,4 +538,6 @@ if __name__ == '__main__':
     # test_custom_multinomial() #OK
     # test_GMM_sampling()
 
-    compare_para()
+    compare_complet(100000,10)
+
+

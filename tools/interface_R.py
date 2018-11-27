@@ -7,6 +7,7 @@ from rpy2.robjects import r, IntVector, ListVector
 from rpy2.robjects.packages import importr
 
 from Core.gllim import GLLiM
+from test import is_egal
 
 
 class RInterface():
@@ -132,22 +133,6 @@ class RInterface():
         numpy2ri.deactivate()
         return r
 
-def is_egal(modele1,modele2):
-    def diff(a1,a2):
-        return np.max(np.abs(a1 - a2)) / np.max(np.abs(a1))
-    print('Diff pi',diff(modele1[0], modele2[0]))
-    print('Diff c',diff(modele1[1], modele2[1]))
-    print('Diff Gamma',diff(modele1[2], modele2[2]))
-    print('Diff A',diff(modele1[3], modele2[3]))
-    print('Diff b',diff(modele1[4], modele2[4]))
-    print('Diff Sigma',diff(modele1[5], modele2[5]))
-    assert np.allclose(modele1[0], modele2[0])
-    assert np.allclose(modele1[1], modele2[1])
-    assert np.allclose(modele1[2], modele2[2])
-    assert np.allclose(modele1[3], modele2[3])
-    assert np.allclose(modele1[4], modele2[4])
-    assert np.allclose(modele1[5], modele2[5])
-
 
 def compare_R(sigma_type="iso",gamma_type="iso",Lw=1,K=5):
     ir = RInterface()
@@ -183,7 +168,7 @@ def compare_R(sigma_type="iso",gamma_type="iso",Lw=1,K=5):
     mod_python = (glim.pikList,glim.ckList,glim.GammakList, glim.AkList, glim.bkList, glim.full_SigmakList)
 
     #Comparaison des modeles
-    is_egal(mod_R,mod_python)
+    is_egal(mod_R, mod_python)
 
     #Comparaison des prédictions
     Y = np.random.random_sample((1000,6))

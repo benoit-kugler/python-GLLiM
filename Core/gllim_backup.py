@@ -1168,98 +1168,65 @@ def _compare_complet(g: OldGLLiM, T, Y, Lw):
 
     AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W = (g.AkList_W, g.AkList_T, g.GammakList_W,
                                                                       g.SigmakList, g.bkList, g.ckList_W)
-    rnk_List = g.rnk
+    GammakList_T, ckList_T = g.GammakList_T, g.ckList_T
+    pikList = g.pikList
+
     gamma_type, sigma_type = g.gamma_type, g.sigma_type
 
     print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
     ti = time.time()
-    (out_pikList, out_ckList_T, out_GammakList_T, out_AkList,
-     out_bkList, out_SigmakList) = g.compute_next_theta(T, Y)
+    out_ll1, out_rnk1 = g._compute_rnk(Y, T)
+    out_rnk1 = np.exp(out_rnk1)
+    out_ll1 = out_ll1[:,0]
     print("python ", time.time() - ti)
 
     N, D = Y.shape
     K, _, Lw = AkList_W.shape
     _, Lt = T.shape
-    L = Lt + Lw
 
-    out_pikList1 = np.zeros(K)
-    out_ckList_T1 = np.zeros((K, Lt))
+    out_ll2 = np.zeros(N)
+    out_rnk2 = np.zeros((N,K))
 
-    if gamma_type == "iso":
-        out_GammakList_T1 = np.zeros(K)
-    elif gamma_type == "diag":
-        out_GammakList_T1 = np.zeros((K, Lt))
-    elif gamma_type == "full":
-        out_GammakList_T1 = np.zeros((K, Lt, Lt))
-
-    if sigma_type == "full":
-        out_SigmakList1 = np.zeros((K, D, D))
-    elif sigma_type == "diag":
-        out_SigmakList1 = np.zeros((K, D))
-    elif sigma_type == "iso":
-        out_SigmakList1 = np.zeros(K)
-
-    out_AkList1 = np.zeros((K, D, L))
-    out_bkList1 = np.zeros((K, D))
-    xk_bar = np.zeros(L)  # tmp
-    yk_bar = np.zeros(D)  # tmp
-    X_stark = np.zeros((L, N))  # tmp
-    Y_stark = np.zeros((D, N))  # tmp
-    YXt_stark = np.zeros((D, L))  # tmp
-    inv = np.zeros((L, L))  # tmp
-
-    munk = np.zeros((N, Lw))  # tmp
-    tmp_LwLw = np.zeros((Lw, Lw))  # tmp
-    Xnk = np.zeros((N, L))  # tmp
-    tmp_Lt = np.zeros(Lt)  # tmp
-    tmp_Lw = np.zeros(Lw)  # tmp
-    tmp_D = np.zeros(D)  # tmp
-
-    ginv_tmpLw = np.zeros((Lw, Lw))  # tmp
-    Sk_W = np.zeros((Lw, Lw))  # tmp
-    Sk_X = np.zeros((L, L))  # tmp
+    tmp_LtLt = np.zeros((Lt, Lt))
+    tmp_N = np.zeros(N)
+    tmp_N2 = np.zeros(N)
+    tmp_ND = np.zeros((N,D))
 
     tmp_DD = np.zeros((D, D))  # tmp
     tmp_DD2 = np.zeros((D, D))  # tmp
-    ATSinv_tmp = np.zeros((Lw, D))  # tmp
 
-    args = (T, Y, rnk_List, AkList_W, AkList_T, GammakList_W, SigmakList, bkList, ckList_W,
-            out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1,
-            munk, Sk_W, Sk_X, Xnk, tmp_Lt, tmp_D, xk_bar, yk_bar, X_stark, Y_stark, YXt_stark, ATSinv_tmp,
-            inv, tmp_Lw, tmp_LwLw, tmp_DD, tmp_DD2, ginv_tmpLw)
+    args = (T, Y, pikList, ckList_T, ckList_W, GammakList_T, GammakList_W, AkList_T, AkList_W,
+            bkList, SigmakList, out_rnk2, out_ll2,
+            tmp_LtLt, tmp_N, tmp_N2, tmp_ND, tmp_DD, tmp_DD2)
 
     if gamma_type == "iso":
         if sigma_type == "iso":
-            f = Core.cython.gllim.compute_next_theta_GIso_SIso
+            f = Core.cython.gllim.compute_rnk_GIso_SIso
         elif sigma_type == "diag":
-            f = Core.cython.gllim.compute_next_theta_GIso_SDiag
+            f = Core.cython.gllim.compute_rnk_GIso_SDiag
         elif sigma_type == "full":
-            f = Core.cython.gllim.compute_next_theta_GIso_SFull
+            f = Core.cython.gllim.compute_rnk_GIso_SFull
     elif gamma_type == "diag":
         if sigma_type == "iso":
-            f = Core.cython.gllim.compute_next_theta_GDiag_SIso
+            f = Core.cython.gllim.compute_rnk_GDiag_SIso
         elif sigma_type == "diag":
-            f = Core.cython.gllim.compute_next_theta_GDiag_SDiag
+            f = Core.cython.gllim.compute_rnk_GDiag_SDiag
         elif sigma_type == "full":
-            f = Core.cython.gllim.compute_next_theta_GDiag_SFull
+            f = Core.cython.gllim.compute_rnk_GDiag_SFull
     elif gamma_type == "full":
         if sigma_type == "iso":
-            f = Core.cython.gllim.compute_next_theta_GFull_SIso
+            f = Core.cython.gllim.compute_rnk_GFull_SIso
         elif sigma_type == "diag":
-            f = Core.cython.gllim.compute_next_theta_GFull_SDiag
+            f = Core.cython.gllim.compute_rnk_GFull_SDiag
         elif sigma_type == "full":
-            f = Core.cython.gllim.compute_next_theta_GFull_SFull
+            f = Core.cython.gllim.compute_rnk_GFull_SFull
 
     ti = time.time()
     f(*args)
     print("cython ", time.time() - ti, "\n")
 
-    assert np.allclose(out_pikList, out_pikList1), "pik"
-    assert np.allclose(out_ckList_T, out_ckList_T1), "ck"
-    assert np.allclose(out_GammakList_T, out_GammakList_T1), "Gammak"
-    assert np.allclose(out_AkList, out_AkList1), "Ak"
-    assert np.allclose(out_bkList, out_bkList1), "Bk"
-    assert np.allclose(out_SigmakList, out_SigmakList1), "Sigmak"
+    assert np.allclose(out_rnk1, out_rnk2), "Rnk"
+    assert np.allclose(out_ll1, out_ll2), "LL"
 
 
 def _check_one(Lt, Lw, N=100000, D=5, K=2):
@@ -1322,7 +1289,7 @@ def _check_Sigma(Lt, Lw, N=10000, D=5, K=1):
     _compare4(g, T, Y, Lw)
 
 
-def _check_complet(Lt, Lw, N=10000, D=10, K=5):
+def _check_complet(Lt, Lw, N=20000, D=10, K=40):
     Y = np.random.random_sample((N, D))
     T = np.random.random_sample((N, Lt))
 
@@ -1332,28 +1299,26 @@ def _check_complet(Lt, Lw, N=10000, D=10, K=5):
     _compare_complet(g, T, Y, Lw)
     g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
     _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="diag")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="diag")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    # _compare_complet(g, T, Y, Lw)
 
 
 def _debug():
     _check_complet(2, 5)
     _check_complet(0, 7)
-    _check_complet(4, 1)
     _check_complet(4, 0)
     # _check_Ak(1, 2)
     # _check_Ak(0, 2)
-    # _check_Ak(2, 1)
     # _check_Ak(2, 0)
 
 

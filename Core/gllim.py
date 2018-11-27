@@ -140,36 +140,45 @@ class GLLiM:
         self.nb_init_GMM = 1  # Number of init made by GMM when fit is init with it
         self.parallel = parallel
 
-        self._set_cython_next_theta()
+        self._set_cython_funcs()
 
-    def _set_cython_next_theta(self):
+    def _set_cython_funcs(self):
         if self.parallel:
             cython_module = Core.cython.gllim_para
         else:
             cython_module = Core.cython.gllim
-
         if self.gamma_type == "iso":
             if self.sigma_type == "iso":
                 f = cython_module.compute_next_theta_GIso_SIso
+                g = cython_module.compute_rnk_GIso_SIso
             elif self.sigma_type == "diag":
                 f = cython_module.compute_next_theta_GIso_SDiag
+                g = cython_module.compute_rnk_GIso_SDiag
             elif self.sigma_type == "full":
                 f = cython_module.compute_next_theta_GIso_SFull
+                g = cython_module.compute_rnk_GIso_SFull
         elif self.gamma_type == "diag":
             if self.sigma_type == "iso":
                 f = cython_module.compute_next_theta_GDiag_SIso
+                g = cython_module.compute_rnk_GDiag_SIso
             elif self.sigma_type == "diag":
                 f = cython_module.compute_next_theta_GDiag_SDiag
+                g = cython_module.compute_rnk_GDiag_SDiag
             elif self.sigma_type == "full":
                 f = cython_module.compute_next_theta_GDiag_SFull
+                g = cython_module.compute_rnk_GDiag_SFull
         elif self.gamma_type == "full":
             if self.sigma_type == "iso":
                 f = cython_module.compute_next_theta_GFull_SIso
+                g = cython_module.compute_rnk_GFull_SIso
             elif self.sigma_type == "diag":
                 f = cython_module.compute_next_theta_GFull_SDiag
+                g = cython_module.compute_rnk_GFull_SDiag
             elif self.sigma_type == "full":
                 f = cython_module.compute_next_theta_GFull_SFull
+                g = cython_module.compute_rnk_GFull_SFull
         self.cython_next_theta_ = f
+        self.cython_rnk_ = g
 
 
     def start_track(self):
@@ -411,65 +420,30 @@ class GLLiM:
 
 
     def _compute_rnk(self, Y, T):
-        N = T.shape[0]
-        logrnk = np.empty((N, self.K))
+        N , D = Y.shape
+        K = self.K
+        Lt = T.shape[1]
 
-        gamma_f_log = {"iso": chol_loggausspdf_iso, "full": chol_loggausspdf, "diag": chol_loggausspdf_diag}[
-            self.gamma_type]
+        out_log_ll = np.zeros(N)
+        out_rnk_List = np.zeros((N, K))
 
-        for (k, Ak, Ak_W, bk, ck_W, ck_T, pik, gammak_T, gammak_W, sigmak) in zip(range(self.K), self.AkList,
-                                                                                  self.AkList_W, self.bkList,
-                                                                                  self.ckList_W, self.ckList_T,
-                                                                                  self.pikList,
-                                                                                  self.GammakList_T, self.GammakList_W,
-                                                                                  self.SigmakList):
+        tmp_LtLt = np.zeros((Lt, Lt))
+        tmp_N = np.zeros(N)
+        tmp_N2 = np.zeros(N)
+        tmp_ND = np.zeros((N, D))
 
-            c = gamma_f_log(T.T, ck_T.reshape((self.Lt, 1)), gammak_T)
+        tmp_DD = np.zeros((D, D))  # tmp
+        tmp_DD2 = np.zeros((D, D))  # tmp
 
-            cnk = np.array([ck_W] * N)
-            X = np.concatenate((T, cnk), axis=1)
-            y_mean = np.dot(Ak, X.T) + bk.reshape((self.D, 1))
+        args = (T, Y, self.pikList, self.ckList_T, self.ckList_W, self.GammakList_T, self.GammakList_W,
+                self.AkList_T, self.AkList_W, self.bkList, self.SigmakList,
+                out_rnk_List, out_log_ll,
+                tmp_LtLt, tmp_N, tmp_N2, tmp_ND, tmp_DD, tmp_DD2)
 
-            if self.gamma_type == "iso":  # full gamma
-                gammak_W = gammak_W * np.eye(self.Lw)
-            elif self.gamma_type == "diag":
-                gammak_W = np.diag(gammak_W)
+        self.cython_rnk_(*args)
 
-            if self.sigma_type == "iso":
-                if self.Lw == 0:
-                    d = chol_loggausspdf_iso(Y.T, y_mean, sigmak)
-                else:
-                    sigmak = sigmak * np.eye(self.D)  # full sigmak
-                    aga = np.dot(np.dot(Ak_W, gammak_W), Ak_W.T)
-                    sigmak = sigmak + aga
-                    d = chol_loggausspdf(Y.T, y_mean, sigmak)
-            elif self.sigma_type == "diag":
-                if self.Lw == 0:
-                    d = chol_loggausspdf_diag(Y.T, y_mean, sigmak)
-                else:
-                    sigmak = np.diag(sigmak)  # full sigmak
-                    aga = np.dot(np.dot(Ak_W, gammak_W), Ak_W.T)
-                    sigmak = sigmak + aga
-                    d = chol_loggausspdf(Y.T, y_mean, sigmak)
-            elif self.sigma_type == "full":
-                if not self.Lw == 0:
-                    aga = np.dot(np.dot(Ak_W, gammak_W), Ak_W.T)
-                    sigmak = sigmak + aga
-                d = chol_loggausspdf(Y.T, y_mean, sigmak)
-            else:
-                raise CovarianceTypeError(sigma_type=self.sigma_type)
-            # Pondération (experimental, not convincing)
-            # c = c * self.D
-            # d = d * (self.L / self.D)
-            rnks = np.log(pik) + c + d
-            logrnk[:, k] = rnks
-            # print("Log rnk (d c d+c) : ", d[0], c[0], c[0] + d[0])
+        return out_rnk_List, out_log_ll
 
-        lognormrnk = logsumexp(logrnk, axis=1, keepdims=True)
-        logrnk -= lognormrnk
-
-        assert (logrnk <= 0).all()
-        return lognormrnk, logrnk
 
     def _allocate_tmp_memory(self, Lt, D, N):
         """Create and returns temporary arrays needed by cython code, for the sequential case."""
@@ -618,9 +592,8 @@ class GLLiM:
             if self.verbose:
                 logging.debug("E - Step...")
 
-            lognormrnk, logrnk = self._compute_rnk(Y, T)
+            self.rnk, lognormrnk = self._compute_rnk(Y, T)
 
-            self.rnk = np.exp(logrnk)
             self.rkList = self.rnk.sum(axis=0)
 
 
@@ -1031,4 +1004,4 @@ def _debug(Lt, Lw, N=50000, D=10, K=40):
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",
                         datefmt="%H:%M:%S")
-    # _debug(5, 1)
+    _debug(5, 1)

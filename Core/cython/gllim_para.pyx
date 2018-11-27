@@ -686,275 +686,285 @@ cdef void resets(double[:,:] munk, double[:,:] inv_tmp, double[:,:] YXt_stark, d
 
 
 
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GIso_SIso(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                              const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:] GammakList_W,
                              const double[:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                              double[:] out_pikList, double[:,:] out_ckList_T, double[:] out_GammakList_T,
                              double[:,:,:] out_AkList, double[:,:] out_bkList, double[:] out_SigmakList,
-                             double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                             double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                             double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                             double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                             double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                             double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                 double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 1
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
+
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GIso_SIso(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
-
-        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk,  out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
+        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k])
         out_GammakList_T[k] = _add_numerical_stability_iso(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W)
+        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number])
         out_SigmakList[k] = _add_numerical_stability_iso(out_SigmakList[k])
 
 
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GIso_SDiag(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                              const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:] GammakList_W,
                              const double[:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                              double[:] out_pikList, double[:,:] out_ckList_T, double[:] out_GammakList_T,
                              double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:] out_SigmakList,
-                             double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                             double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                             double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                             double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                             double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                             double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                  double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
+
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GIso_SDiag(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk,  out_ckList_T[k])
+        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k])
         out_GammakList_T[k] = _add_numerical_stability_iso(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        _compute_Sigmak_SDiag(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W, out_SigmakList[k])
+        _compute_Sigmak_SDiag(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number], out_SigmakList[k])
         _add_numerical_stability_diag(out_SigmakList[k])
 
 
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GIso_SFull(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                                  const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:] GammakList_W,
                                  const double[:,:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                                  double[:] out_pikList, double[:,:] out_ckList_T, double[:] out_GammakList_T,
                                  double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:,:] out_SigmakList,
-                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                 double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GIso_SFull(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk,  out_ckList_T[k])
+        out_GammakList_T[k] = _compute_GammaT_GIso(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k])
         out_GammakList_T[k] = _add_numerical_stability_iso(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        _compute_Sigmak_SFull(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W, tmp_D, out_SigmakList[k])
+        _compute_Sigmak_SFull(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number], tmp_D[thread_number], out_SigmakList[k])
         _add_numerical_stability_full(out_SigmakList[k])
 
 
-
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GDiag_SIso(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                                  const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:] GammakList_W,
                                  const double[:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                                  double[:] out_pikList, double[:,:] out_ckList_T, double[:,:] out_GammakList_T,
                                  double[:,:,:] out_AkList, double[:,:] out_bkList, double[:] out_SigmakList,
-                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                 double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GDiag_SIso(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        _compute_GammaT_GDiag(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k])
+        _compute_GammaT_GDiag(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k], out_GammakList_T[k])
         _add_numerical_stability_diag(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W)
+        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number])
         out_SigmakList[k] = _add_numerical_stability_iso(out_SigmakList[k])
 
 
 
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GDiag_SDiag(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                                  const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:] GammakList_W,
                                  const double[:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                                  double[:] out_pikList, double[:,:] out_ckList_T, double[:,:] out_GammakList_T,
                                  double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:] out_SigmakList,
-                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                 double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GDiag_SDiag(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        _compute_GammaT_GDiag(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k])
+        _compute_GammaT_GDiag(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k], out_GammakList_T[k])
         _add_numerical_stability_diag(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        _compute_Sigmak_SDiag(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W, out_SigmakList[k])
+        _compute_Sigmak_SDiag(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number], out_SigmakList[k])
         _add_numerical_stability_diag(out_SigmakList[k])
 
 
@@ -966,159 +976,166 @@ def compute_next_theta_GDiag_SFull(const double[:,:] T, const double[:,:] Y, con
                                  const double[:,:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                                  double[:] out_pikList, double[:,:] out_ckList_T, double[:,:] out_GammakList_T,
                                  double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:,:] out_SigmakList,
-                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                 double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GDiag_SFull(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        _compute_GammaT_GDiag(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k])
+        _compute_GammaT_GDiag(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k], out_GammakList_T[k])
         _add_numerical_stability_diag(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        _compute_Sigmak_SFull(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W, tmp_D, out_SigmakList[k])
+        _compute_Sigmak_SFull(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number], tmp_D[thread_number], out_SigmakList[k])
         _add_numerical_stability_full(out_SigmakList[k])
 
 
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GFull_SIso(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                                  const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:,:] GammakList_W,
                                  const double[:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                                  double[:] out_pikList, double[:,:] out_ckList_T, double[:,:,:] out_GammakList_T,
                                  double[:,:,:] out_AkList, double[:,:] out_bkList, double[:] out_SigmakList,
-                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                 double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                                   double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GFull_SIso(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        _compute_GammaT_GFull(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k], tmp_Lt)
+        _compute_GammaT_GFull(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k], out_GammakList_T[k], tmp_Lt[thread_number])
         _add_numerical_stability_full(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W)
+        out_SigmakList[k] = _compute_Sigmak_SIso(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number])
         out_SigmakList[k] = _add_numerical_stability_iso(out_SigmakList[k])
 
 
 
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def compute_next_theta_GFull_SDiag(const double[:,:] T, const double[:,:] Y, const double[:,:] rnk_List,
                                  const double[:,:,:] AkList_W, const double[:,:,:] AkList_T, const double[:,:,:] GammakList_W,
                                  const double[:,:] SigmakList, const double[:,:] bkList, const double[:,:] ckList_W,
                                  double[:] out_pikList, double[:,:] out_ckList_T, double[:,:,:] out_GammakList_T,
                                  double[:,:,:] out_AkList, double[:,:] out_bkList, double[:,:] out_SigmakList,
-                                 double[:,:] munk, double[:,:] Sk_W, double[:,:] Sk_X,
-                                 double[:,:] Xnk, double[:] tmp_Lt, double[:] tmp_D,
-                                 double[:] xk_bar, double[:] yk_bar, double[:,:] X_stark,
-                                 double[:,:] Y_stark, double[:,:] YXt_stark, double[:,:] ATSinv_tmp,
-                                 double[:,:] inv_tmp, double[:] tmp_Lw, double[:,:] tmp_LwLw,
-                                 double[:,:] tmp_DD, double[:,:] tmp_DD2, double[:,:] ginv_tmpLw):
+                                double[:,:,:] munk, double[:,:,:] Sk_W, double[:,:,:] Sk_X,
+                                 double[:,:,:] Xnk, double[:,:] tmp_Lt, double[:,:] tmp_D,
+                                 double[:,:] xk_bar, double[:,:] yk_bar, double[:,:,:] X_stark,
+                                 double[:,:,:] Y_stark, double[:,:,:] YXt_stark, double[:,:,:] ATSinv_tmp,
+                                 double[:,:,:] inv_tmp, double[:,:] tmp_Lw, double[:,:,:] tmp_LwLw,
+                                 double[:,:,:] tmp_DD, double[:,:,:] tmp_DD2, double[:,:,:] ginv_tmpLw,
+                               double[:] rk):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t k, l, l2, d
-    cdef Py_ssize_t L = Lt + Lw
-    cdef double rk
+    cdef Py_ssize_t n, k, thread_number
 
-    for k in range(K):
-        rk = 0
+    for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
+        thread_number = openmp.omp_get_thread_num()
+
+        rk[thread_number] = 0
         for n in range(N):
-            rk += rnk_List[n,k]
+            rk[thread_number] += rnk_List[n,k]
 
-        resets(munk, inv_tmp, YXt_stark, Sk_W, ATSinv_tmp, tmp_LwLw, ginv_tmpLw,
-               xk_bar, yk_bar, tmp_D, tmp_Lw)  # tmp memory set to zero
+        resets(munk[thread_number], inv_tmp[thread_number], YXt_stark[thread_number], Sk_W[thread_number],
+               ATSinv_tmp[thread_number], tmp_LwLw[thread_number], ginv_tmpLw[thread_number],
+               xk_bar[thread_number], yk_bar[thread_number], tmp_D[thread_number], tmp_Lw[thread_number])  # tmp memory set to zero  # tmp memory set to zero
 
-        out_pikList[k] = rk / N
+        out_pikList[k] = rk[thread_number] / N
 
         _compute_rW_Z_GFull_SDiag(Y,T, AkList_W[k], AkList_T[k], GammakList_W[k],
                                   SigmakList[k], bkList[k], ckList_W[k],
-                                  munk, Sk_W, Sk_X, tmp_D, tmp_Lw, tmp_LwLw,
-                                  ginv_tmpLw, ATSinv_tmp, tmp_DD, tmp_DD2)
+                                  munk[thread_number], Sk_W[thread_number], Sk_X[thread_number], tmp_D[thread_number],
+                                  tmp_Lw[thread_number], tmp_LwLw[thread_number],ginv_tmpLw[thread_number],
+                                  ATSinv_tmp[thread_number], tmp_DD[thread_number], tmp_DD2[thread_number])
 
-        _compute_ck_T(T, rnk_List[:,k], rk, out_ckList_T[k])
+        _compute_ck_T(T, rnk_List[:,k], rk[thread_number], out_ckList_T[k])
 
-        _compute_GammaT_GFull(T, rnk_List[:,k], rk,  out_ckList_T[k], out_GammakList_T[k], tmp_Lt)
+        _compute_GammaT_GFull(T, rnk_List[:,k], rk[thread_number],  out_ckList_T[k], out_GammakList_T[k], tmp_Lt[thread_number])
         _add_numerical_stability_full(out_GammakList_T[k])
 
-        _compute_Xnk(T, munk, Xnk)
+        _compute_Xnk(T, munk[thread_number], Xnk[thread_number])
 
-        _compute_Ak(Y, Xnk, rnk_List[:,k], rk, Sk_X, out_AkList[k],
-                    xk_bar,  yk_bar,  X_stark, Y_stark,  YXt_stark,  inv_tmp)
+        _compute_Ak(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], Sk_X[thread_number], out_AkList[k],
+                    xk_bar[thread_number],  yk_bar[thread_number],  X_stark[thread_number],
+                    Y_stark[thread_number],  YXt_stark[thread_number],  inv_tmp[thread_number])
 
-        _compute_bk(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k])
+        _compute_bk(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k])
 
-        _compute_Sigmak_SDiag(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
-                              Sk_W, out_SigmakList[k])
+        _compute_Sigmak_SDiag(Y, Xnk[thread_number], rnk_List[:,k], rk[thread_number], out_AkList[k], out_bkList[k],
+                              Sk_W[thread_number], out_SigmakList[k])
         _add_numerical_stability_diag(out_SigmakList[k])
 
 
@@ -1139,12 +1156,8 @@ def compute_next_theta_GFull_SFull(const double[:,:] T, const double[:,:] Y, con
                                    double[:] rk ):
     cdef Py_ssize_t N = rnk_List.shape[0]
     cdef Py_ssize_t K = rnk_List.shape[1]
-    cdef Py_ssize_t Lt = T.shape[1]
-    cdef Py_ssize_t D = Y.shape[1]
-    cdef Py_ssize_t Lw = Sk_W.shape[0]
 
-    cdef Py_ssize_t n, k, l, l2, d, thread_number
-    cdef Py_ssize_t L = Lt + Lw
+    cdef Py_ssize_t n, k, thread_number
 
     for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
         thread_number = openmp.omp_get_thread_num()

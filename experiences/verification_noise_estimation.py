@@ -10,6 +10,7 @@ from tools import context
 
 
 def test_gd_linear():
+    old_name = NoiseEstimation.BASE_PATH
     NoiseEstimation.BASE_PATH += "LinearyGaussian/"
     noise_GD.INIT_MEAN_NOISE = 0
     noise_GD.maxIter = 500
@@ -24,10 +25,11 @@ def test_gd_linear():
     exp.run_noise_estimator(save=True, Yobs=Yobs)
     exp.show_history()
 
-    NoiseEstimation -= "LinearyGaussian/"
+    NoiseEstimation.BASE_PATH = old_name
 
 def test_em_linear():
     """Compare EM IS GLLiM, EM GLLiM, and linear formulas"""
+    old_name = NoiseEstimation.BASE_PATH
     NoiseEstimation.BASE_PATH += "LinearyGaussian/"
     em_is_gllim.maxIter = 200
     NoiseEstimation.Nobs = 400
@@ -46,14 +48,13 @@ def test_em_linear():
     exp.run_noise_estimator(save=True, Yobs=Yobs)
     exp.show_history()
 
-    NoiseEstimation -= "LinearyGaussian/"
-
+    NoiseEstimation.BASE_PATH = old_name
 
 def test_em():
     em_is_gllim.maxIter = 300
     noise_GD.maxIter = 200
     NoiseEstimation.Nobs = 400
-    em_is_gllim_jit.NO_IS = True
+    em_is_gllim.NO_IS = True
     obs_mode = {"mean": 1, "cov": 0.1}
 
     exp = NoiseEstimation(context.LabContextOlivine, obs_mode, "diag", "gd", assume_linear=False)
@@ -66,7 +67,7 @@ def test_em():
 
 
 def main():
-    test_gd_linear()
+    # test_gd_linear()
     test_em_linear()
     test_em()
 

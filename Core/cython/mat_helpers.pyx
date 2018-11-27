@@ -82,5 +82,5 @@ cdef void reset_zeros(double [:,:] A) nogil:
     cdef Py_ssize_t i,j
 
     for i in range(N):
-        for j in range(N):
+        for j in range(M):
             A[i,j] = 0

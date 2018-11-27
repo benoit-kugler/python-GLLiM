@@ -10,7 +10,7 @@ The equation numbers refer to _High-Dimensional Regression with Gaussian Mixture
 cimport cython
 cimport numpy as np
 import numpy as np
-from libc.math cimport sqrt
+from libc.math cimport sqrt, log, exp
 
 include "probas.pyx"
 include "mat_helpers.pyx"
@@ -1173,3 +1173,577 @@ def compute_next_theta_GFull_SFull(const double[:,:] T, const double[:,:] Y, con
         _compute_Sigmak_SFull(Y, Xnk, rnk_List[:,k], rk, out_AkList[k], out_bkList[k],
                               Sk_W, tmp_D, out_SigmakList[k])
         _add_numerical_stability_full(out_SigmakList[k])
+
+
+# ----------------------- E-step ----------------------- #
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_y_mean(const double[:,:] T, const double[:] ck_W, const double[:,:] Ak_T,
+                         const double[:,:] Ak_W, const double[:] bk, double[:,:] out_y_mean) nogil:
+    """out_y_mean = out_y_mean + Ak * (Tn,ck_W) + bk """
+    cdef Py_ssize_t D = Ak_T.shape[0]
+    cdef Py_ssize_t Lt = Ak_T.shape[1]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t n, d, i
+
+    for n in range(N):
+        for d in range(D):
+            for i in range(Lt):
+                out_y_mean[n,d] += Ak_T[d,i] * T[n,i]
+            for i in range(Lw):
+                out_y_mean[n,d] += Ak_W[d,i] * ck_W[i]
+            out_y_mean[n,d] += bk[d]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _sum_exp(const double[:] tmp_N, double log_pik,
+                    double[:] out_rnk, double[:] out_ll) nogil:
+    cdef Py_ssize_t N = tmp_N.shape[0]
+    cdef Py_ssize_t n
+
+    for n in range(N):
+        out_rnk[n] += tmp_N[n] + log_pik  # in log
+        out_rnk[n] = exp(out_rnk[n])
+        out_ll[n] += out_rnk[n]  # likelihood
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _normalize_log(double[:,:] out_rnk_List, double[:] out_ll) nogil:
+    cdef Py_ssize_t N = out_rnk_List.shape[0]
+    cdef Py_ssize_t K = out_rnk_List.shape[1]
+    cdef Py_ssize_t n, k
+
+    for n in range(N):
+        for k in range(K):
+            out_rnk_List[n,k] /= out_ll[n]
+        out_ll[n] = log(out_ll[n]) # log likelihood
+
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GIso_SIso(const double[:,:] Ak_W, const double Gammak_W,
+                                    const double Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            if d1 == d2:
+                out[d1,d2] = Sigmak
+            else:
+                out[d1,d2] = 0
+            for i in range(Lw):
+                out[d1,d2] += Ak_W[d1,i] * Gammak_W * Ak_W[d2,i]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GIso_SDiag(const double[:,:] Ak_W, const double Gammak_W,
+                                    const double[:] Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            if d1 == d2:
+                out[d1,d2] = Sigmak[d1]
+            else:
+                out[d1,d2] = 0
+            for i in range(Lw):
+                out[d1,d2] += Ak_W[d1,i] * Gammak_W * Ak_W[d2,i]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GIso_SFull(const double[:,:] Ak_W, const double Gammak_W,
+                                    const double[:,:] Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            out[d1,d2] = Sigmak[d1,d2]
+            for i in range(Lw):
+                out[d1,d2] += Ak_W[d1,i] * Gammak_W * Ak_W[d2,i]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GDiag_SIso(const double[:,:] Ak_W, const double[:] Gammak_W,
+                                    const double Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            if d1 == d2:
+                out[d1,d2] = Sigmak
+            else:
+                out[d1,d2] = 0
+            for i in range(Lw):
+                out[d1,d2] += Ak_W[d1,i] * Gammak_W[i] * Ak_W[d2,i]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GDiag_SDiag(const double[:,:] Ak_W, const double[:] Gammak_W,
+                                    const double[:] Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            if d1 == d2:
+                out[d1,d2] = Sigmak[d1]
+            else:
+                out[d1,d2] = 0
+            for i in range(Lw):
+                out[d1,d2] += Ak_W[d1,i] * Gammak_W[i] * Ak_W[d2,i]
+            out[d2,d1] = out[d1,d2]
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GDiag_SFull(const double[:,:] Ak_W, const double[:] Gammak_W,
+                                    const double[:,:] Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            out[d1,d2] = Sigmak[d1,d2]
+            for i in range(Lw):
+                out[d1,d2] += Ak_W[d1,i] * Gammak_W[i] * Ak_W[d2,i]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GFull_SIso(const double[:,:] Ak_W, const double[:,:] Gammak_W,
+                                    const double Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i, j
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            if d1 == d2:
+                out[d1,d2] = Sigmak
+            else:
+                out[d1,d2] = 0
+            for i in range(Lw):
+                for j in range(Lw):
+                    out[d1,d2] += Ak_W[d1,i] * Gammak_W[i,j] * Ak_W[d2,j]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GFull_SDiag(const double[:,:] Ak_W, const double[:,:] Gammak_W,
+                                    const double[:] Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i, j
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            if d1 == d2:
+                out[d1,d2] = Sigmak[d1]
+            else:
+                out[d1,d2] = 0
+            for i in range(Lw):
+                for j in range(Lw):
+                    out[d1,d2] += Ak_W[d1,i] * Gammak_W[i,j] * Ak_W[d2,j]
+            out[d2,d1] = out[d1,d2]
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void _helper_AGA_S_GFull_SFull(const double[:,:] Ak_W, const double[:,:] Gammak_W,
+                                    const double[:,:] Sigmak, double[:,:] out) nogil:
+    """erase out"""
+    cdef Py_ssize_t D = Ak_W.shape[0]
+    cdef Py_ssize_t Lw = Ak_W.shape[1]
+    cdef Py_ssize_t d1, d2, i, j
+
+    for d1 in range(D):
+        for d2 in range(d1+1):
+            out[d1,d2] = Sigmak[d1,d2]
+            for i in range(Lw):
+                for j in range(Lw):
+                    out[d1,d2] += Ak_W[d1,i] * Gammak_W[i,j] * Ak_W[d2,j]
+            out[d2,d1] = out[d1,d2]
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GIso_SIso(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:] GammakList_T, const double[:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        loggauspdf_iso(T, ckList_T[k], GammakList_T[k], out_rnk_List[:,k])
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GIso_SIso(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GIso_SDiag(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:] GammakList_T, const double[:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:,:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        loggauspdf_iso(T, ckList_T[k], GammakList_T[k], out_rnk_List[:,k])
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GIso_SDiag(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GIso_SFull(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:] GammakList_T, const double[:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:,:,:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        loggauspdf_iso(T, ckList_T[k], GammakList_T[k], out_rnk_List[:,k])
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GIso_SFull(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GDiag_SIso(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:,:] GammakList_T, const double[:,:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        loggauspdf_diag(T, ckList_T[k], GammakList_T[k], out_rnk_List[:,k])
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GDiag_SIso(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GDiag_SDiag(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:,:] GammakList_T, const double[:,:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:,:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        loggauspdf_diag(T, ckList_T[k], GammakList_T[k], out_rnk_List[:,k])
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GDiag_SDiag(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GDiag_SFull(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:,:] GammakList_T, const double[:,:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:,:,:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        loggauspdf_diag(T, ckList_T[k], GammakList_T[k], out_rnk_List[:,k])
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GDiag_SFull(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GFull_SIso(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:,:,:] GammakList_T, const double[:,:,:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        cholesky(GammakList_T[k], tmp_LtLt)
+        chol_loggausspdf_precomputed(T, ckList_T[k], tmp_LtLt, out_rnk_List[:,k], tmp_N2)
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GFull_SIso(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GFull_SDiag(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:,:,:] GammakList_T, const double[:,:,:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:,:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        cholesky(GammakList_T[k], tmp_LtLt)
+        chol_loggausspdf_precomputed(T, ckList_T[k], tmp_LtLt, out_rnk_List[:,k], tmp_N2)
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GFull_SDiag(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def compute_rnk_GFull_SFull(const double[:,:] T, const double[:,:] Y, const double[:] pikList,
+                            const double[:,:] ckList_T, const double[:,:] ckList_W,
+                            const double[:,:,:] GammakList_T, const double[:,:,:] GammakList_W,
+                            const double[:,:,:] AkList_T, const double[:,:,:] AkList_W,
+                            const double[:,:] bkList, const double[:,:,:] SigmakList,
+                            double[:,:] out_rnk_List, double[:] out_ll,
+                            double[:,:] tmp_LtLt, double[:] tmp_N, double[:] tmp_N2,
+                            double[:,:] tmp_ND,
+                            double[:,:] tmp_DD, double[:,:] tmp_DD2):
+
+    cdef Py_ssize_t K = pikList.shape[0]
+    cdef Py_ssize_t N = T.shape[0]
+
+    cdef Py_ssize_t k, n
+    cdef double log_pik = 0
+
+    for k in range(K):
+        reset_zeros(tmp_LtLt)
+        reset_zeros(tmp_ND)
+        reset_zeros(tmp_DD2)
+
+        cholesky(GammakList_T[k], tmp_LtLt)
+        chol_loggausspdf_precomputed(T, ckList_T[k], tmp_LtLt, out_rnk_List[:,k], tmp_N2)
+
+        _helper_y_mean(T, ckList_W[k], AkList_T[k], AkList_W[k], bkList[k], tmp_ND)
+
+        _helper_AGA_S_GFull_SFull(AkList_W[k], GammakList_W[k], SigmakList[k], tmp_DD)
+
+        cholesky(tmp_DD, tmp_DD2)
+        chol_loggausspdf2_precomputed(Y, tmp_ND, tmp_DD2, tmp_N, tmp_N2)
+
+        log_pik = log(pikList[k])
+
+        _sum_exp(tmp_N, log_pik, out_rnk_List[:,k], out_ll)
+
+    _normalize_log(out_rnk_List, out_ll)
