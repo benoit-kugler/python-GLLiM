@@ -6,7 +6,8 @@ import logging
 import numpy as np
 import coloredlogs
 
-from Core import em_is_gllim_jit, noise_GD
+from Core import noise_GD
+from old import em_is_gllim_jit
 from Core.gllim import jGLLiM
 from experiences.noise_estimation import NoiseEstimation
 from tools import context

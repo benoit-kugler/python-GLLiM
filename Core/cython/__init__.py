@@ -51,4 +51,15 @@ class gllim_para:
     compute_next_theta_GIso_SIso = compute_next_theta_GIso_SIso
 
 
+    #TODO : Add parralelistation
+    compute_rnk_GFull_SFull = compute_rnk_GFull_SFull
+    compute_rnk_GFull_SDiag = compute_rnk_GFull_SDiag
+    compute_rnk_GFull_SIso = compute_rnk_GFull_SIso
+    compute_rnk_GDiag_SFull = compute_rnk_GDiag_SFull
+    compute_rnk_GDiag_SDiag = compute_rnk_GDiag_SDiag
+    compute_rnk_GDiag_SIso = compute_rnk_GDiag_SIso
+    compute_rnk_GIso_SFull = compute_rnk_GIso_SFull
+    compute_rnk_GIso_SDiag = compute_rnk_GIso_SDiag
+    compute_rnk_GIso_SIso = compute_rnk_GIso_SIso
+
 from .probas import test_chol

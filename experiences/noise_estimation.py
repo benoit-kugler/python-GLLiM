@@ -8,8 +8,7 @@ import coloredlogs
 
 from tools import context
 import numpy as np
-from Core import em_is_gllim_jit as em_is_gllim
-# from Core import em_is_gllim
+from Core import em_is_gllim
 from Core import noise_GD
 
 
@@ -84,7 +83,7 @@ class NoiseEstimation:
             if Yobs is None:
                 _, Yobs = self.context.get_data_training(self.Nobs)
                 Yobs = self.context.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
-        Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
+        Yobs = np.asarray(Yobs, dtype=float, order="C")  # to ensure Y is contiguous
         fit = em_is_gllim.fit if self.method == "is_gllim" else noise_GD.fit
         history = fit(Yobs, self.context, cov_type=self.cov_type, assume_linear=self.assume_linear)
         if not save:

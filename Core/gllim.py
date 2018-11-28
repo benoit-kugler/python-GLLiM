@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 NUM_TRHEADS = multiprocessing.cpu_count()
 
-
+N_sample_obs = 10000
 
 class CovarianceTypeError(NotImplementedError):
 
@@ -229,14 +229,6 @@ class GLLiM:
         )
 
     @property
-    def dict_julia(self):
-        assert self.Lw == 0
-        dic = self.theta
-        dic["K"], dic["L"], dic["D"] = self.K, self.L, self.D
-        dic["Sigma"] = self.full_SigmakList
-        return dic
-
-    @property
     def current_ll(self):
         return self.LLs_[-1]
 
@@ -372,11 +364,10 @@ class GLLiM:
             assert self.rnk.shape == (T.shape[0], self.K)
         elif type(init) is dict:
             self._init_from_dict(init)
-            _, logrnk = self._compute_rnk(Y, T)
-            self.rnk = np.exp(logrnk)
+            self.rnk, _ = self._compute_rnk(Y, T)
         else:
-            _, logrnk = self._compute_rnk(Y, T)
-            self.rnk = np.exp(logrnk)
+            self.rnk, _ = self._compute_rnk(Y, T)
+
 
         self.rkList = self.rnk.sum(axis=0)
 
@@ -399,24 +390,6 @@ class GLLiM:
         self.SigmakList = self.SigmakList[keep]
         self.rnk = self.rnk[:, keep]
 
-    def _add_numerical_stability(self, matrixlist, cov_type):
-        if cov_type == 'iso':
-            return matrixlist + self.reg_covar
-        elif cov_type == "diag":
-            return matrixlist + self.reg_covar
-        elif cov_type == 'full':
-            dim = matrixlist.shape[1]
-            return matrixlist + np.array([np.eye(dim) * self.reg_covar] * self.K)
-        else:
-            raise CovarianceTypeError
-
-    def _get_SkList_X(self, SkList_W):
-        return np.array([
-            np.block(
-                [[np.zeros((self.Lt, self.Lt)), np.zeros((self.Lt, self.Lw))],
-                 [np.zeros((self.Lw, self.Lt)), Sk_w]])
-            for Sk_w in SkList_W
-        ])
 
 
     def _compute_rnk(self, Y, T):
@@ -551,7 +524,6 @@ class GLLiM:
                 out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1,
                 out_bkList1, out_SigmakList1,
                 *tmp_arrays)
-
         self.cython_next_theta_(*args)
         return out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1
 
@@ -670,14 +642,6 @@ class GLLiM:
         if self.verbose is not None:
             logging.debug(f"GLLiM inversion done in {time.time()-start_time_inversion:.3f} s")
 
-    def inversion_with_null_sigma(self):
-        # Inversion step
-        if self.sigma_type == "iso":
-            self.SigmakList = np.ones(self.K) * 1e-12
-        else:
-            self.SigmakList = np.array([np.eye(self.D) * 1e-12] * self.K)
-        self.inversion()
-
     @property
     def norm2_SigmaSGammaInv(self):
         return np.array([np.linalg.norm(x, 2) for x in
@@ -716,6 +680,20 @@ class GLLiM:
         else:
             Xpred = probas_helper.mean_melange(alpha, proj)
             return Xpred
+
+
+    def predict_high_low_sample_obs(self, Ymean, Ycov):
+        """Sample gaussian obs with mean Ymean and cov Ycov. Return the mean of Xpref and Covs obtained"""
+        N = Ymean.shape[0]
+        out_X = np.zeros((N,self.L))
+        out_Covs = np.zeros((N,self.L,self.L))
+        for n in range(N):
+            Y = np.random.multivariate_normal(Ymean[n], Ycov[n], size=N_sample_obs)
+            Xpred, Covs  = self.predict_high_low(Y,with_covariance=True)
+            out_X[n] = np.mean(Xpred, axis=0)
+            out_Covs[n] = np.mean(Covs, axis=0)
+        return out_X, out_Covs
+
 
     def predict_cluster(self, X, with_covariance=False):
         """Backward prediction
@@ -784,33 +762,6 @@ class GLLiM:
 
         return densites, sub_dens
 
-    def modal_prediction(self, Y, components=None, threshold=None, sort_by="height"):
-        """Returns components of conditionnal mixture by descending order of importance.
-        If given, limits to components values.
-        If threshold is given, gets rid of components with weight <= threshold
-        Priority on components"""
-        proj, alpha, _ = self._helper_forward_conditionnal_density(Y)
-        covs = self.SigmakListS
-        chols = np.linalg.cholesky(covs)
-        det_covs = np.prod(np.array([np.diag(c) for c in chols]),axis=1)
-        N = Y.shape[0]
-        lc = components or self.K
-        threshold = threshold if (components is None) else None
-        X, heights, weights = [], [], []
-        for n, meann, alphan in zip(range(N), proj, alpha):
-            dominants = dominant_components(alphan, meann, covs, threshold=threshold,
-                                            sort_by=sort_by, dets=det_covs)[0:lc]
-            if len(dominants) == 0:
-                max_w = max(alphan)
-                logging.error("Warning ! No prediction for this threshold (best weight : {:.2e}!".format(max_w))
-                hs, ws, xs = np.empty((0,)) , np.empty((0,)) , np.empty((0,))
-            else:
-                hs, ws, xs, _ = zip(*dominants)
-            weights.append(np.array(ws))
-            heights.append(np.array(hs))
-            X.append(np.array(xs))
-        return X, heights, weights
-
 
     def predict_sample(self, Y, nb_per_Y=10):
         """Compute law of X knowing Y and nb_per_Y points following this law"""
@@ -821,54 +772,6 @@ class GLLiM:
         logging.debug(f"Sampling from mixture ({len(Y)} series of {nb_per_Y}) done in {time.time()-ti:.3f} s")
         return s
 
-    @staticmethod
-    def monte_carlo_esperance(samples, centres):
-        """Compute approximate E[X | X proche de ck] / E[X proche de ck]
-        samples shape : (N,L) centres shape (K,L)
-        """
-        choix = np.square(samples[:, None] - centres[None, :]).sum(axis=2).argmin(axis=1)
-        crible = (choix[:, None] == np.arange(len(centres)))
-        denom = crible.sum(axis=0)[:, None]
-        esp_rapp = (samples[:, None, :] * crible[:, :, None]).sum(axis=0) / denom
-        return esp_rapp, choix
-
-    def clustered_prediction(self, Y, F, nb_predsMax=3, size_sampling=10000,
-                             agg_method="mean"):
-        """Compute prediction of several x per y.
-        Number of x to predict is choosen according to F criteria."""
-        meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)
-        # sampless = self._sample_from_mixture(meanss, weightss, size)  # too large when N is big
-        Xmeans = probas_helper.mean_melange(meanss, weightss)  # avoid recomp
-        preds = []
-        N = len(Y)
-        k_choosen = []
-        agg = np.max if agg_method == "max" else np.mean
-        for n, X, weights, y, xmean, means in zip(range(N), meanss, weightss, Y, Xmeans, meanss):
-            samples = GMM_sampling(means[None, :], weights[None, :], self.SigmakListS, size_sampling)[0]
-            y_accuracy, xs = [np.square(F(xmean[None, :])[0] - y).sum()], [xmean[None, :]]
-            for nb_preds in range(2, nb_predsMax + 1):
-                w = regularization.WeightedKMeans(nb_preds)
-                try:
-                    labels, score, centers = w.fit_predict_score(X, weights, None)
-                except ValueError:
-                    err, Xpreds = np.inf, None
-                else:
-                    Xpreds, _ = self.monte_carlo_esperance(samples, centers)
-                    if not np.isfinite(Xpreds).all():
-                        err, Xpreds = np.inf, None
-                    else:
-                        ys = F(Xpreds)
-                        err = agg(np.square(ys - y).sum(axis=1))
-                y_accuracy.append(err)
-                xs.append(Xpreds)
-            best_K = np.argmin(y_accuracy)
-            k_choosen.append(best_K)
-            preds.append(xs[best_K])
-            if n and n % 100 == 0:
-                logging.debug(f"Prediction {n}/{N} done.")
-        props = (np.array(k_choosen)[:, None] == np.arange(0, nb_predsMax)[None, :]).sum(axis=0) / N
-        logging.info(f"Number of prediction proporations : {props}")
-        return preds
 
     def merged_prediction(self, Y):
         meanss, weightss, _ = self._helper_forward_conditionnal_density(Y)

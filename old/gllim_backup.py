@@ -528,6 +528,7 @@ class OldGLLiM():
         assert (logrnk <= 0).all()
         return lognormrnk, logrnk
 
+
     def _compute_Ak(self, Xnk, Y, SkList_X):
         xk_bars = (self.rnk[:, :, None] * Xnk).sum(axis=0) / self.rkList[:, None]
 

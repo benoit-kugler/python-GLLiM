@@ -7,12 +7,10 @@ import coloredlogs
 import numba as nb
 import numpy as np
 
+import hapke.cython
 from Core import cython
 from Core.gllim import jGLLiM
-from Core.probas_helper import densite_melange_precomputed, cholesky_list, _chol_loggausspdf_precomputed, \
-    _loggausspdf_diag
 from tools import context
-import hapke.cython
 
 # GLLiM parameters
 Ntrain = 40000
@@ -221,11 +219,17 @@ class NoiseEM:
 
     def fast_compute_Hapke(self, Xs, mask):
         N, Ns, _ = Xs.shape
-
-        FXs = hapke.cython.compute_many_Hapke(np.asarray(self.cont.geometries, dtype=np.double), Xs, mask,
-                                              self.cont.partiel, self.cont.DEFAULT_VALUES,
+        partiel = np.arange(self.cont.L) if self.cont.partiel is None else self.cont.partiel
+        if hasattr(self.cont, "HAPKE_VECT_PERMUTATION"):
+            perm = np.array(self.cont.HAPKE_VECT_PERMUTATION)
+        else:
+            perm = np.arange(self.cont.L)
+        args = (np.asarray(self.cont.geometries, dtype=np.double), Xs, mask,
+                                              partiel, self.cont.DEFAULT_VALUES,
                                               self.cont.variables_lims[:, 0],
-                                              self.cont.variables_range, self.cont.HAPKE_VECT_PERMUTATION)
+                                              self.cont.variables_range, perm)
+
+        FXs = hapke.cython.compute_many_Hapke(*args)
 
         return FXs
 
@@ -371,6 +375,7 @@ def _debug():
     Yobs = np.copy(Yobs, "C")  # to ensure Y is contiguous
 
     fit(Yobs, cont, cov_type="full", assume_linear=False)
+
 
 
 if __name__ == '__main__':

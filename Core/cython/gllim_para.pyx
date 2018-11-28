@@ -71,7 +71,7 @@ cdef void _helper_rW_Z(const double[:,:] Y, const double[:,:] T, const double[:,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef void _compute_rW_Z_GIso_SIso(const double[:,:] Y, const double[:,:] T, const double[:,:] Ak_W,
-                            const double[:,:] Ak_T, const double Gammak_W, double Sigmak,
+                            const double[:,:] Ak_T, const double Gammak_W, const double Sigmak,
                             const double[:] bk, const double[:] ck_W, double[:,:] munk_W_out,
                             double[:,:] Sk_W_out, double[:,:] Sk_X_out, double[:] tmp_D, double[:] tmp_Lw,
                             double[:,:] tmp_LwLw, double[:,:] ginv_tmpLw, double[:,:] ATSinv_tmp,
@@ -708,7 +708,7 @@ def compute_next_theta_GIso_SIso(const double[:,:] T, const double[:,:] Y, const
     for k in prange(K, nogil=True, num_threads=NUM_THREADS, schedule='static'):
         thread_number = openmp.omp_get_thread_num()
 
-        rk[thread_number] = 1
+        rk[thread_number] = 0
         for n in range(N):
             rk[thread_number] += rnk_List[n,k]
 

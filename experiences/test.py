@@ -5,7 +5,6 @@
 # cov_chol : Matrice trinagulaire correspondant à la decomp de Cholesky de la matrice de covariance
 # precisions_chol : Matrice triangulaire correspondant à la decomp de Cholesky de la matrice de precisions
 # weights : Pi_k : coefficient de chaque zone
-import h5py
 import json
 import logging
 import time
@@ -14,20 +13,18 @@ import coloredlogs
 import numpy as np
 import scipy.io
 
-from Core import em_is_gllim_jit, probas_helper
+from Core import probas_helper
 from Core.dgllim import dGLLiM
 from Core.gllim import GLLiM, jGLLiM
 from Core.probas_helper import chol_loggausspdf
 from Core.riemannian import RiemannianjGLLiM
-from Core.sGllim import saGLLiM
 from experiences.importance_sampling import mean_IS
-from gllim_backup import OldGLLiM
 from hapke import hapke_sym
 from hapke.hapke_vect import Hapke_vect
 from hapke.hapke_vect_opt import Hapke_vect as Hapke_opt
 # from plotting import graphiques
 from tools import context
-from tools.context import WaveFunction, HapkeGonio1468, VoieS, HapkeContext, InjectiveFunction
+from tools.context import WaveFunction, HapkeContext, InjectiveFunction
 # from tools.experience import SecondLearning, Experience, _train_K_N
 from tools.measures import Mesures
 from hapke.cython.hapke import Hapke_vect as Hapke_cython
@@ -190,8 +187,6 @@ def test_hapke_vect():
     y2 = Hapke_opt(*GX)
     y2 = np.array(np.split(y2, X.shape[0]))
     print("Hapke opt time ", time.time() - ti)
-
-    import pstats, cProfile
 
     ti = time.time()
     y3 = Hapke_cython(t0[0], t[0], p[0], *X.T)
@@ -415,105 +410,75 @@ def compare_is():
     print("Me : ", su(nrmse), "Ye", su(nrmseY))
 
 
-def is_egal(modele1,modele2,verbose=False):
-
-    def diff(a1,a2):
-        return np.max(np.abs(a1 - a2)) / np.max(np.abs(a1))
-
-    if verbose:
-        print('Diff pi',diff(modele1[0], modele2[0]))
-        print('Diff c',diff(modele1[1], modele2[1]))
-        print('Diff Gamma',diff(modele1[2], modele2[2]))
-        print('Diff A',diff(modele1[3], modele2[3]))
-        print('Diff b',diff(modele1[4], modele2[4]))
-        print('Diff Sigma',diff(modele1[5], modele2[5]))
-
-    assert np.allclose(modele1[0], modele2[0])
-    assert np.allclose(modele1[1], modele2[1])
-    assert np.allclose(modele1[2], modele2[2])
-    assert np.allclose(modele1[3], modele2[3])
-    assert np.allclose(modele1[4], modele2[4])
-    assert np.allclose(modele1[5], modele2[5])
 
 
-def _compare_one(g1,g2,g3,Y,T):
-    print(f"Gamma type: {g1.gamma_type}, Sigma type : {g1.sigma_type}")
-    g1.init_fit(T,Y,None)
-    g2.init_fit(T,Y,None)
-    g3.init_fit(T,Y,None)
+
+def _compare():
+    D = 10
+    L = 4
+    Ns = 10000
+    Ny = 200
+
+    # mask_x = np.asarray(np.random.random_sample(Ns) > 0.2, dtype=int)
+    # mask_x = np.asarray(np.zeros(N),dtype=int)
+
+    T = np.tril(np.ones((L, L))) * 0.456
+    cov = np.dot(T, T.T)
+    U = np.linalg.cholesky(cov).T  # DxD
+    covs = np.array([cov] * K)
+
+    weightss = np.random.random_sample((Ny, K))
+    weightss /= weightss.sum(axis=1, keepdims=True)
+    meanss = np.random.random_sample((Ny, K, L)) * 12.2
+
+    Yobs = np.random.random_sample((Ny, D))
+    FXs = np.random.random_sample((Ny, Ns, D)) * 9
+    Xs = np.random.random_sample((Ny, Ns, L)) * 10
+
+    maximal_mu = np.random.random_sample(D)
+    mask = np.asarray(np.random.random_sample((Ny, Ns)) > 0.4, dtype=int)
+
+    current_mean = np.random.random_sample(D)
+    current_cov = np.arange(D) + 1.2
+    # T = np.tril(np.ones((D, D))) * 0.456
+    # current_cov = np.dot(T, T.T)
+
+    # X = Xs[0]
+    # weights = weightss[0]
+    # means = meanss[0]
+    # gllim_chol_covs = np.linalg.cholesky(covs)
+    # log_p_tilde = np.random.random_sample(Ns)
+    # FX = FXs[0]
+    # mask_x = mask[0]
+    # y = Yobs[0]
+
+    ws = np.random.random_sample((Ny, Ns))
+
+    # _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
+    print("jit compiled")
 
     ti = time.time()
-    theta1 = g1.compute_next_theta(T, Y)
-    print(f"Cython sequentiel : {time.time() - ti:.3f} s")
+    # S1 = _sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu)
+    S1, V1 = _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # S1,V1 = _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+    # S1 = _sigma_step_full(Yobs, FXs, ws, mask, maximal_mu)
+    print("jit", time.time() - ti)
 
     ti = time.time()
-    theta2 = g2.compute_next_theta(T, Y)
-    print(f"Cython parallel   : {time.time() - ti:.3f} s")
+    # S2 = cython.sigma_step_full_NoIS(Yobs, FXs, mask, maximal_mu)
+    S2, V2 = cython.mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, covs, current_mean, current_cov)
+    # S2,V2 = cython.test(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y)
+    # S2 = cython.sigma_step_full_IS(Yobs, FXs, ws, mask, maximal_mu)
 
-    ti = time.time()
-    theta3 = g3.compute_next_theta(T, Y)
-    print(f"Python (old)      : {time.time() - ti:.3f} s \n")
+    print("cython", time.time() - ti)
+    print(V1 - V2)
+    # print(S1 - S2)
+    print(V1)
+    print(V2)
 
-    is_egal(theta1, theta2)
-    is_egal(theta1, theta3)
-
-
-def compare_para(N=100000, D=10, Lt=4, Lw=0, K=40):
-    """Compare cythons implementations : sequential vs parallel"""
-    Y = np.random.random_sample((N, D)) + 2
-    T = np.random.random_sample((N, Lt))
-
-    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="full", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="full", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="full", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="full", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="diag", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="diag", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="diag")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="iso", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="iso", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
-    _compare_one(g1,g2,g3,Y,T)
-
-    g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
-    _compare_one(g1,g2,g3,Y,T)
-
-
-def compare_complet(N,D):
-    compare_para(N,D,4,0,K=40)
-    compare_para(N,D,4,1,K=40)
-    compare_para(N,D,0,4,K=40)
-
+    assert np.allclose(S1, S2), "sigma step full noIs not same !"
+    assert np.allclose(V1, V2), "sigma step full noIs not same !"
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(asctime)s : %(levelname)s : %(message)s",

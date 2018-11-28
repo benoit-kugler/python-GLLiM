@@ -1,0 +1,1 @@
+"""Sub optimal implementations. Usefull for testing and debugging."""

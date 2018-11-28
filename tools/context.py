@@ -2,6 +2,7 @@
 import logging
 import os
 import random
+from typing import Union
 
 import numpy as np
 import pyDOE
@@ -12,6 +13,8 @@ from rpy2 import robjects
 from hapke.cython import Hapke_cython
 
 randtoolbox = robjects.packages.importr('randtoolbox')
+
+ROOT_PATH = "/home/bkugler/Documents/DATA"
 
 
 def test_random(u):
@@ -216,11 +219,11 @@ class abstractFunctionModel:
         return self.get_X_sampling(K,method="sobol")
 
 
-    def is_X_valid(self,X):
+    def is_X_valid(self,X : Union[np.ndarray, list]):
         """Returns a mask of theoretically correct values"""
         if type(X) is list:
             mask = [(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in X]
-        elif X.ndims == 3:
+        elif X.ndim == 3:
             mask = np.array([(np.all((0 <= x) * (x <= 1), axis=1) if x.shape[0] > 0 else None) for x in X])
         else:
             mask = np.array([np.all((0 <= x) * (x <= 1)) for x in X])
@@ -382,7 +385,7 @@ class ExampleFunction(abstractSimpleFunctionModel):
 class abstractHapkeModel(abstractFunctionModel):
     """Adds geometries support"""
 
-    BASE_PATH = "../DATA/HAPKE"
+    BASE_PATH = ROOT_PATH + "/HAPKE"
 
     SCATTERING_VARIANT = "2002"
 
@@ -654,7 +657,7 @@ class abstractLabContext(abstractHapkeModel):
     DEFAULT_VALUES = np.array([0.5,0.5,15,0.5,0.5,0.5])
     """Mean default values"""
 
-    BASE_PATH = "../DATA/HAPKE/resultats_photom_lab_pilorget_2016/"
+    BASE_PATH = ROOT_PATH + "/HAPKE/resultats_photom_lab_pilorget_2016/"
 
     EXPERIENCES = [("lab_data/data_nontronite_ng1_corr.sav","result_photom/NG1_new_optim_100iter","brf_nontronite"),
                    ("lab_data/data_olivine_olv_corr.sav","result_photom/OLV_new_optim_100iter","brf_olv")]
@@ -722,8 +725,6 @@ class abstractLabContext(abstractHapkeModel):
 
         return r, covs
 
-
-
     def get_images_path_densities(self,index):
         ind = self.partiel and self.partiel[index] or index
         return [os.path.join(self.result_path,"pdf_plot","{0:03}_pdf_{1}.png".format(i,self.PDF_NAMES[ind]))
@@ -754,6 +755,35 @@ class LabContextOlivine(abstractLabContext):
     def __init__(self, partiel=None):
         super().__init__(partiel,1)
 
+class LabContextOlivineWLinear(LabContextOlivine):
+    LABEL = LabContextOlivine.LABEL + " - w-linear"
+    DESCRIPTION = LabContextOlivine.DESCRIPTION + " Linéarisation en w."
+
+    INDEX_omega = 3
+    """Index dans le X total"""
+
+    def _prepare_X(self, X):
+        """W = w^2"""
+        X = self.to_X_physique(X)
+        return super()._prepare_X(X)
+
+
+    def to_X_physique(self,X):
+        """Maps mathematical X valued to physical ones"""
+        if self.partiel is None:
+            i = self.INDEX_omega
+        elif self.INDEX_omega in self.partiel:
+            i = list(self.partiel).index(self.INDEX_omega)
+        else:
+            i = None
+        if i is None:
+            return X
+        X2 = np.copy(X)
+        X2[i] = np.square(X[i])
+
+        return super(LabContextOlivineWLinear, self).to_X_physique(X2)
+
+
 
 class MergedLabObservations(LabContextOlivine):
 
@@ -765,7 +795,7 @@ class MergedLabObservations(LabContextOlivine):
 
 class abstractGlaceContext(abstractHapkeModel):
 
-    BASE_PATH = "../DATA/HAPKE/glace"
+    BASE_PATH = ROOT_PATH + "/HAPKE/glace"
 
     EXPERIENCE = ""
 
@@ -840,7 +870,7 @@ class LinearFunction(abstractFunctionModel):
 
     D = 10
 
-    PRIOR_COV = 0.02 * np.eye(4)
+    PRIOR_COV = 0.002 * np.eye(4)
 
     LABEL = "Fonction linéaire injective"
 
