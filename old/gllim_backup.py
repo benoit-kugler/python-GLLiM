@@ -303,7 +303,7 @@ class OldGLLiM():
             - init = theta , where theta is a dict of Gllim parameters (with Sigma shape compatible with sigmae_type)
         Remark : At the end, all that matter are rnk, since fit start by maximization.
         """
-        init = init or ()
+        init = () if init is None else init
         self.Lt = T.shape[1]
         self.D = Y.shape[1]
 
@@ -320,10 +320,10 @@ class OldGLLiM():
             assert self.rnk.shape == (T.shape[0], self.K)
         elif type(init) is dict:
             self._init_from_dict(init)
-            _, logrnk = self._compute_rnk(Y, T)
+            _, logrnk = self._compute_rnk(T, Y)
             self.rnk = np.exp(logrnk)
         else:
-            _, logrnk = self._compute_rnk(Y, T)
+            _, logrnk = self._compute_rnk(T, Y)
             self.rnk = np.exp(logrnk)
 
         self.rkList = self.rnk.sum(axis=0)
@@ -467,7 +467,7 @@ class OldGLLiM():
             raise CovarianceTypeError
         return r
 
-    def _compute_rnk(self, Y, T):
+    def _compute_rnk(self, T, Y):
         N = T.shape[0]
         logrnk = np.empty((N, self.K))
 
@@ -481,7 +481,7 @@ class OldGLLiM():
                                                                                   self.GammakList_T, self.GammakList_W,
                                                                                   self.SigmakList):
 
-            c = gamma_f_log(T.T, ck_T.reshape((self.Lt, 1)), gammak_T)
+            c = gamma_f_log(T.T, ck_T, gammak_T)
 
             cnk = np.array([ck_W] * N)
             X = np.concatenate((T, cnk), axis=1)
@@ -524,7 +524,7 @@ class OldGLLiM():
 
         lognormrnk = logsumexp(logrnk, axis=1, keepdims=True)
         logrnk -= lognormrnk
-
+        print(lognormrnk)
         assert (logrnk <= 0).all()
         return lognormrnk, logrnk
 
@@ -1176,7 +1176,7 @@ def _compare_complet(g: OldGLLiM, T, Y, Lw):
 
     print(f"Gamma : {g.gamma_type} Sigma : {g.sigma_type}")
     ti = time.time()
-    out_ll1, out_rnk1 = g._compute_rnk(Y, T)
+    out_ll1, out_rnk1 = g._compute_rnk(T, Y)
     out_rnk1 = np.exp(out_rnk1)
     out_ll1 = out_ll1[:,0]
     print("python ", time.time() - ti)
@@ -1230,76 +1230,18 @@ def _compare_complet(g: OldGLLiM, T, Y, Lw):
     assert np.allclose(out_ll1, out_ll2), "LL"
 
 
-def _check_one(Lt, Lw, N=100000, D=5, K=2):
+
+
+def _check_complet(Lt, Lw, N=2000, D=10, K=40):
     Y = np.random.random_sample((N, D))
     T = np.random.random_sample((N, Lt))
 
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="diag")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
-    _compare(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
-    _compare(g, T, Y, Lw)
-
-
-def _check_ck(Lt, Lw, N=10000, D=5, K=5):
-    Y = np.random.random_sample((N, D))
-    T = np.random.random_sample((N, Lt))
-
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare2bis(g, T, Y, Lw)
-
-
-def _check_Ak(Lt, Lw, N=10000, D=5, K=10):
-    Y = np.random.random_sample((N, D))
-    T = np.random.random_sample((N, Lt))
-
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare2(g, T, Y, Lw)
-
-
-def _check_bk(Lt, Lw, N=100000, D=5, K=1):
-    Y = np.random.random_sample((N, D))
-    T = np.random.random_sample((N, Lt))
-
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare3(g, T, Y, Lw)
-
-
-def _check_Sigma(Lt, Lw, N=10000, D=5, K=1):
-    Y = np.random.random_sample((N, D))
-    T = np.random.random_sample((N, Lt))
-
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare4(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
-    _compare4(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
-    _compare4(g, T, Y, Lw)
-
-
-def _check_complet(Lt, Lw, N=20000, D=10, K=40):
-    Y = np.random.random_sample((N, D))
-    T = np.random.random_sample((N, Lt))
-
-    g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
-    _compare_complet(g, T, Y, Lw)
-    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
-    _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
+    # _compare_complet(g, T, Y, Lw)
+    # g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
+    # _compare_complet(g, T, Y, Lw)
     # g = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
     # _compare_complet(g, T, Y, Lw)
     # g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
@@ -1310,14 +1252,14 @@ def _check_complet(Lt, Lw, N=20000, D=10, K=40):
     # _compare_complet(g, T, Y, Lw)
     # g = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
     # _compare_complet(g, T, Y, Lw)
-    # g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    # _compare_complet(g, T, Y, Lw)
+    g = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
+    _compare_complet(g, T, Y, Lw)
 
 
 def _debug():
     _check_complet(2, 5)
-    _check_complet(0, 7)
-    _check_complet(4, 0)
+    # _check_complet(0, 7)
+    # _check_complet(4, 0)
     # _check_Ak(1, 2)
     # _check_Ak(0, 2)
     # _check_Ak(2, 0)

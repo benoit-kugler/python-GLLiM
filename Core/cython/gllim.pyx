@@ -11,6 +11,7 @@ cimport cython
 cimport numpy as np
 import numpy as np
 from libc.math cimport sqrt, log, exp
+from libc.stdio cimport printf
 
 include "probas.pyx"
 include "mat_helpers.pyx"
@@ -1206,8 +1207,6 @@ cdef void _sum_exp(const double[:] tmp_N, double log_pik,
 
     for n in range(N):
         out_rnk[n] += tmp_N[n] + log_pik  # in log
-        out_rnk[n] = exp(out_rnk[n])
-        out_ll[n] += out_rnk[n]  # likelihood
 
 
 @cython.boundscheck(False)
@@ -1216,11 +1215,24 @@ cdef void _normalize_log(double[:,:] out_rnk_List, double[:] out_ll) nogil:
     cdef Py_ssize_t N = out_rnk_List.shape[0]
     cdef Py_ssize_t K = out_rnk_List.shape[1]
     cdef Py_ssize_t n, k
+    cdef double avg_log
 
     for n in range(N):
+        # numerical issue : we compute log sum exp with rescaled log
+        avg_log = 0
+
         for k in range(K):
-            out_rnk_List[n,k] /= out_ll[n]
-        out_ll[n] = log(out_ll[n]) # log likelihood
+            avg_log += out_rnk_List[n,k]
+        avg_log /= K
+
+        for k in range(K):
+            out_ll[n] += exp(out_rnk_List[n,k] - avg_log)
+
+        out_ll[n] = log(out_ll[n]) + avg_log
+
+        for k in range(K):
+            out_rnk_List[n,k] -= out_ll[n]  # en log
+            out_rnk_List[n,k] = exp(out_rnk_List[n,k])
 
 
 

@@ -65,8 +65,8 @@ def _chol_loggausspdf(X, mu, cov):
     cov shape : D,D
     """
     D, N = X.shape
-    mu = np.copy(mu).reshape((-1, 1))
-    X = X - mu  # DxN
+    mu2 = np.copy(mu).reshape((-1, 1))
+    X = X - mu2  # DxN
     U = np.linalg.cholesky(cov)  # DxD
     Q = np.linalg.solve(U, X)
     q = np.sum(Q ** 2, axis=0)

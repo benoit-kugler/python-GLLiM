@@ -35,21 +35,30 @@ def test_em_linear():
     NoiseEstimation.BASE_PATH += "LinearyGaussian/"
 
     em_is_gllim.maxIter = 30
-    NoiseEstimation.Nobs = 1000000
+    NoiseEstimation.Nobs = 1000
     obs_mode = {"mean": 1, "cov": 0.1}
 
     exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=True)
     Yobs = exp.run_noise_estimator(True)
     exp.show_history()
 
-    # exp.assume_linear = False
+    exp.assume_linear = False
     # em_is_gllim.NO_IS = True
     # exp.run_noise_estimator(save=True, Yobs=Yobs)
     # exp.show_history()
-    #
-    # em_is_gllim.NO_IS = False
-    # exp.run_noise_estimator(save=True, Yobs=Yobs)
-    # exp.show_history()
+
+
+
+    em_is_gllim.NO_IS = False
+    em_is_gllim.N_sample_IS = 1000
+    exp.run_noise_estimator(save=True, Yobs=Yobs)
+    exp.show_history()
+
+
+    em_is_gllim.NO_IS = False
+    em_is_gllim.N_sample_IS = 10000
+    exp.run_noise_estimator(save=True, Yobs=Yobs)
+    exp.show_history()
 
     NoiseEstimation.BASE_PATH = old_name
 
@@ -88,8 +97,8 @@ def test_em():
 
 def main():
     # test_gd_linear()
-    # test_em_linear()
-    test_em()
+    test_em_linear()
+    # test_em()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",

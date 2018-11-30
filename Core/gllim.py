@@ -5,6 +5,7 @@ __author__ = R.Juge & S.Lathuiliere & B. Kugler
 
 Tha actual computation is done by cython extension
 """
+import json
 import logging
 import time
 import warnings
@@ -188,7 +189,7 @@ class GLLiM:
     def _init_from_dict(self, dic):
         if "A" in dic:
             self.AkList = np.array(dic['A'])
-            self.D = self.AkList.shape[1]
+            # self.D = self.AkList.shape[1]
         if "b" in dic:
             self.bkList = np.array(dic['b'])
         if 'c' in dic:
@@ -347,7 +348,7 @@ class GLLiM:
             - init = theta , where theta is a dict of Gllim parameters (with Sigma shape compatible with sigmae_type)
         Remark : At the end, all that matter are rnk, since fit start by maximization.
         """
-        init = init or ()
+        init = () if init is None else init
         self.Lt = T.shape[1]
         self.D = Y.shape[1]
 
@@ -364,9 +365,9 @@ class GLLiM:
             assert self.rnk.shape == (T.shape[0], self.K)
         elif type(init) is dict:
             self._init_from_dict(init)
-            self.rnk, _ = self._compute_rnk(Y, T)
+            self.rnk, _ = self._compute_rnk(T, Y)
         else:
-            self.rnk, _ = self._compute_rnk(Y, T)
+            self.rnk, _ = self._compute_rnk(T, Y)
 
 
         self.rkList = self.rnk.sum(axis=0)
@@ -392,7 +393,7 @@ class GLLiM:
 
 
 
-    def _compute_rnk(self, Y, T):
+    def _compute_rnk(self, T, Y):
         N , D = Y.shape
         K = self.K
         Lt = T.shape[1]
@@ -524,6 +525,8 @@ class GLLiM:
                 out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1,
                 out_bkList1, out_SigmakList1,
                 *tmp_arrays)
+
+
         self.cython_next_theta_(*args)
         return out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1
 
@@ -564,7 +567,7 @@ class GLLiM:
             if self.verbose:
                 logging.debug("E - Step...")
 
-            self.rnk, lognormrnk = self._compute_rnk(Y, T)
+            self.rnk, lognormrnk = self._compute_rnk(T, Y)
 
             self.rkList = self.rnk.sum(axis=0)
 
@@ -828,6 +831,9 @@ class jGLLiM(GLLiM):
         :param Sigma: Covariance of the mapping
         :return: (rho,m,V)
         """
+        assert np.isfinite(Gamma).all()
+        _ = [np.linalg.cholesky(G) for G in Gamma]
+
         K = pi.shape[0]
         rho = np.array(pi)
         my = np.matmul(A, c[:, :, None])[:, :, 0] + b
@@ -901,7 +907,7 @@ def _debug(Lt, Lw, N=50000, D=10, K=40):
     Y = np.random.random_sample((N, D)) + 2
     T = np.random.random_sample((N, Lt))
     g = GLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    g.fit(Y, T, "random", maxIter=10)
+    g.fit(T, Y, "random", maxIter=10)
 
 
 if __name__ == '__main__':
