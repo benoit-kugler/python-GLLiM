@@ -67,13 +67,13 @@ def test_em():
     # exp.run_noise_estimator(True)
     # exp.show_history()
 
-    exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "is_gllim", assume_linear=False)
-    exp.run_noise_estimator(True)
-    exp.show_history()
+    # exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "is_gllim", assume_linear=False)
+    # Yobs = exp.run_noise_estimator(True)
+    # exp.show_history()
 
     em_is_gllim.NO_IS = False
     exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "is_gllim", assume_linear=False)
-    exp.run_noise_estimator(True)
+    exp.run_noise_estimator(True, Yobs=None)
     exp.show_history()
 
 
@@ -88,8 +88,8 @@ def test_em():
 
 def main():
     # test_gd_linear()
-    test_em_linear()
-    # test_em()
+    # test_em_linear()
+    test_em()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",

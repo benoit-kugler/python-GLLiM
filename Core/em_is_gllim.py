@@ -1,11 +1,13 @@
 """Implements a crossed EM - GLLiM algorith to evaluate noise in model.
 Diagonal covariance is assumed"""
 import logging
+import multiprocessing
 import time
 
 import coloredlogs
 import numba as nb
 import numpy as np
+from joblib import Parallel, delayed
 
 import hapke.cython
 from Core import cython
@@ -29,6 +31,13 @@ maxIter = 100
 NO_IS = False
 """If it's True, dont use Importance sampling"""
 
+PARALLEL = True
+"""Uses cython parallel version for mu step with IS"""
+
+WITH_THREADS = True
+"""Uses threading backend for joblib"""
+
+N_JOBS = multiprocessing.cpu_count()
 
 # ------------------------ Linear case ------------------------ #
 @nb.njit(cache=True)
@@ -138,6 +147,7 @@ def _gllim_step(cont: context.abstractHapkeModel, current_noise_cov, current_noi
     logging.debug(f"GLLiM step done in {time.time() -ti:.3f} s")
     return gllim
 
+
 # ------------------- WITHOUT IS ------------------- #
 
 def _em_step_NoIS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, *args):
@@ -162,6 +172,49 @@ def _em_step_NoIS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, *args):
 
 # --------------------------------- WITH IS --------------------------------- #
 
+def mu_step_diag_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov):
+    Ny, Ns, D = FXs.shape
+    K, L, _ = gllim_covs.shape
+    gllim_chol_covs = np.zeros((K, L, L))
+    for k in range(K):
+        gllim_chol_covs[k] = np.linalg.cholesky(gllim_covs[k])
+
+    maximal_mu = np.zeros(D)
+    ws = np.zeros((Ny,Ns))
+
+    prefer = "threads" if WITH_THREADS else None
+    res = Parallel(n_jobs=N_JOBS, prefer=prefer)(delayed(cython.mu_step_diag_IS_i)(Yobs[i], Xs[i], meanss[i], weightss[i], FXs[i],
+                                            mask[i], current_mean, current_cov,
+                                            gllim_chol_covs) for i in range(Ny))
+
+    for i, (mui, wsi) in enumerate(res):  #réduction
+        maximal_mu += mui
+        ws[i] = wsi
+    return maximal_mu / Ny, ws
+
+
+def mu_step_full_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov):
+    Ny, Ns, D = FXs.shape
+    K, L, _ = gllim_covs.shape
+    gllim_chol_covs = np.zeros((K, L, L))
+    for k in range(K):
+        gllim_chol_covs[k] = np.linalg.cholesky(gllim_covs[k])
+    current_cov_chol = np.linalg.cholesky(current_cov)
+
+    maximal_mu = np.zeros(D)
+    ws = np.zeros((Ny,Ns))
+
+    prefer = "threads" if WITH_THREADS else None
+    res = Parallel(n_jobs=N_JOBS, prefer=prefer)(delayed(cython.mu_step_full_IS_i)(Yobs[i], Xs[i], meanss[i], weightss[i], FXs[i],
+                                            mask[i], current_mean, current_cov_chol,
+                                            gllim_chol_covs) for i in range(Ny))
+
+    for i, (mui, wsi) in enumerate(res):  #réduction
+        maximal_mu += mui
+        ws[i] = wsi
+    return maximal_mu / Ny, ws
+
+
 def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
     mask = get_X_mask(Xs)
@@ -178,10 +231,10 @@ def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
     assert np.isfinite(FXs).all()
 
     if current_cov.ndim == 1:
-        maximal_mu, ws = cython.mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
+        maximal_mu, ws = mu_step_diag_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
                                                 current_cov)
     else:
-        maximal_mu, ws = cython.mu_step_full_IS(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
+        maximal_mu, ws = mu_step_full_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
                                                 current_cov)
     logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
 

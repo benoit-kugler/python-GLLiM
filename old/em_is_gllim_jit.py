@@ -110,6 +110,8 @@ def _mu_step_diag(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mea
     return maximal_mu, ws
 
 
+
+
 @nb.njit(nogil=True, parallel=True, fastmath=True)
 def _mu_step_diag_with_prior(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean, current_cov, prior_cov):
     Ny, Ns, D = FXs.shape
@@ -260,6 +262,60 @@ def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean, 
 
     ti = time.time()
     _sigma_step = _sigma_step_diag if current_cov.ndim == 1 else _sigma_step_full
+    maximal_sigma = _sigma_step(Yobs, FXs, ws, mask, maximal_mu)
+    logging.debug(f"Noise covariance estimation done in {time.time()-ti:.3f} s")
+    return maximal_mu, maximal_sigma
+
+
+# ------------------- WITHOUT IS ------------------- #
+
+def _em_step_NoIS_cython(gllim, compute_Fs, get_X_mask, Yobs, current_cov, *args):
+    Xs = gllim.predict_sample(Yobs, nb_per_Y=em_is_gllim.N_sample_IS)
+    mask = get_X_mask(Xs)
+    logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / em_is_gllim.N_sample_IS:.5f}")
+    ti = time.time()
+
+    FXs = compute_Fs(Xs, mask)
+    logging.debug(f"Computation of F done in {time.time()-ti:.3f} s")
+    ti = time.time()
+
+    maximal_mu = cython.mu_step_NoIS(Yobs, FXs, mask)
+    logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
+
+    ti = time.time()
+    _sigma_step = cython.sigma_step_diag_NoIS if current_cov.ndim == 1 else cython.sigma_step_full_NoIS
+    maximal_sigma = _sigma_step(Yobs, FXs, mask, maximal_mu)
+    logging.debug(f"Noise covariance estimation done in {time.time()-ti:.3f} s")
+    return maximal_mu, maximal_sigma
+
+
+# --------------------------------- WITH IS --------------------------------- #
+
+def _em_step_IS_cython(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
+    Xs = gllim.predict_sample(Yobs, nb_per_Y=em_is_gllim.N_sample_IS)
+    mask = get_X_mask(Xs)
+    logging.debug(f"Average ratio of F-non-compatible samplings : {mask.sum(axis=1).mean() / em_is_gllim.N_sample_IS:.5f}")
+    ti = time.time()
+
+    meanss, weightss, _ = gllim._helper_forward_conditionnal_density(Yobs)
+    gllim_covs = gllim.SigmakListS
+
+    FXs = compute_Fs(Xs, mask)
+    logging.debug(f"Computation of F done in {time.time()-ti:.3f} s")
+    ti = time.time()
+
+    assert np.isfinite(FXs).all()
+
+    if current_cov.ndim == 1:
+        maximal_mu, ws = cython.mu_step_diag_IS(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
+                                                current_cov, parallel = em_is_gllim.PARALLEL)
+    else:
+        maximal_mu, ws = cython.mu_step_full_IS(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
+                                                current_cov)
+    logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
+
+    ti = time.time()
+    _sigma_step = cython.sigma_step_diag_IS if current_cov.ndim == 1 else cython.sigma_step_full_IS
     maximal_sigma = _sigma_step(Yobs, FXs, ws, mask, maximal_mu)
     logging.debug(f"Noise covariance estimation done in {time.time()-ti:.3f} s")
     return maximal_mu, maximal_sigma
