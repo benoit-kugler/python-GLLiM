@@ -81,17 +81,29 @@ def test_em_easy():
     Yobs = exp.run_noise_estimator(True)
     exp.show_history()
 
+
+
+
     em_is_gllim.N_sample_IS = 10000
-    Yobs = exp.run_noise_estimator(True)
+    exp.run_noise_estimator(True, Yobs=Yobs)
     exp.show_history()
+
+    em_is_gllim.N_sample_IS = 50000
+    exp.run_noise_estimator(True, Yobs=Yobs)
+    exp.show_history()
+
 
     em_is_gllim.NO_IS = True
-    em_is_gllim.N_sample_IS = 100000
-    Yobs = exp.run_noise_estimator(save=True, Yobs=Yobs)
+    exp.run_noise_estimator(save=True, Yobs=Yobs)
     exp.show_history()
 
+    em_is_gllim.N_sample_IS = 100000
+    exp.run_noise_estimator(save=True, Yobs=Yobs)
+    exp.show_history()
 
-
+    exp.Nobs = 2000
+    exp.run_noise_estimator(save=True)
+    exp.show_history()
 
 
 def test_em():
@@ -101,24 +113,21 @@ def test_em():
     noise_GD.maxIter = 200
 
     NoiseEstimation.Nobs = 200
-    obs_mode = {"mean": 1, "cov": 0.1}
+    obs_mode = {"mean": 0.2, "cov": 0.05}
 
 
-    # exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "gd", assume_linear=False)
-    # exp.run_noise_estimator(True)
-    # exp.show_history()
+    exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "gd", assume_linear=False)
+    Yobs = exp.run_noise_estimator(True)
+    exp.show_history()
 
-    # exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "is_gllim", assume_linear=False)
-    # Yobs = exp.run_noise_estimator(True)
-    # exp.show_history()
 
     em_is_gllim.NO_IS = True
     exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "is_gllim", assume_linear=False)
-    # Yobs = exp.run_noise_estimator(True)
-    # exp.show_history()
+    exp.run_noise_estimator(True, Yobs=Yobs)
+    exp.show_history()
 
     em_is_gllim.NO_IS = False
-    Yobs = exp.run_noise_estimator(save=True, Yobs=None)
+    exp.run_noise_estimator(save=True, Yobs=Yobs)
     exp.show_history()
 
     em_is_gllim.N_sample_IS = 50000
@@ -126,20 +135,14 @@ def test_em():
     exp.show_history()
 
 
-    # exp = NoiseEstimation(context.LabContextOlivine, obs_mode, "diag", "gd", assume_linear=False)
-    # exp.run_noise_estimator(True)
-    # exp.show_history()
-
-    # exp = NoiseEstimation(context.LabContextOlivine, obs_mode, "diag", "is_gllim", assume_linear=False)
-    # exp.run_noise_estimator(True)
-    # exp.show_history()
-
 
 def main():
     # test_gd_linear()
     # test_em_linear()
-    test_em_easy()
-    # test_em()
+    try:
+        test_em_easy()
+    finally:
+        test_em()
 
 if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG, fmt="%(module)s %(name)s %(asctime)s : %(levelname)s : %(message)s",

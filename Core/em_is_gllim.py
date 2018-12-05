@@ -217,13 +217,12 @@ def mu_step_full_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, cu
 
 
 def _log_sample_size(ws):
-    np.set_printoptions(precision=1, floatmode="maxprec")
     ws = np.copy(ws)
     mask = ~ np.isfinite(ws)
     ws[mask] = 0
 
     effective_sample_size = np.sum(ws, axis = 1) ** 2 / np.sum(np.square(ws), axis=1)
-    logging.debug("Effective sample size : {:.1f}".format(effective_sample_size.mean()))
+    logging.debug("Effective mean sample size : {:.1f} / {}".format(effective_sample_size.mean(),N_sample_IS))
 
 
 def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
