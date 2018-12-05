@@ -72,8 +72,9 @@ def extend_array(vector, Ns):
 def _helper_mu(X, weights, means, gllim_chol_covs, log_p_tilde, FX, mask_x, y):
     """Returns weights and mu expectancy"""
     q = densite_melange_precomputed(X, weights, means, gllim_chol_covs)
-    av_log = np.mean(log_p_tilde)  # re sclaing to avoid numerical issues
-    p_tilde = np.exp(log_p_tilde - av_log)
+
+    max_log = np.max(log_p_tilde)  # re sclaing to avoid numerical issues
+    p_tilde = np.exp(log_p_tilde - max_log)
 
     wsi = p_tilde / q  # Calcul des poids
 

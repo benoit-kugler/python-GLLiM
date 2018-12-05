@@ -6,6 +6,7 @@ import zlib
 from matplotlib import pyplot
 import coloredlogs
 
+import old.em_is_gllim_jit
 from tools import context
 import numpy as np
 from Core import em_is_gllim
@@ -41,9 +42,9 @@ class NoiseEstimation:
             mode = "LIN"
         else:
             if em_is_gllim.NO_IS:
-                mode = "GLLiM"
+                mode = f"GLLiM({em_is_gllim.N_sample_IS})"
             else:
-                mode = "GLLiM-IS"
+                mode = f"GLLiM-IS({em_is_gllim.N_sample_IS})"
         s = f"isGLLiM-mode:{mode}-" \
             f"initCov:{initcov}-initMean:{initmean}"
         return s
@@ -84,7 +85,13 @@ class NoiseEstimation:
                 _, Yobs = self.context.get_data_training(self.Nobs)
                 Yobs = self.context.add_noise_data(Yobs, covariance=cov_factor, mean=mean_factor)
         Yobs = np.asarray(Yobs, dtype=float, order="C")  # to ensure Y is contiguous
-        fit = em_is_gllim.fit if self.method == "is_gllim" else noise_GD.fit
+        if (self.method == "is_gllim" and (em_is_gllim.NO_IS is False)
+                and hasattr(self.context, "PRIOR_COV") and self.assume_linear is False): # using old is_gllim jit
+            fit = old.em_is_gllim_jit.fit
+        elif self.method == "is_gllim":
+            fit = em_is_gllim.fit
+        else:
+            fit = noise_GD.fit
         history = fit(Yobs, self.context, cov_type=self.cov_type, assume_linear=self.assume_linear)
         if not save:
             logging.info("No data saved.")
@@ -105,7 +112,10 @@ class NoiseEstimation:
                 s = "EM-GLLiM \n " + s
             else:
                 s = "IS-EM-GLLiM \n " + s
+            if not self.assume_linear:
+                s += f"\n$N_{{sample}}$ = {em_is_gllim.N_sample_IS} \n"
             s += f"$\mu = {em_is_gllim.INIT_MEAN_NOISE}$, $\Sigma = {em_is_gllim.INIT_COV_NOISE}I_{{D}}$"
+
         else:
             s = "Gradient descent \n " + s
             s += f"$\mu = {noise_GD.INIT_MEAN_NOISE}$"

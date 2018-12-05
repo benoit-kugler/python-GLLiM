@@ -94,6 +94,8 @@ cdef void densite_melange_precomputed(const double[:,:] x_points, const double[:
 
 
 
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef void loggauspdf_diag(const double[:,:] X, const double[:] mu, const double[:] cov,

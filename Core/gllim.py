@@ -416,6 +416,9 @@ class GLLiM:
 
         self.cython_rnk_(*args)
 
+        # resets = out_rnk_List.sum(axis=1) == 0  # cas problématique
+        # out_rnk_List[resets,:] = 1 / K
+
         return out_rnk_List, out_log_ll
 
 
@@ -528,6 +531,7 @@ class GLLiM:
 
 
         self.cython_next_theta_(*args)
+
         return out_pikList1, out_ckList_T1, out_GammakList_T1, out_AkList1, out_bkList1, out_SigmakList1
 
 

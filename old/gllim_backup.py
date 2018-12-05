@@ -485,6 +485,7 @@ class OldGLLiM():
 
             cnk = np.array([ck_W] * N)
             X = np.concatenate((T, cnk), axis=1)
+
             y_mean = np.dot(Ak, X.T) + bk.reshape((self.D, 1))
 
             if self.gamma_type == "iso":  # full gamma
@@ -524,7 +525,6 @@ class OldGLLiM():
 
         lognormrnk = logsumexp(logrnk, axis=1, keepdims=True)
         logrnk -= lognormrnk
-        print(lognormrnk)
         assert (logrnk <= 0).all()
         return lognormrnk, logrnk
 

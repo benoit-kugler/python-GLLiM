@@ -1,5 +1,6 @@
 """Implements a crossed EM - GLLiM algorith to evaluate noise in model.
 Diagonal covariance is assumed"""
+import json
 import logging
 import multiprocessing
 import time
@@ -215,6 +216,16 @@ def mu_step_full_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, cu
     return maximal_mu / Ny, ws
 
 
+def _log_sample_size(ws):
+    np.set_printoptions(precision=1, floatmode="maxprec")
+    ws = np.copy(ws)
+    mask = ~ np.isfinite(ws)
+    ws[mask] = 0
+
+    effective_sample_size = np.sum(ws, axis = 1) ** 2 / np.sum(np.square(ws), axis=1)
+    logging.debug("Effective sample size : {:.1f}".format(effective_sample_size.mean()))
+
+
 def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
     Xs = gllim.predict_sample(Yobs, nb_per_Y=N_sample_IS)
     mask = get_X_mask(Xs)
@@ -236,6 +247,9 @@ def _em_step_IS(gllim, compute_Fs, get_X_mask, Yobs, current_cov, current_mean):
     else:
         maximal_mu, ws = mu_step_full_IS_joblib(Yobs, Xs, meanss, weightss, FXs, mask, gllim_covs, current_mean,
                                                 current_cov)
+    assert np.isfinite(maximal_mu).all()
+    _log_sample_size(ws)
+
     logging.debug(f"Noise mean estimation done in {time.time()-ti:.3f} s")
 
     ti = time.time()
@@ -357,7 +371,7 @@ class NoiseEMGLLiM(NoiseEM):
 
     def _get_starting_logging(self):
         s = super()._get_starting_logging()
-        return " with GLLiM" + s
+        return f" with GLLiM \n\tNSample = {N_sample_IS}" + s
 
     def _get_F(self):
         if isinstance(self.cont, context.abstractHapkeModel):
@@ -380,11 +394,12 @@ class NoiseEMGLLiM(NoiseEM):
 class NoiseEMISGLLiM(NoiseEMGLLiM):
 
     def _get_starting_logging(self):
-        s = super()._get_starting_logging()
-        return s + f"with IS \n\tNSampleIS = {N_sample_IS}"
+        s = NoiseEM._get_starting_logging(self)
+        return f" with IS-GLLiM \n\tNSampleIS = {N_sample_IS}" + s
 
     def _get_em_step(self):
         return _em_step_IS
+
 
 
 def fit(Yobs, cont: context.abstractFunctionModel, cov_type="diag", assume_linear=False):

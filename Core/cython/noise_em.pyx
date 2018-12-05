@@ -188,15 +188,19 @@ cdef void _helper_mu(const double[:,:] X, const double[:] weights, const double[
     cdef Py_ssize_t Ns = out_weigths.shape[0]
 
     cdef Py_ssize_t n
-    cdef double av_log = 0
+    cdef double max_log = log_p_tilde[0]
     cdef double sum = 0
 
-    for n in range(Ns):   # re scaling to avoid numerical issue - finding log average
-        av_log += log_p_tilde[n]
-    av_log /= Ns
+    for n in range(Ns):   # re scaling to avoid numerical issue - finding max log
+        if max_log < log_p_tilde[n]:
+            max_log = log_p_tilde[n]
+
 
     for n in range(Ns):
-        out_weigths[n] = exp(log_p_tilde[n] - av_log) / out_weigths[n] # Calcul des poids
+        # if out_weigths[n] == 0:
+        #     print(out_weigths[n])
+
+        out_weigths[n] = exp(log_p_tilde[n] - max_log) / out_weigths[n] # Calcul des poids
 
     mu_helper_clean(FX, mask_x, out_weigths, y, out_mu)
 

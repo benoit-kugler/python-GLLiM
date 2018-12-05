@@ -4,8 +4,10 @@ import coloredlogs
 
 from Core import noise_GD
 from Core import em_is_gllim
+from old import em_is_gllim_jit
 
 from experiences.noise_estimation import NoiseEstimation
+from experiences import noise_estimation
 from tools import context
 
 
@@ -39,7 +41,7 @@ def test_em_linear():
     obs_mode = {"mean": 1, "cov": 0.1}
 
     exp = NoiseEstimation(context.LinearFunction, obs_mode, "diag", "is_gllim", assume_linear=True)
-    Yobs = exp.run_noise_estimator(True)
+    # Yobs = exp.run_noise_estimator(True)
     exp.show_history()
 
     exp.assume_linear = False
@@ -48,27 +50,57 @@ def test_em_linear():
     # exp.show_history()
 
 
-
-    em_is_gllim.NO_IS = False
-    em_is_gllim.N_sample_IS = 1000
-    exp.run_noise_estimator(save=True, Yobs=Yobs)
-    exp.show_history()
-
-
-    em_is_gllim.NO_IS = False
-    em_is_gllim.N_sample_IS = 10000
-    exp.run_noise_estimator(save=True, Yobs=Yobs)
-    exp.show_history()
+    # em_is_gllim.NO_IS = False
+    # em_is_gllim.N_sample_IS = 1000
+    # exp.run_noise_estimator(save=True, Yobs=Yobs)
+    # exp.show_history()
+    #
+    #
+    # em_is_gllim.N_sample_IS = 10000
+    # exp.run_noise_estimator(save=True, Yobs=Yobs)
+    # exp.show_history()
+    #
+    # em_is_gllim.N_sample_IS = 50000
+    # exp.run_noise_estimator(save=True, Yobs=Yobs)
+    # exp.show_history()
+    #
+    # em_is_gllim.N_sample_IS = 100000
+    # exp.run_noise_estimator(save=True, Yobs=Yobs)
+    # exp.show_history()
 
     NoiseEstimation.BASE_PATH = old_name
 
+def test_em_easy():
+    em_is_gllim.maxIter = 50
+    em_is_gllim.maxIterGlliM = 10
+
+    NoiseEstimation.Nobs = 400
+    obs_mode = {"mean": 0.2, "cov": 0.05}
+
+    exp = NoiseEstimation(context.EasyFunction, obs_mode, "diag", "is_gllim", assume_linear=False)
+    Yobs = exp.run_noise_estimator(True)
+    exp.show_history()
+
+    em_is_gllim.N_sample_IS = 10000
+    Yobs = exp.run_noise_estimator(True)
+    exp.show_history()
+
+    em_is_gllim.NO_IS = True
+    em_is_gllim.N_sample_IS = 100000
+    Yobs = exp.run_noise_estimator(save=True, Yobs=Yobs)
+    exp.show_history()
+
+
+
+
+
 def test_em():
-    em_is_gllim.maxIter = 300
+    em_is_gllim.maxIter = 50
     em_is_gllim.maxIterGlliM = 10
 
     noise_GD.maxIter = 200
-    NoiseEstimation.Nobs = 400
-    em_is_gllim.NO_IS = True
+
+    NoiseEstimation.Nobs = 200
     obs_mode = {"mean": 1, "cov": 0.1}
 
 
@@ -80,9 +112,17 @@ def test_em():
     # Yobs = exp.run_noise_estimator(True)
     # exp.show_history()
 
-    em_is_gllim.NO_IS = False
+    em_is_gllim.NO_IS = True
     exp = NoiseEstimation(context.InjectiveFunction(3), obs_mode, "diag", "is_gllim", assume_linear=False)
-    exp.run_noise_estimator(True, Yobs=None)
+    # Yobs = exp.run_noise_estimator(True)
+    # exp.show_history()
+
+    em_is_gllim.NO_IS = False
+    Yobs = exp.run_noise_estimator(save=True, Yobs=None)
+    exp.show_history()
+
+    em_is_gllim.N_sample_IS = 50000
+    exp.run_noise_estimator(save=True, Yobs=Yobs)
     exp.show_history()
 
 
@@ -97,7 +137,8 @@ def test_em():
 
 def main():
     # test_gd_linear()
-    test_em_linear()
+    # test_em_linear()
+    test_em_easy()
     # test_em()
 
 if __name__ == '__main__':

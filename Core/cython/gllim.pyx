@@ -1215,20 +1215,20 @@ cdef void _normalize_log(double[:,:] out_rnk_List, double[:] out_ll) nogil:
     cdef Py_ssize_t N = out_rnk_List.shape[0]
     cdef Py_ssize_t K = out_rnk_List.shape[1]
     cdef Py_ssize_t n, k
-    cdef double avg_log
+    cdef double max_log
 
     for n in range(N):
         # numerical issue : we compute log sum exp with rescaled log
-        avg_log = 0
+        max_log = out_rnk_List[n,0]
+        for k in range(K):
+            if max_log < out_rnk_List[n,k]:
+                max_log = out_rnk_List[n,k]
 
         for k in range(K):
-            avg_log += out_rnk_List[n,k]
-        avg_log /= K
+            out_ll[n] += exp(out_rnk_List[n,k] - max_log)
 
-        for k in range(K):
-            out_ll[n] += exp(out_rnk_List[n,k] - avg_log)
+        out_ll[n] = log(out_ll[n]) + max_log
 
-        out_ll[n] = log(out_ll[n]) + avg_log
 
         for k in range(K):
             out_rnk_List[n,k] -= out_ll[n]  # en log

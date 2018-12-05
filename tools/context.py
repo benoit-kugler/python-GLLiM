@@ -896,6 +896,30 @@ class LinearFunction(abstractFunctionModel):
 
 
 
+class EasyFunction(abstractFunctionModel):
+    F_matrix = 0.5 * np.array([[1, 0, 0, 0],
+                               [0, 2, 0, 0],
+                               [0, 0, 3, 0],
+                               [0, 0, 0, 4],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [1, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0]])
+
+    LABEL = "Linear function"
+
+    D = 10
+
+    XLIMS = np.array([(0,1),(0,1),(0,1),(0,1)])
+
+    def _F(self, X):
+        return self.F_matrix.dot(X.T).T
+
+
+
+
 if __name__ == '__main__':
     def test_bruit(N=10000):
         h = HapkeContext(None)

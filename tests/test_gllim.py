@@ -25,39 +25,31 @@ def is_egal(modele1,modele2,verbose=False):
     assert np.allclose(modele1[5], modele2[5])
 
 
-def _compare_one(g1 : GLLiM,g2,g3 : OldGLLiM,Y,T):
-    print(f"\nGamma type: {g1.gamma_type}, Sigma type : {g1.sigma_type}")
-    rnk = np.random.random_sample((T.shape[0],g1.K))
-    init = {"rnk": rnk}
 
-    with open("tmp_theta.json") as f:
-        theta = json.load(f)
-        init = theta
+def _test_next_theta(g1, g2, g3, T, Y):
+    print("Testing compute_next_theta ")
+    ti = time.time()
+    theta1 = g1.compute_next_theta(T, Y)
+    print(f"\tCython sequentiel : {time.time() - ti:.3f} s")
 
-    g3.init_fit(T,Y,init)
-    g1.init_fit(T,Y,init)
-    g2.init_fit(T,Y,init)
+    ti = time.time()
+    theta2 = g2.compute_next_theta(T, Y)
+    print(f"\tCython parallel   : {time.time() - ti:.3f} s")
+
+    ti = time.time()
+    theta3 = g3.compute_next_theta(T, Y)
+    print(f"\tPython (old)      : {time.time() - ti:.3f} s \n")
 
 
+    assert np.isclose(np.sum(theta1[0]), 1)
+    assert np.isclose(np.sum(theta2[0]), 1)
+    assert np.isclose(np.sum(theta3[0]), 1)
+    is_egal(theta1, theta3)
+    is_egal(theta1, theta2)
 
 
-    # print("Testing compute_next_theta ")
-    # ti = time.time()
-    # theta1 = g1.compute_next_theta(T, Y)
-    # print(f"\tCython sequentiel : {time.time() - ti:.3f} s")
-    #
-    # ti = time.time()
-    # theta2 = g2.compute_next_theta(T, Y)
-    # print(f"\tCython parallel   : {time.time() - ti:.3f} s")
-    #
-    # ti = time.time()
-    # theta3 = g3.compute_next_theta(T, Y)
-    # print(f"\tPython (old)      : {time.time() - ti:.3f} s \n")
-    #
-    # is_egal(theta1, theta3)
-    # is_egal(theta1, theta2)
+def _test_rnk(g1, g2, g3, T, Y):
     print("Testing compute_rnk ")
-
     ti = time.time()
     ll3, log_rnk3 = g3._compute_rnk(T, Y)
     rnk3 = np.exp(log_rnk3)
@@ -79,57 +71,34 @@ def compare_para(N=1000, D=10, Lt=4, Lw=0, K=4):
     Y = np.random.random_sample((N, D)) + 2
     T = np.random.random_sample((N, Lt))
 
-    g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=False)
-    g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="full", parallel=True)
-    g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="full")
-    _compare_one(g1,g2,g3,Y,T)
+    for gamma_type in ("full", "diag", "iso"):
+        for sigma_type in ("full", "diag", "iso"):
+            g1 = GLLiM(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, parallel=False)
+            g2 = GLLiM(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type, parallel=True)
+            g3 = OldGLLiM(K, Lw, sigma_type=sigma_type, gamma_type=gamma_type)
 
-    # g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="full", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="full", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="full")
-    # _compare_one(g1,g2,g3,Y,T)
-    #
-    # g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="full", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="full", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="full")
-    # _compare_one(g1,g2,g3,Y,T)
-    #
-    # g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="diag", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="diag", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="diag")
-    # _compare_one(g1,g2,g3,Y,T)
-    #
-    # g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="diag", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="diag")
-    # _compare_one(g1,g2,g3,Y,T)
-    #
-    # g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="diag", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="diag")
-    # _compare_one(g1,g2,g3,Y,T)
-    # #
-    # g1 = GLLiM(K, Lw, sigma_type="full", gamma_type="iso", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="full", gamma_type="iso", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="full", gamma_type="iso")
-    # _compare_one(g1,g2,g3,Y,T)
-    #
-    # g1 = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="diag", gamma_type="iso", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="diag", gamma_type="iso")
-    # _compare_one(g1,g2,g3,Y,T)
-    #
-    # g1 = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso", parallel=False)
-    # g2 = GLLiM(K, Lw, sigma_type="iso", gamma_type="iso", parallel=True)
-    # g3 = OldGLLiM(K, Lw, sigma_type="iso", gamma_type="iso")
-    # _compare_one(g1,g2,g3,Y,T)
+            print(f"\nGamma type: {g1.gamma_type}, Sigma type : {g1.sigma_type}")
+            rnk = np.random.random_sample((T.shape[0], g1.K))
+            rnk /= np.sum(rnk, axis=1, keepdims=True)
+            init = {"rnk": rnk}
+            init = None
+
+            # with open("tmp.json","r") as f:
+            #     init = json.load(f)
+
+            g3.init_fit(T, Y, init)
+            g1.init_fit(T, Y, init)
+            g2.init_fit(T, Y, init)
+
+            _test_rnk(g1, g2, g3, T, Y)
+            # _test_next_theta(g1, g2, g3, T, Y)
 
 
 def compare_complet(N,D):
-    compare_para(N,D,4,0,K=40)
+    compare_para(N,D,3,0,K=40)
     # compare_para(N,D,4,1,K=40)
     # compare_para(N,D,0,4,K=40)
 
 
 if __name__ == '__main__':
-    compare_complet(100,10)
+    compare_complet(10000,3)
