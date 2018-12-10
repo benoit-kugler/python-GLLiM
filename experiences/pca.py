@@ -13,12 +13,12 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from vispy.scene import visuals
 
-import noise_GD
-from noise_estimation import NoiseEstimation
-from tools.context import LabContextOlivine, LabContextNontronite
+from Core import noise_GD
+from experiences.noise_estimation import NoiseEstimation
+from tools.context import LabContextOlivine, LabContextNontronite, MergedLabObservations
 
 
-def show_3D(*datas, labels=None):
+def draw_3D(*datas, labels=None):
     canvas = vispy.scene.SceneCanvas(keys='interactive', show=True, bgcolor="white")
     view = canvas.central_widget.add_view()
 
@@ -54,7 +54,7 @@ def show_3D(*datas, labels=None):
     return canvas
 
 
-def show_2D(*datas, labels=None, savepath=None, title=None):
+def draw_2D(*datas, labels=None, savepath=None, title=None):
     fig = pyplot.figure(figsize=(7,7))
     axe = fig.gca()
     D = len(datas)
@@ -63,7 +63,7 @@ def show_2D(*datas, labels=None, savepath=None, title=None):
         color = cm[i]
         color[3] = 0.5
         label = labels[i] if labels is not None else f"Group {i}"
-        axe.scatter(*data.T, c=color, label=label, s=2)
+        axe.scatter(*data.T, c=[color], label=label, s=2)
     axe.legend()
     if title:
         fig.suptitle(title)
@@ -75,7 +75,7 @@ def show_2D(*datas, labels=None, savepath=None, title=None):
 
 class Visualisation2D:
 
-    BASE_SAVEPATH = "/scratch/WORK/NOISE_ESTIMATION/VISUALISATION"
+    BASE_SAVEPATH = "/Users/kuglerb/Documents/WORK/NOISE_ESTIMATION/VISUALISATION"
 
     def __init__(self, observations, labels, fig_label = None):
         self.observations = observations
@@ -86,16 +86,17 @@ class Visualisation2D:
 
         self.fig_label = fig_label
 
-    def _pca(self):
+    def pca(self, index_ref=0):
         ti = time.time()
         pca = PCA(n_components=2, copy=True)
-        obs_ref = self.observations[0]
+        obs_ref = self.observations[index_ref]
         pca.fit(obs_ref)
         res = [pca.transform(Y) for Y in self.observations]
         logging.debug(f"Principal Component Analysis performed in {time.time() - ti:.3f}")
-        return res
+        self.reductions = res
+        self.method = "pca"
 
-    def _tsne(self):
+    def tsne(self):
         ti = time.time()
 
         group = np.concatenate(self.observations, axis=0)
@@ -111,50 +112,68 @@ class Visualisation2D:
             res.append(Z)
 
         logging.info(f"Stochastic Neighbor Embedding performed in {time.time() - ti:.3f} s")
-        return res
+        self.reductions = res
+        self.method = "tsne"
 
-    def reduction(self, methods=("pca", "tsne")):
-        if type(methods) is str:
-            methods = (methods, )
 
+    def draw(self, partiel = None):
         if self.fig_label:
             path = os.path.join(self.BASE_SAVEPATH, self.fig_label)
         else:
             path = os.path.join(self.BASE_SAVEPATH, str(datetime.datetime.now()))
 
-        if "pca" in methods:
-            datas = self._pca()
-            show_2D(*datas, labels = self.labels, savepath= path +  "-pca.png",
-                    title=self.fig_label)
+        if partiel is not None:
+            datas = [self.reductions[i] for i in partiel]
+            labels = [self.labels[i] for i in partiel]
+            path += str(partiel)
+        else:
+            datas, labels = self.reductions, self.labels
 
-        if "tsne" in methods:
-            datas = self._tsne()
-            show_2D(*datas, labels = self.labels, savepath= path +  "-tsne.png",
-                    title=self.fig_label)
+        savepath = f"{path}-{self.method}.png"
+        draw_2D(*datas, labels = labels, savepath= savepath,
+                title=self.fig_label)
+        logging.debug(f"Figure saved in {savepath}.")
 
 
 
-
-
-def main():
-    labels = ["Données d'entrainement","Données d'entrainement (bruit)", "Olivine", "Nontronite"]
+def main(retrain=True):
+    labels = ["Yobs1", "Yobs2", "Entrainement","Entrainement (bruit Olivine)",
+              "Entrainement (bruit Nontronite)", "Entrainement (bruit mélangé)"]
     c = LabContextOlivine()
     Yobs1 = c.get_observations()
 
     c2 = LabContextNontronite()
     Yobs2 = c2.get_observations()
 
-    _, Ytrain = c.get_data_training(50000)
+    _, Ytrain = c.get_data_training(5000)
 
-    exp = NoiseEstimation(LabContextOlivine,"obs","diag","gd")
-    noise_GD.maxIter = 150
-    # exp.run_noise_estimator(save=True)
-    mean, cov = exp.get_last_params(average_over=40)
 
-    Ytrain_noise = c.add_noise_data(Ytrain,covariance=cov, mean=mean)
+    noise_GD.Ntrain = 100000
+    noise_GD.maxIter = 100
 
-    visu = Visualisation2D((Ytrain, Ytrain_noise, Yobs1, Yobs2), labels, fig_label="Bruit GD")
-    visu.reduction(methods=("pca","tsne"))
+    exp1 = NoiseEstimation(LabContextOlivine,"obs","diag","gd")
+    exp2 = NoiseEstimation(LabContextNontronite,"obs","diag","gd")
+    exp3 = NoiseEstimation(MergedLabObservations,"obs","diag","gd")
+
+    if retrain:
+        exp1.run_noise_estimator(save=True)
+        exp2.run_noise_estimator(save=True)
+        exp3.run_noise_estimator(save=True)
+
+    mean1, cov1 = exp1.get_last_params(average_over=40)
+    mean2, cov2 = exp2.get_last_params(average_over=40)
+    mean3, cov3 = exp3.get_last_params(average_over=40)
+
+
+    Ytrain_noise1 = c.add_noise_data(Ytrain,covariance=cov1, mean=mean1)
+    Ytrain_noise2 = c.add_noise_data(Ytrain,covariance=cov2, mean=mean2)
+    Ytrain_noise3 = c.add_noise_data(Ytrain,covariance=cov3, mean=mean3)
+
+    visu = Visualisation2D((Yobs1, Yobs2, Ytrain, Ytrain_noise1, Ytrain_noise2, Ytrain_noise3), labels, fig_label="Bruit GD")
+    visu.pca(index_ref=2)
+    visu.draw()
+    for i in range(4):
+        visu.draw(partiel=(0,1, i + 2))
 
 
 if __name__ == '__main__':
@@ -162,4 +181,4 @@ if __name__ == '__main__':
                         datefmt="%H:%M:%S")
     # show_diff_learning()
     # tsne()
-    main()
+    main(retrain=False)
