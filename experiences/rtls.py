@@ -10,7 +10,7 @@ from tools.context import abstractHapkeModel
 
 class RtlsH2O(abstractHapkeModel):
 
-    BASE_PATH = "../DATA/RTLS"
+    BASE_PATH = "/Users/kuglerb/Documents/DATA/RTLS"
     RTLS_FILE = "spect_RTLS_weights_H2O_ice_17669.txt"
 
     _theta0 = 61.6
@@ -97,9 +97,114 @@ class RtlsH2OPolaireNormalized(RtlsH2OPolaire):
 
 
 
+# function [k_L k_G k_V rmse]=hapke2rtls(w,b,c,theta,G,comb_geo)
+#
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# % function allowing to find the RTLS kernel weights that fit the BRDF     %
+# % defined by a set of Hapke photometric parameters in the least square    %
+# % sense.                                                                  %
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#
+# % Author: Dr. Douté S. <sylvain.doute@obs.ujf-grenoble.fr>, 2015.
+# % the source code should not be changed if permission was not granted by the author.
+#
+# % INPUTS:
+# % w,b,c,theta : the Hapke model parameters
+# % G :  matrix of the linear model allowing to calculate the vector of reflectance values
+# % from the kernel weights.
+# % comb_geo : sequential list of geometric combinations on wich the inversion is performed
+# % OUTPUTS:
+# % k_L k_G k_V rmse the solution in form of a triplet of kernel weights + the rmse of the fit
+#
+# % setting inversion parameters
+#   HH=1.;
+#   B0=0.;
+#
+#   fact_noise=1/50;
+#   sigma_k=1;
+#
+#  % initialization of the parameters
+#   s=size(comb_geo);
+#   nb_comb=s(1);
+#   d_obs=zeros(1,nb_comb);
+#
+#
+# % initialization of the inversion process
+#
+#         % first guess for the state vector
+#         % calculation of the lambertian albedo from w
+#         r0=(1-sqrt(1-w))/(1+sqrt(1-w));
+#         K=[r0 0 0]';
+#
+#         % calculating the vectors of the observables
+#
+#         for i=1:nb_comb
+#           d_obs(i)=Hapke(comb_geo(i,1),comb_geo(i,2),comb_geo(i,3),w,theta,b,c,HH,B0);
+#         end
+#
+# 				% a priori covariance matrix on the kernels
+#             CM=zeros(3,3);
+#             x=ones(3,1)*sigma_k^2;
+#             CM(:,:)=diag(x);
+#
+# 				% building the covariance matrix for the TOA reflectance pdf
+#             Cd=zeros(nb_comb,nb_comb);
+#
+# 				% thermic noise is non correlated
+#             sigma_noise=(d_obs*fact_noise)';
+#             x=sigma_noise.^2;
+#             Cd=diag(x);
+#
+#
+#  % Inversion itself
+#               Y=CM*G'*inv(G*CM*G'+Cd);
+# 				% updating the state vector
+#               K=K+Y*(d_obs'-G*K);
+# 				% updating the covariance matrix on the kernels
+#               CM=CM-Y*G*CM;
+# 				% a posteriori covariance matrix on the TOA reflectance
+#               Cd=G*CM*G';
+#         % returning the result
+#
+#          % calculating the root mean square error
+#          err=d_obs'-G*K;
+#          rmse=sqrt(err'*err)/nb_comb;
+#  % propagating the solution
+#          k_L=K(1);
+#          k_V=K(2);
+#          k_G=K(3);
+#
+#
+# end
+
+
+def hapke2rtls(w, b, c, theta, G, comb_geo):
+    """Vectorized version
+    comb_geo : shape 3 , D
+    """
+    HH = np.ones(w.shape)
+    B0 = np.zeros(w.shape)
+
+    fact_noise=1/50
+    sigma_k=1
+
+    _, nb_comb = comb_geo.shape
+
+    # s=size(comb_geo);
+    # nb_comb=s(1);
+
+    # d_obs=zeros(1,nb_comb);
+
+    r0 = (1-np.sqrt(1-w))/(1+np.sqrt(1-w))
+
+    # K = [r0 0 0]'
+
+
+
 if __name__ == '__main__':
     # pass
     # RtlsH2O(None).compute_observations()
     # RtlsCO2(None).compute_observations()
     # RtlsH2OPolaire(None).compute_observations()
-    RtlsH2OPolaireNormalized(None).compute_observations()
+    # RtlsH2OPolaireNormalized(None).compute_observations()
+    print(RtlsH2OPolaire().geometries.shape)
